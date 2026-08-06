@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build and test output
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor and operating system metadata
+.DS_Store
+.idea/
+.vscode/
+
+# Serena project metadata is versioned. Local-only Serena files are excluded by
+# .serena/.gitignore.
