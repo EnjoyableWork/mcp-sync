@@ -99,6 +99,10 @@ cargo install enjoyable-mcp-sync
 
 Download a prebuilt archive for macOS, Linux, or Windows from the
 [latest GitHub release](https://github.com/EnjoyableWork/mcp-sync/releases/latest).
+Stable releases provide separate ARM64 and x64 archives for each operating
+system. macOS binaries are signed and notarized, Windows binaries are
+Authenticode-signed, and every immutable release includes SHA-256 checksums,
+SPDX SBOMs, and verifiable build provenance.
 
 ## 📖 Quickstart & Usage
 

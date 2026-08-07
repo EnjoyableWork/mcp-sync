@@ -223,10 +223,84 @@ tested release.
 
 | Channel | Audience | Target installation | Role |
 | --- | --- | --- | --- |
-| GitHub Releases | All platforms, including users without a package manager | Download a prebuilt macOS, Linux, or Windows archive | Canonical versioned binaries, checksums, release notes, and provenance; GitHub supports attaching binary assets to releases. |
+| GitHub Releases | All platforms, including users without a package manager | Download a prebuilt macOS, Linux, or Windows archive | Canonical immutable release containing versioned binaries, checksums, SBOMs, release notes, and provenance. |
 | Homebrew tap | macOS and Linux users | `brew install EnjoyableWork/tap/mcp-sync` | Primary one-command Unix installation. An organization-owned tap keeps the formula under project control. |
 | Windows Package Manager | Windows users | `winget install EnjoyableWork.mcp-sync` | Native discovery, installation, and upgrades through the public WinGet repository. |
 | crates.io / Cargo | Rust developers with a toolchain | `cargo install enjoyable-mcp-sync` | Builds from the published source package and installs a binary still named `mcp-sync`. |
+
+### Release artifact and trust contract
+
+`OPEN-06` is resolved for M2 by `DEC-024`. The first stable public release is
+`v0.1.0`; release candidates may use `v0.1.0-rc.N`, but Homebrew, WinGet, and
+the normal Cargo install path must not point at a candidate. Every stable
+channel consumes the same commit and version first published as the canonical
+GitHub Release.
+
+The initial binary matrix contains six separate 64-bit artifacts:
+
+| Operating system | CPU | Rust target | Release archive |
+| --- | --- | --- | --- |
+| macOS | Apple Silicon / ARM64 | `aarch64-apple-darwin` | `mcp-sync-v{semver}-aarch64-apple-darwin.tar.gz` |
+| macOS | Intel / x64 | `x86_64-apple-darwin` | `mcp-sync-v{semver}-x86_64-apple-darwin.tar.gz` |
+| Linux | ARM64 | `aarch64-unknown-linux-gnu` | `mcp-sync-v{semver}-aarch64-unknown-linux-gnu.tar.gz` |
+| Linux | x64 | `x86_64-unknown-linux-gnu` | `mcp-sync-v{semver}-x86_64-unknown-linux-gnu.tar.gz` |
+| Windows | ARM64 | `aarch64-pc-windows-msvc` | `mcp-sync-v{semver}-aarch64-pc-windows-msvc.zip` |
+| Windows | x64 | `x86_64-pc-windows-msvc` | `mcp-sync-v{semver}-x86_64-pc-windows-msvc.zip` |
+
+These are supported [Rust platform targets](https://doc.rust-lang.org/rustc/platform-support.html),
+but Rust's target tier is not product verification: `MCP-018`, `MCP-019`, and
+`MCP-021` must build and smoke-test each advertised OS/CPU artifact. The first
+release has no 32-bit, Alpine/musl, or combined universal-macOS artifact. Add
+one only through a later accepted support decision with native CI and install
+evidence.
+
+Stable release trust is mandatory rather than best-effort:
+
+- Sign each macOS Mach-O with the `com.enjoyablework.mcp-sync` identifier, a
+  Developer ID Application certificate, hardened runtime, and a secure
+  timestamp before packaging. Submit both macOS archives through Apple's
+  current `notarytool` flow and require accepted notarization plus local
+  `codesign` and Gatekeeper verification. Apple documents Developer ID signing
+  and [notarization for software distributed outside the App Store](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
+- Authenticode-sign and timestamp each Windows executable before creating its
+  ZIP, using [Azure Artifact Signing Public Trust](https://learn.microsoft.com/en-us/azure/artifact-signing/concept-trust-models)
+  through its supported GitHub Actions integration. A publicly trusted
+  CA-issued Authenticode certificate is the fallback if Artifact Signing is
+  unavailable; unsigned Windows artifacts are not a stable-release fallback.
+- Linux has no additional OS-native signature in the initial contract. All six
+  archives receive the shared checksum and provenance controls below.
+- Publish one `SHA256SUMS` manifest, a target-specific SPDX JSON SBOM beside
+  each archive, and a GitHub build-provenance attestation for every archive and
+  SBOM. Do not claim reproducible builds until independently reproduced bytes
+  exist, and do not introduce a separate long-lived GPG signing key initially.
+- Create the GitHub Release as a draft, attach and verify the complete asset
+  set, then publish it with [release immutability](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases)
+  enabled. Immutability locks the tag and assets and adds a release attestation;
+  explicit [artifact attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations)
+  retain build-workflow provenance. A correction after publication requires a
+  new version rather than replacement assets or a moved tag.
+
+The public identities are fixed independently of the legal subject displayed
+by a platform signing certificate:
+
+| Surface | Identifier |
+| --- | --- |
+| Product, executable, and package moniker | `mcp-sync` |
+| GitHub repository | `EnjoyableWork/mcp-sync` |
+| Git tag | `v{semver}` |
+| Cargo package | `enjoyable-mcp-sync` |
+| Homebrew repository / tap / formula | `EnjoyableWork/homebrew-tap` / `EnjoyableWork/tap` / `mcp-sync` |
+| WinGet package / publisher / package name | `EnjoyableWork.mcp-sync` / `EnjoyableWork` / `mcp-sync` |
+| macOS signing identifier | `com.enjoyablework.mcp-sync` |
+
+Homebrew selects the matching macOS or GNU/Linux archive and pins its SHA-256.
+WinGet uses ZIP/portable manifests for the x64 and ARM64 Windows archives and
+pins each installer SHA-256; WinGet currently supports both
+[ZIP and portable packages](https://learn.microsoft.com/en-us/windows/package-manager/winget/).
+Cargo publishes version `0.1.0` from the same tag only after the required live
+name recheck. Release credentials belong in protected CI environments with
+least privilege. Missing Apple or Windows signing authority blocks `MCP-021`;
+it never silently downgrades the stable trust contract.
 
 The crates.io package name `mcp-sync` is already assigned to an
 [unrelated Rust project](https://docs.rs/crate/mcp-sync/latest), and crates.io
@@ -591,9 +665,9 @@ built-binary journeys without beginning target reconciliation:
 | D-05 | Two-client import and conflict reporting | M1 | Codex | 2026-08-07 | Done | [Initialization use case](src/init.rs), [CLI command](src/main.rs), [global Claude Desktop adapter](src/claude_desktop.rs), [global Cursor adapter](src/cursor.rs), [create-only filesystem boundary](src/filesystem.rs), and [built-binary journeys](tests/init.rs) |
 | D-06 | Redacted plan and safe multi-target apply | M1 | Unassigned | Unscheduled | In progress | [Pure deterministic and structurally redacted plan engine](src/reconciliation.rs); target dry-run/apply parity, backup, atomic write, and rollback remain in `MCP-011` |
 | D-07 | Complete M1 CLI journey and user guide | M1 | Unassigned | Unscheduled | In progress | Built-binary [`init`](tests/init.rs) and canonical [`add`/`list`](tests/catalog.rs) journeys plus the matching [README quickstart](README.md) are implemented; target sync, the golden combined journey, controlled current-client smoke test, and recovery guide remain sequenced |
-| D-08 | Five-client, cross-platform support matrix | M2 | Unassigned | Unscheduled | Proposed | Platform/client CI matrix with native JSON and TOML fixtures |
+| D-08 | Five-client, cross-platform support matrix | M2 | Unassigned | Unscheduled | Proposed | Platform/client CI matrix with native JSON and TOML fixtures plus the accepted six-target OS/CPU release matrix |
 | D-09 | Bounded STDIO health testing | M2 | Unassigned | Unscheduled | Proposed | Protocol, timeout, cleanup, and redaction tests |
-| D-10 | Accessible release channels and recovery runbook | M2 | Unassigned | Unscheduled | Proposed | GitHub binaries, Homebrew, WinGet, Cargo, checksums, install smoke tests, and restore exercise |
+| D-10 | Accessible release channels and recovery runbook | M2 | Unassigned | Unscheduled | Proposed | Six signed or platform-appropriate binaries, immutable GitHub Release, SHA-256 manifest, SPDX SBOMs, attestations, Homebrew, WinGet, Cargo, per-target install smoke tests, and restore exercise |
 
 ## Ticket board
 
@@ -624,10 +698,10 @@ predecessor, so only the first incomplete row can become `Ready`.
 | MCP-015 | Add the VS Code target adapter and define extension-shape boundaries | M2 | P1 | Unassigned | Proposed | `MCP-014` | Supported extension contract plus fixtures and journey coverage |
 | MCP-016 | Add the Codex adapter for the shared ChatGPT desktop, Codex CLI, and IDE host configuration | M2 | P1 | Unassigned | Proposed | `MCP-015` | The global TOML fixture round-trips, unrelated Codex settings and unsupported MCP fields survive, and the shared server map has discovery and journey coverage |
 | MCP-017 | Add bounded MCP STDIO initialize health testing | M2 | P1 | Unassigned | Proposed | `MCP-016` | Handshake, timeout, child cleanup, malformed output, redaction tests |
-| MCP-018 | Add Linux path and behavior support | M2 | P1 | Unassigned | Proposed | `MCP-017` | Linux CI and supported-client path fixtures pass |
-| MCP-019 | Add Windows path and replacement behavior support | M2 | P1 | Unassigned | Proposed | `MCP-018` | Windows CI, path, backup, replacement, and rollback tests pass |
+| MCP-018 | Add Linux path and behavior support | M2 | P1 | Unassigned | Proposed | `MCP-017` | Native GNU/Linux x64 and ARM64 CI plus supported-client path fixtures pass |
+| MCP-019 | Add Windows path and replacement behavior support | M2 | P1 | Unassigned | Proposed | `MCP-018` | Native Windows MSVC x64 and ARM64 CI, path, backup, replacement, rollback, and portable-package tests pass |
 | MCP-020 | Add explicit restore and backup-retention UX | M2 | P1 | Unassigned | Proposed | `MCP-019` | Restore journey and retention rules documented and tested |
-| MCP-021 | Publish accessible, provenance-linked release channels | M2 | P1 | Unassigned | Proposed | `MCP-020` | The same tagged version installs from GitHub Releases, Homebrew, WinGet, and Cargo and completes a smoke journey on each supported platform |
+| MCP-021 | Publish accessible, provenance-linked release channels | M2 | P1 | Unassigned | Proposed | `MCP-020` | `DEC-024` passes in full: all six artifacts build and smoke-test natively, macOS and Windows trust checks pass, the immutable release contains checksums, per-target SPDX SBOMs, and attestations, and the exact same `v0.1.0` installs through GitHub Releases, Homebrew, WinGet, and Cargo under the accepted identifiers |
 
 ### Testing tool introduction plan
 
@@ -756,12 +830,12 @@ must satisfy the side-quest rules before it is marked `Ready`.
 | DEC-021 | Make initialization a deterministic, create-only import transaction | Accepted | 2026-08-07 | `init` checks that canonical state is absent, completes both client reads and the entire pure merge before mutation, reports structural disagreements or unsupported-name collisions, and publishes validated bytes through a synced same-directory temporary file without replacing an existing path. Native files remain read-only; guarded canonical replacement is implemented by `MCP-010`, while target transaction rollback stays with `MCP-011` |
 | DEC-022 | Treat canonical `add` as a complete-definition upsert and `list` as structural metadata only | Accepted | 2026-08-07 | Repeated literal `--arg` and `--env KEY=VALUE` inputs avoid shell parsing; an existing name is replaced as one validated unit, exact semantic equality skips all writes, and changed state receives an exact `.bak` before guarded atomic replacement. Normal output may show escaped names, argument counts, and escaped environment key names, but never commands, arguments, or environment values |
 | DEC-023 | Preserve target-only entries in M1 and require explicit ownership provenance before any future prune | Accepted | 2026-08-07 | M1 sync may add desired names and update only `command`, `args`, and `env` inside compatible local entries while preserving every unowned field. Canonical absence produces non-mutating drift, never deletion; unmanaged remote-name collisions remain errors. A future prune requires a separately accepted command, provenance model, recovery contract, and ticket rather than inferring ownership from absence |
+| DEC-024 | Adopt the six-target signed, attested, and immutable release contract | Accepted | 2026-08-07 | [The release contract](#release-artifact-and-trust-contract) fixes separate ARM64 and x64 artifacts for macOS, GNU/Linux, and Windows; mandatory Apple signing/notarization and Windows Public Trust signing; SHA-256, per-target SPDX SBOMs, build attestations, and immutable GitHub Releases; stable public identifiers; and `v0.1.0` as the first release. Missing signing authority blocks stable publication rather than producing unsigned advertised artifacts |
 
 ### Open decisions
 
 | ID | Decision needed | Needed by | Default if still open |
 | --- | --- | --- | --- |
-| OPEN-06 | Finalize release CPU/OS targets, signing, notarization, checksums, and package identifiers | Before `MCP-021` | GitHub Releases are canonical; Homebrew, WinGet, and Cargo consume the same tagged version |
 | OPEN-07 | Define Codex coverage for project-scoped configuration and [remote/OAuth MCP options](https://developers.openai.com/codex/config-reference) | Before `MCP-016` | Manage local STDIO entries in global `~/.codex/config.toml`; preserve project-scoped configuration and unsupported target-only fields unchanged |
 
 ## Risk register
@@ -779,6 +853,7 @@ must satisfy the side-quest rules before it is marked `Ready`.
 | RISK-09 | A side quest consumes main-story capacity or becomes a hidden prerequisite | Medium | Medium | Separate IDs, strict classification, one-side-quest WIP cap, required promotion | A main ticket or release gate depends on `SIDE-NNN`, or later story work starts early | Mitigated by plan |
 | RISK-10 | The product or package is confused with unrelated projects using the `mcp-sync` name | High | High | Verified distinct Cargo package name, publisher-qualified install commands, provenance links, and a required pre-publication registry recheck | The selected name becomes unavailable or users cannot distinguish the publisher | Open — recheck at `MCP-021` |
 | RISK-11 | Codex's shared TOML file loses non-MCP settings or target-only MCP capabilities | Critical | Medium | Structural TOML merge, a narrow ownership boundary, and fixtures covering unrelated settings plus unsupported HTTP/auth fields | Any Codex fixture requires lossy JSON conversion or drops an unowned field | Open — M2 gate |
+| RISK-12 | Required platform signing authority is unavailable or identity validation delays release | High | Medium | `DEC-024` makes Apple Developer ID plus notarization and Windows Public Trust signing explicit `MCP-021` prerequisites; credentials stay in protected CI environments, and a CA-issued Authenticode certificate is the Windows fallback | `MCP-021` starts without active Apple notarization credentials or validated Windows signing authority | Open — release blocker |
 
 ## Readiness and completion gates
 
