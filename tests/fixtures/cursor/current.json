@@ -1,0 +1,54 @@
+{
+  "cursorMetadata": {
+    "releaseChannel": "stable",
+    "featureFlags": {
+      "nativeMcp": true
+    }
+  },
+  "mcpServers": {
+    "unchanged": {
+      "command": "/synthetic/bin/unchanged",
+      "args": ["--mode", "safe"],
+      "env": {
+        "UNCHANGED_TOKEN": "fixture-cursor-unchanged-secret"
+      },
+      "envFile": "/synthetic/env/unchanged.env"
+    },
+    "updated": {
+      "type": "stdio",
+      "command": "/synthetic/bin/old",
+      "args": ["--old"],
+      "env": {
+        "KEEP": "same",
+        "REMOVE": "fixture-cursor-remove-secret",
+        "ROTATE": "fixture-cursor-old-secret"
+      },
+      "envFile": "/synthetic/env/preserved.env",
+      "futureOption": {
+        "enabled": true
+      }
+    },
+    "target-only": {
+      "command": "/synthetic/bin/local",
+      "args": ["--local"],
+      "env": {
+        "LOCAL_TOKEN": "fixture-cursor-local-secret"
+      },
+      "disabled": true
+    },
+    "remote-only": {
+      "type": "http",
+      "url": "https://mcp.example.invalid/api",
+      "headers": {
+        "Authorization": "Bearer fixture-cursor-remote-secret"
+      },
+      "futureRemote": {
+        "retry": 3
+      }
+    }
+  },
+  "futureTopLevel": {
+    "nested": ["preserve", 7, true],
+    "preciseNumber": 1234567890123456789012345678901234567890
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "cursorMetadata": {
+    "featureFlags": {
+      "nativeMcp": true
+    },
+    "releaseChannel": "stable"
+  },
+  "futureTopLevel": {
+    "nested": [
+      "preserve",
+      7,
+      true
+    ],
+    "preciseNumber": 1234567890123456789012345678901234567890
+  },
+  "mcpServers": {
+    "added": {
+      "args": [
+        "--new"
+      ],
+      "command": "/synthetic/bin/added",
+      "env": {
+        "ADD_TOKEN": "fixture-cursor-added-secret"
+      }
+    },
+    "remote-only": {
+      "futureRemote": {
+        "retry": 3
+      },
+      "headers": {
+        "Authorization": "Bearer fixture-cursor-remote-secret"
+      },
+      "type": "http",
+      "url": "https://mcp.example.invalid/api"
+    },
+    "target-only": {
+      "args": [
+        "--local"
+      ],
+      "command": "/synthetic/bin/local",
+      "disabled": true,
+      "env": {
+        "LOCAL_TOKEN": "fixture-cursor-local-secret"
+      }
+    },
+    "unchanged": {
+      "args": [
+        "--mode",
+        "safe"
+      ],
+      "command": "/synthetic/bin/unchanged",
+      "env": {
+        "UNCHANGED_TOKEN": "fixture-cursor-unchanged-secret"
+      },
+      "envFile": "/synthetic/env/unchanged.env"
+    },
+    "updated": {
+      "args": [
+        "--new",
+        "two"
+      ],
+      "command": "/synthetic/bin/new",
+      "env": {
+        "ADDED": "fixture-cursor-added-environment-secret",
+        "KEEP": "same",
+        "ROTATE": "fixture-cursor-new-secret"
+      },
+      "envFile": "/synthetic/env/preserved.env",
+      "futureOption": {
+        "enabled": true
+      },
+      "type": "stdio"
+    }
+  }
+}

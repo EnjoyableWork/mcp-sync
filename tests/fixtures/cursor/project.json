@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "project-only": {
+      "command": "/synthetic/bin/project-only",
+      "args": ["--project"],
+      "env": {
+        "PROJECT_TOKEN": "fixture-cursor-project-secret"
+      }
+    }
+  },
+  "projectMetadata": {
+    "mustRemain": "byte-for-byte unchanged"
+  }
+}
