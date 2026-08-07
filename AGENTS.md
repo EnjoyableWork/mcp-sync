@@ -51,19 +51,22 @@ dynamic plug-in system, daemon, GUI, or remote service requires a current
 consumer and an accepted decision in `PROJECT.md`.
 
 The implemented foundation is one Rust 2024 binary crate with a package named
-`enjoyable-mcp-sync`, an installed binary named `mcp-sync`, and only
-help/version CLI behavior. It also contains the strict canonical JSON v1 model,
-an injected macOS configuration-path resolver, a replaceable read-only
-filesystem boundary, and a pure deterministic reconciliation engine with
-structurally redacted plans. Fixture-backed global Claude Desktop and Cursor
-macOS adapters now discover and parse native JSON through the read-only
-boundary, then render plan-driven updates in memory while preserving unowned
-fields. The Cursor adapter manages only `~/.cursor/mcp.json`, preserves
-commandless remote entries as unmanaged native data, and cannot resolve
-project-level `.cursor/mcp.json` files. Use the existing Clap command tree as
-CLI behavior grows; do not introduce a second parser. Application use cases,
-filesystem mutation, other client adapters, and process behavior remain
-later-ticket scope.
+`enjoyable-mcp-sync` and an installed binary named `mcp-sync`. The CLI now
+supports help, version, and a create-only `init` journey. It also contains the
+strict canonical JSON v1 model, an injected macOS configuration-path resolver,
+a replaceable filesystem boundary with read and no-clobber creation ports, and
+a pure deterministic reconciliation engine with structurally redacted plans.
+Fixture-backed global Claude Desktop and Cursor macOS adapters discover and
+parse native JSON, then render plan-driven updates in memory while preserving
+unowned fields. `init` deterministically imports compatible local definitions,
+reports structural conflicts without writing, skips named commandless Cursor
+entries that canonical v1 cannot represent, and creates only a previously
+missing canonical file through a same-directory temporary file. The Cursor
+adapter manages only `~/.cursor/mcp.json` and cannot resolve project-level
+`.cursor/mcp.json` files. Use the existing Clap command tree as CLI behavior
+grows; do not introduce a second parser. Canonical replacement, add/list,
+target sync, backups, rollback, other client adapters, and process behavior
+remain later-ticket scope.
 
 “Extensible” currently means:
 
