@@ -153,8 +153,14 @@ To build and verify `mcp-sync` from a source checkout:
 ```bash
 cargo build --locked
 cargo run --locked -- --help
-cargo test --all-targets --locked
+./scripts/check.sh
 ```
+
+`./scripts/check.sh` is the canonical local quality gate. It runs deterministic
+formatting, Clippy, unit, and integration checks with the committed lockfile.
+Every command receives disposable `HOME`, XDG, macOS, and Windows-style user
+configuration roots, and the CLI integration harness clears inherited process
+state before supplying its own synthetic home.
 
 Contributions are welcome! Feel free to submit a pull request:
 

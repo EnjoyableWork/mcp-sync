@@ -7,13 +7,13 @@ lightweight enough to use before a hosted tracker is justified.
 | Control | Current state |
 | --- | --- |
 | Document state | Active |
-| Product state | Pre-MVP; runnable Rust CLI walking skeleton implemented |
+| Product state | Pre-MVP; runnable Rust CLI and synthetic-home quality foundation implemented |
 | Current milestone | M0 — Walking skeleton |
-| Overall status | `MCP-002` complete; `MCP-003` ready; no later implementation has begun |
-| Current focus | Add deterministic quality gates and synthetic-home CI for `MCP-003` |
+| Overall status | `MCP-003` complete; `MCP-004` ready; no later implementation has begun |
+| Current focus | Define the versioned canonical server model and JSON contract in `MCP-004` |
 | Milestone target | Unscheduled; set after an owner and delivery capacity are known |
 | Last reviewed | 2026-08-06 |
-| Next review trigger | Completion of `MCP-003`, or any change to the MVP boundary |
+| Next review trigger | Completion of `MCP-004`, or any change to the MVP boundary |
 
 ## Document roles
 
@@ -358,8 +358,8 @@ Rules that protect later growth:
 | --- | --- | --- | --- | --- | --- | --- |
 | D-01 | Project operating model and north-star product page | M0 | Repository | 2026-08-06 | Done | [AGENTS.md](AGENTS.md), this tracker, and [README.md](README.md) |
 | D-02 | Runnable Rust CLI skeleton | M0 | Codex | 2026-08-06 | Done | [Cargo.toml](Cargo.toml), [src/main.rs](src/main.rs), [CLI smoke tests](tests/cli.rs), [Cargo.lock](Cargo.lock), and locked build/install verification |
-| D-03 | Deterministic test and CI foundation | M0 | Unassigned | Unscheduled | Ready | Format, lint, unit, integration, and synthetic-home checks in CI |
-| D-04 | Versioned canonical configuration contract | M0 | Unassigned | Unscheduled | Proposed | Schema types, examples, validation tests, and version policy |
+| D-03 | Deterministic test and CI foundation | M0 | Codex | 2026-08-06 | Done | [Local quality gate](scripts/check.sh), [CI workflow](.github/workflows/ci.yml), [synthetic-home CLI harness](tests/support/mod.rs), and [successful CI run](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31137308671) |
+| D-04 | Versioned canonical configuration contract | M0 | Unassigned | Unscheduled | Ready | Schema types, examples, validation tests, and version policy |
 | D-05 | Two-client import and conflict reporting | M1 | Unassigned | Unscheduled | Proposed | Claude/Cursor fixtures and import journey evidence |
 | D-06 | Redacted plan and safe multi-target apply | M1 | Unassigned | Unscheduled | Proposed | Dry-run, no-op, backup, atomic write, and rollback tests |
 | D-07 | Complete M1 CLI journey and user guide | M1 | Unassigned | Unscheduled | Proposed | Golden journey and README verification |
@@ -381,8 +381,8 @@ predecessor, so only the first incomplete row can become `Ready`.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | MCP-001 | Establish repository guidance, living tracker, Rust direction, and north-star README role | M0 | P0 | Repository | Done | — | [AGENTS.md](AGENTS.md), this tracker, [README.md](README.md), and documentation checks |
 | MCP-002 | Bootstrap one Rust binary crate with CLI help and version output | M0 | P0 | Codex | Done | `MCP-001` | Registry name verified; [manifest](Cargo.toml), [binary](src/main.rs), [smoke tests](tests/cli.rs), and [lockfile](Cargo.lock); format, Clippy, tests, locked build, help/version, isolated install, RustSec audit, and dependency-license inventory pass |
-| MCP-003 | Add format, Clippy, test, and CI quality gates using a synthetic home | M0 | P0 | Unassigned | Ready | `MCP-002` | Documented local checks pass in CI without touching real config |
-| MCP-004 | Define the versioned canonical server model and JSON validation contract | M0 | P0 | Unassigned | Proposed | `MCP-003` | Types, example config, deterministic round-trip tests, unknown-version error |
+| MCP-003 | Add format, Clippy, test, and CI quality gates using a synthetic home | M0 | P0 | Codex | Done | `MCP-002` | [Documented local gate](README.md), [quality script](scripts/check.sh), [CI workflow](.github/workflows/ci.yml), [unit and isolated CLI tests](tests), and [successful CI run](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31137308671) |
+| MCP-004 | Define the versioned canonical server model and JSON validation contract | M0 | P0 | Unassigned | Ready | `MCP-003` | Types, example config, deterministic round-trip tests, unknown-version error |
 | MCP-005 | Introduce injectable config-path and filesystem boundaries | M0 | P0 | Unassigned | Proposed | `MCP-004` | macOS path fixtures, synthetic-home enforcement, contextual I/O errors |
 | MCP-006 | Build the pure normalized reconciliation and redacted plan engine | M1 | P0 | Unassigned | Proposed | `MCP-005` | Deterministic add/update/no-op/drift plans and redaction tests |
 | MCP-007 | Implement the Claude Desktop macOS adapter | M1 | P0 | Unassigned | Proposed | `MCP-006` | Native fixture round trips while unrelated keys survive |
@@ -454,10 +454,10 @@ must satisfy the side-quest rules before it is marked `Ready`.
 
 ### Immediate focus
 
-1. Assign and complete `MCP-003` without adding schema or client logic.
-2. After `MCP-003` is `Done`, update its evidence and move only `MCP-004` to
+1. Assign and complete `MCP-004` without adding client logic.
+2. After `MCP-004` is `Done`, update its evidence and move only `MCP-005` to
    `Ready`.
-3. Continue one row at a time; do not begin `MCP-005` or any later ticket early.
+3. Continue one row at a time; do not begin `MCP-006` or any later ticket early.
 4. Re-review the M1 working assumptions before `MCP-007` begins.
 
 ## Decision log
@@ -476,7 +476,7 @@ must satisfy the side-quest rules before it is marked `Ready`.
 | DEC-010 | Use Rust-native and OS-native distribution rather than npm | Accepted | 2026-08-06 | Canonical GitHub binaries plus Homebrew, WinGet, and a distinctly named Cargo package make the executable accessible with or without a Rust toolchain |
 | DEC-011 | Classify Codex as a supported client target with its own adapter | Accepted | 2026-08-06 | [Codex MCP configuration](https://developers.openai.com/codex/mcp/) is shared by the ChatGPT desktop app, Codex CLI, and IDE extension; TOML is real target variation that belongs behind the existing adapter boundary |
 | DEC-012 | Use one canonical Goal-mode objective per active main-story ticket | Accepted | 2026-08-06 | Thread goals provide persistence for long work, while exact per-ticket objectives preserve the ordered scope and evidence gates without replacing repository truth; only one unfinished ticket goal may be active in a thread |
-| DEC-013 | Track the current stable Rust toolchain and defer a minimum supported version until CI evidence exists | Accepted | 2026-08-06 | `rust-toolchain.toml` selects stable and MCP-002 passed on Rust 1.94.1; MCP-003 will establish CI policy before a `rust-version` is claimed |
+| DEC-013 | Track the current stable Rust toolchain and leave the minimum supported version unspecified until a lower-bound CI policy exists | Accepted | 2026-08-06 | `rust-toolchain.toml` selects stable with rustfmt and Clippy, and MCP-003 verifies that toolchain on every CI run; do not claim `rust-version` from current-stable evidence alone |
 | DEC-014 | Use `enjoyable-mcp-sync` as the Cargo package and `mcp-sync` as its binary | Accepted | 2026-08-06 | The desired package name returned no exact crates.io record while the unrelated `mcp-sync` name is occupied; recheck availability immediately before MCP-021 publication |
 | DEC-015 | Use Clap as the single CLI parser | Accepted | 2026-08-06 | Clap 4.6.6 provides maintained, cross-platform help, version, and future command parsing under MIT OR Apache-2.0 without introducing a disposable parser |
 
