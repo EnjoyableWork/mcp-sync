@@ -1,26 +1,29 @@
-# M1 usage and recovery guide
+# Source-checkout usage and recovery guide
 
-This guide describes the currently implemented M1 behavior of `mcp-sync`. It
-is the operational companion to the [north-star README](../README.md), not a
-replacement for that product specification. Use it when building from source
-on macOS and reconciling the two implemented global targets: Claude Desktop
-and Cursor.
+This guide describes the currently implemented source-checkout behavior of
+`mcp-sync`: the completed M1 foundation plus the global Windsurf adapter added
+by `MCP-014`. It is the operational companion to the
+[north-star README](../README.md), not a replacement for that product
+specification. Use it when building from source on macOS and reconciling the
+three implemented global targets: Claude Desktop, Cursor, and Windsurf's
+legacy Cascade configuration.
 
 ## Current supported journey
 
-| Area | Implemented M1 behavior |
+| Area | Currently implemented behavior |
 | --- | --- |
 | Platform | macOS |
 | Canonical format | Strict JSON schema version `1` for local STDIO servers |
-| Client targets | Global Claude Desktop and global Cursor configuration |
+| Client targets | Global Claude Desktop, global Cursor, and global Windsurf legacy Cascade configuration |
 | Commands | `init`, `add`, `list`, `sync --dry-run`, and `sync` |
 | Safety | Structural redaction, plan-first validation, atomic replacement, recoverable backups, no-op detection, and reverse-order transaction rollback |
 | Installation | Build and run from a source checkout |
 
 `init`, `sync --dry-run`, and `sync` are configuration operations. They never
-start a configured MCP server. Health testing, additional clients, additional
-platforms, packaged installation, explicit prune behavior, and a built-in
-restore command are outside M1 and tracked in [PROJECT.md](../PROJECT.md).
+start a configured MCP server. Health testing, VS Code and Codex adapters,
+additional platforms, packaged installation, explicit prune behavior, and a
+built-in restore command remain later work tracked in
+[PROJECT.md](../PROJECT.md).
 
 ## Build and verify the checkout
 
@@ -43,10 +46,18 @@ named `mcp-sync` once a verified distribution channel exists.
 | Canonical configuration | `$XDG_CONFIG_HOME/mcp-sync/config.json` when `XDG_CONFIG_HOME` is a non-empty absolute path; otherwise `$HOME/.config/mcp-sync/config.json` |
 | Claude Desktop global target | `$HOME/Library/Application Support/Claude/claude_desktop_config.json` |
 | Cursor global target | `$HOME/.cursor/mcp.json` |
+| Windsurf global legacy Cascade target | `$HOME/.codeium/windsurf/mcp_config.json` |
 
 Project-level `.cursor/mcp.json` files are outside the ownership boundary and
 remain untouched. `mcp-sync` also preserves unknown top-level data and fields
 outside `command`, `args`, and `env` in compatible local server entries.
+Commandless Cursor and Windsurf entries remain unmanaged, including native
+remote URLs, headers, authentication options, and tool settings.
+
+[Current vendor documentation](https://docs.windsurf.com/windsurf/cascade/mcp)
+identifies Windsurf's `mcp_config.json` as the legacy Cascade agent
+configuration. This adapter does not discover or claim support for the
+separate Devin Local agent configuration.
 
 Canonical and native configuration can contain literal credentials. Their
 `.bak` files contain the same private material. Protect all of these files with
@@ -55,9 +66,9 @@ contents into terminal output, bug reports, or chat.
 
 ## Safe first import
 
-Quit Claude Desktop and Cursor before a first import so their native files stay
-stable while they are read. `init` reads both global targets and creates the
-canonical file only when it does not already exist:
+Quit Claude Desktop, Cursor, and Windsurf before a first import so their native
+files stay stable while they are read. `init` reads all three global targets
+and creates the canonical file only when it does not already exist:
 
 ```bash
 ./target/debug/mcp-sync init
@@ -66,17 +77,19 @@ canonical file only when it does not already exist:
 The operation has these outcomes:
 
 - Compatible local definitions are imported deterministically. An identical
-  definition shared by both clients is imported once.
+  definition shared by multiple clients is imported once.
 - Conflicting definitions stop the operation without creating canonical state.
   The diagnostic names the server, clients, and differing field categories,
   but not commands, arguments, or environment values.
-- Named commandless Cursor entries are preserved in Cursor and reported as
-  skipped because canonical schema v1 cannot represent them.
-- A local definition that collides with a commandless Cursor entry is an error.
+- Named commandless Cursor and Windsurf entries are preserved in their native
+  files and reported as skipped because canonical schema v1 cannot represent
+  them.
+- A local definition that collides with a commandless entry is an error.
 - An existing canonical path is never overwritten. Move it aside only after
   deciding which copy is authoritative; do not delete it merely to make
   `init` succeed.
-- Client files and project-level Cursor files are read-only during `init`.
+- All three client files and project-level Cursor files are read-only during
+  `init`.
 
 After a successful import, inspect the redacted catalog:
 
@@ -119,7 +132,7 @@ Always review the complete plan before applying it:
 ./target/debug/mcp-sync sync --dry-run
 ```
 
-Dry-run validates the canonical file and both native documents, renders and
+Dry-run validates the canonical file and all three native documents, renders and
 reparses every proposed output, and reports every target without changing a
 file or creating a backup. The plan can contain:
 
@@ -127,12 +140,13 @@ file or creating a backup. The plan can contain:
 - `update` for a compatible local entry whose owned fields differ;
 - `no-op` for an exact normalized match;
 - `drift` for a target-only entry that will be preserved; and
-- unmanaged Cursor names that remain structurally untouched.
+- unmanaged Cursor and Windsurf names that remain structurally untouched.
 
 The report exposes names, counts, environment key names, and changed-field
 categories only. It never prints process values.
 
-After the plan is understood, quit Claude Desktop and Cursor and apply it:
+After the plan is understood, quit Claude Desktop, Cursor, and Windsurf and
+apply it:
 
 ```bash
 ./target/debug/mcp-sync sync
@@ -142,7 +156,7 @@ Apply consumes the already validated plan; it does not recalculate a different
 desired state. Existing changed targets receive exact `.bak` files before
 same-directory atomic replacement. Missing changed targets are created without
 a prior-file backup. Target-only entries, unowned native fields, commandless
-Cursor entries, and project-level Cursor files remain untouched.
+Cursor and Windsurf entries, and project-level Cursor files remain untouched.
 
 Reopen the clients only after `sync` finishes. Then repeat both checks:
 
@@ -151,27 +165,28 @@ Reopen the clients only after `sync` finishes. Then repeat both checks:
 ./target/debug/mcp-sync sync
 ```
 
-A settled configuration reports both targets unchanged. Neither command
+A settled configuration reports all three targets unchanged. Neither command
 rewrites native bytes or replaces existing backups for a no-op.
 
 ## Backup and transaction behavior
 
-M1 uses one adjacent backup slot per existing file:
+The current implementation uses one adjacent backup slot per existing file:
 
 | Changed file | Backup path |
 | --- | --- |
 | Canonical configuration changed by `add` | `<canonical-config>.bak` |
 | Claude Desktop changed by `sync` | `$HOME/Library/Application Support/Claude/claude_desktop_config.json.bak` |
 | Cursor changed by `sync` | `$HOME/.cursor/mcp.json.bak` |
+| Windsurf changed by `sync` | `$HOME/.codeium/windsurf/mcp_config.json.bak` |
 
 Each changed write replaces the regular `.bak` with the bytes observed
 immediately before that write. A no-op leaves the backup untouched. If a longer
 history is important, copy the current file and its backup to a separate,
 access-controlled location before making another change.
 
-`sync` is one two-target transaction. Claude Desktop is applied first and
-Cursor second. If a later target fails, earlier changes are rolled back in
-reverse order:
+`sync` is one three-target transaction. Claude Desktop is applied first,
+Cursor second, and Windsurf third. If a later target fails, earlier changes
+are rolled back in reverse order:
 
 - an updated file and any backup that existed before the transaction are
   restored exactly;
@@ -190,7 +205,7 @@ per-target outcomes before retrying.
 conflict, malformed JSON, unsupported canonical schema version, or unreadable
 path:
 
-1. Keep both client applications closed.
+1. Keep all client applications closed.
 2. Preserve the files involved before editing them.
 3. Correct the named file or make the conflicting definitions identical,
    rename one, or remove one intentionally.
@@ -222,7 +237,7 @@ the clients closed, correct the later target failure, and start again with
 Stop immediately when an outcome says rollback failed. Do not rerun `sync`,
 because another changed write may replace the most useful `.bak` evidence.
 
-1. Keep both clients closed.
+1. Keep all clients closed.
 2. Preserve the current target and every adjacent `.bak` in a separate,
    access-controlled location.
 3. Use the target and recovery-backup path named in the diagnostic to decide
@@ -233,7 +248,7 @@ because another changed write may replace the most useful `.bak` evidence.
 
 ## Manual restoration from an adjacent backup
 
-There is no built-in M1 restore command. The following macOS `zsh` procedure
+There is no built-in restore command. The following macOS `zsh` procedure
 performs a guarded, same-directory replacement for an existing JSON target.
 Set `target` to exactly one path from the table above. Keep the clients closed
 and first preserve both current files somewhere access-controlled if there is
@@ -269,6 +284,12 @@ For Claude Desktop, replace the `target=` line with:
 target="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
 ```
 
+For Windsurf, replace the `target=` line with:
+
+```zsh
+target="$HOME/.codeium/windsurf/mcp_config.json"
+```
+
 For the default canonical path, replace the `target=` line with:
 
 ```zsh
@@ -292,9 +313,12 @@ and prune entries from backup absence.
 The following are delivery facts, not changes to the README's intended product
 promise:
 
-- M1 is verified on macOS only and runs from a Rust source checkout.
-- Only global Claude Desktop and global Cursor JSON are managed. Windsurf,
-  VS Code, Codex, Linux, and Windows remain later main-story work.
+- The current implementation is verified on macOS only and runs from a Rust
+  source checkout.
+- Only global Claude Desktop, global Cursor, and Windsurf's global legacy
+  Cascade JSON are managed. The Windsurf boundary has fixture and built-binary
+  evidence but no current-client smoke claim. VS Code, Codex, Linux, and
+  Windows remain later main-story work.
 - Canonical schema v1 represents local STDIO definitions with `command`,
   ordered `args`, and literal `env` only. Remote transports, OAuth, working
   directories, and secret references are not canonical capabilities yet.

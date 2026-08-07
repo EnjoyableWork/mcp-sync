@@ -113,6 +113,10 @@ impl SyntheticHome {
         self.user_root.join(".cursor/mcp.json")
     }
 
+    pub fn windsurf_configuration(&self) -> PathBuf {
+        self.user_root.join(".codeium/windsurf/mcp_config.json")
+    }
+
     pub fn write_file(&self, path: &Path, contents: impl AsRef<[u8]>) {
         assert!(
             path.starts_with(self.root.path()),

@@ -1,0 +1,80 @@
+{
+  "futureTopLevel": {
+    "nested": [
+      "preserve",
+      9,
+      true
+    ],
+    "preciseNumber": 9876543210987654321098765432109876543210
+  },
+  "mcpServers": {
+    "added": {
+      "args": [
+        "--new"
+      ],
+      "command": "/synthetic/bin/added",
+      "env": {
+        "ADD_TOKEN": "fixture-windsurf-added-secret"
+      }
+    },
+    "remote-only": {
+      "disabledTools": [
+        "fixture_remote_tool"
+      ],
+      "futureRemote": {
+        "retry": 5
+      },
+      "headers": {
+        "Authorization": "Bearer fixture-windsurf-remote-secret"
+      },
+      "serverUrl": "https://windsurf.example.invalid/mcp"
+    },
+    "target-only": {
+      "args": [
+        "--local"
+      ],
+      "command": "/synthetic/bin/local",
+      "disabled": true,
+      "env": {
+        "LOCAL_TOKEN": "fixture-windsurf-local-secret"
+      }
+    },
+    "unchanged": {
+      "args": [
+        "--mode",
+        "safe"
+      ],
+      "command": "/synthetic/bin/unchanged",
+      "disabledTools": [
+        "fixture_preserved_tool"
+      ],
+      "env": {
+        "UNCHANGED_TOKEN": "fixture-windsurf-unchanged-secret"
+      }
+    },
+    "updated": {
+      "args": [
+        "--new",
+        "two"
+      ],
+      "command": "/synthetic/bin/new",
+      "disabledTools": [
+        "fixture_update_tool"
+      ],
+      "env": {
+        "ADDED": "fixture-windsurf-added-environment-secret",
+        "KEEP": "same",
+        "ROTATE": "fixture-windsurf-new-secret"
+      },
+      "futureOption": {
+        "enabled": true
+      }
+    }
+  },
+  "windsurfMetadata": {
+    "agent": "cascade",
+    "featureFlags": {
+      "nativeMcp": true
+    }
+  }
+}
