@@ -1,24 +1,22 @@
 use std::collections::BTreeMap;
-use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs;
-use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::process::{self, Command};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::thread;
-
-static NEXT_SYNTHETIC_HOME_ID: AtomicUsize = AtomicUsize::new(0);
+use std::process::Command;
+use tempfile::TempDir;
 
 pub struct SyntheticHome {
-    root: PathBuf,
+    root: TempDir,
     user_root: PathBuf,
 }
 
 impl SyntheticHome {
     pub fn new() -> Self {
-        let root = Self::create_unique_root();
-        let user_root = root.join("user");
+        let root = tempfile::Builder::new()
+            .prefix("mcp-sync-test-")
+            .tempdir()
+            .expect("synthetic configuration root should be created");
+        let user_root = root.path().join("user");
 
         for directory in [
             user_root.join(".cache"),
@@ -28,9 +26,9 @@ impl SyntheticHome {
             user_root.join("AppData/Local"),
             user_root.join("AppData/Roaming"),
             user_root.join("Library/Application Support"),
-            root.join("runtime"),
-            root.join("tmp"),
-            root.join("xdg-config-dirs"),
+            root.path().join("runtime"),
+            root.path().join("tmp"),
+            root.path().join("xdg-config-dirs"),
         ] {
             fs::create_dir_all(&directory).unwrap_or_else(|error| {
                 panic!(
@@ -71,32 +69,16 @@ impl SyntheticHome {
                 .unwrap_or_else(|| panic!("{name} should be configured for the CLI process"));
 
             assert_eq!(configured_path, expected_path.as_os_str());
-            assert!(
-                Path::new(configured_path).starts_with(&self.root),
-                "{name} should remain inside the synthetic root"
-            );
+            self.assert_path_is_isolated(name, Path::new(configured_path));
         }
     }
 
-    fn create_unique_root() -> PathBuf {
-        for _ in 0..1_024 {
-            let identifier = NEXT_SYNTHETIC_HOME_ID.fetch_add(1, Ordering::Relaxed);
-            let candidate =
-                env::temp_dir().join(format!("mcp-sync-test-{}-{identifier}", process::id()));
-
-            match fs::create_dir(&candidate) {
-                Ok(()) => return candidate,
-                Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
-                Err(error) => {
-                    panic!(
-                        "synthetic configuration root {} should be created: {error}",
-                        candidate.display()
-                    )
-                }
-            }
-        }
-
-        panic!("a unique synthetic configuration root should be available");
+    fn assert_path_is_isolated(&self, name: &str, path: &Path) {
+        assert!(path.is_absolute(), "{name} should be an absolute path");
+        assert!(
+            path.starts_with(self.root.path()),
+            "{name} should remain inside the synthetic root"
+        );
     }
 
     fn user_locations(&self) -> [(&'static str, PathBuf); 16] {
@@ -106,16 +88,16 @@ impl SyntheticHome {
             ("HOME", self.user_root.clone()),
             ("LOCALAPPDATA", self.user_root.join("AppData/Local")),
             ("MCP_SYNC_TEST_HOME", self.user_root.clone()),
-            ("MCP_SYNC_TEST_ROOT", self.root.clone()),
-            ("TEMP", self.root.join("tmp")),
-            ("TMP", self.root.join("tmp")),
-            ("TMPDIR", self.root.join("tmp")),
+            ("MCP_SYNC_TEST_ROOT", self.root.path().to_owned()),
+            ("TEMP", self.root.path().join("tmp")),
+            ("TMP", self.root.path().join("tmp")),
+            ("TMPDIR", self.root.path().join("tmp")),
             ("USERPROFILE", self.user_root.clone()),
             ("XDG_CACHE_HOME", self.user_root.join(".cache")),
-            ("XDG_CONFIG_DIRS", self.root.join("xdg-config-dirs")),
+            ("XDG_CONFIG_DIRS", self.root.path().join("xdg-config-dirs")),
             ("XDG_CONFIG_HOME", self.user_root.join(".config")),
             ("XDG_DATA_HOME", self.user_root.join(".local/share")),
-            ("XDG_RUNTIME_DIR", self.root.join("runtime")),
+            ("XDG_RUNTIME_DIR", self.root.path().join("runtime")),
             ("XDG_STATE_HOME", self.user_root.join(".local/state")),
         ]
     }
@@ -124,19 +106,5 @@ impl SyntheticHome {
 impl Default for SyntheticHome {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl Drop for SyntheticHome {
-    fn drop(&mut self) {
-        if let Err(error) = fs::remove_dir_all(&self.root)
-            && error.kind() != ErrorKind::NotFound
-            && !thread::panicking()
-        {
-            panic!(
-                "synthetic configuration root {} should be removed: {error}",
-                self.root.display()
-            );
-        }
     }
 }
