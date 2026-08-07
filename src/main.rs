@@ -15,6 +15,11 @@ mod filesystem;
     reason = "MCP-005 establishes macOS paths before later adapters consume them"
 )]
 mod paths;
+#[allow(
+    dead_code,
+    reason = "MCP-006 establishes pure reconciliation before application use cases consume it"
+)]
+mod reconciliation;
 
 /// Synchronize local Model Context Protocol server configurations.
 #[derive(Debug, Parser)]
