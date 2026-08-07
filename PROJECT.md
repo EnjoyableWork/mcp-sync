@@ -7,13 +7,13 @@ lightweight enough to use before a hosted tracker is justified.
 | Control | Current state |
 | --- | --- |
 | Document state | Active |
-| Product state | Pre-MVP; M0 foundation, the pure reconciliation engine, and fixture-backed global Claude Desktop and Cursor macOS adapters are implemented; no user journey is wired yet |
+| Product state | Pre-MVP; the M0 foundation and the first built-binary `init` journey across the two fixture-backed macOS adapters are implemented; `add`, `list`, and `sync` are not yet wired |
 | Current milestone | M1 — Town MVP |
-| Overall status | `MCP-008` complete; only `MCP-009` is ready; neither M1 client has received the controlled support smoke test |
-| Current focus | `MCP-009` is the next eligible ticket and has not started |
+| Overall status | `MCP-009` complete; only `MCP-010` is ready; neither M1 client has received the controlled support smoke test |
+| Current focus | `MCP-010` is the next eligible ticket and has not started |
 | Milestone target | Unscheduled; set after an owner and delivery capacity are known |
 | Last reviewed | 2026-08-07 |
-| Next review trigger | Completion of `MCP-009`, or any change to the MVP boundary |
+| Next review trigger | Completion of `MCP-010`, or any change to the MVP boundary |
 
 ## Document roles
 
@@ -412,21 +412,25 @@ Rules that protect later growth:
 
 ### Implemented path and filesystem boundary
 
-`MCP-005` establishes only the operating-system seams needed by subsequent
-use cases; it does not perform discovery, parsing, reconciliation, or mutation:
+`MCP-005` established the operating-system seams and `MCP-009` extended them
+with the one narrow mutation required to create canonical state:
 
 - `MacOsConfigurationPaths` resolves from an injected environment. `HOME` is
   required, a non-empty `XDG_CONFIG_HOME` overrides its `.config` directory,
   and both inputs must be absolute and free of parent traversal. The canonical
   file is `<config-home>/mcp-sync/config.json`; the target-adapter root is
   `<home>/Library/Application Support`.
-- `FileSystem` currently exposes read access only. `OsFileSystem` preserves the
-  attempted operation, full path, underlying error kind, and error source in a
-  typed `FileIoError`. Atomic writes, backups, and rollback are deliberately
-  deferred to the tickets that define and test those safety contracts.
+- `FileSystem` exposes reads and the separate `FileCreator` port exposes only
+  no-clobber creation. `OsFileSystem` writes complete bytes to a synced
+  same-directory temporary file before publishing it, refuses an existing
+  destination, cleans up ordinary failure artifacts, and preserves the
+  attempted operation, path, error kind, and source in `FileIoError`.
+  Replacement, backups, and rollback remain deferred to the tickets that own
+  those broader safety contracts.
 - Automated path and I/O tests inject deterministic values and use
-  `tempfile`-owned directories. They do not resolve or access the test runner's
-  real home or configuration files.
+  `tempfile`-owned directories. They prove exact create bytes and no-clobber
+  behavior without resolving or accessing the test runner's real home or
+  configuration files.
 
 ### Implemented reconciliation boundary
 
@@ -515,6 +519,33 @@ verification reserved for `MCP-013`:
   project-file isolation, missing and malformed behavior, duplicate rejection,
   contextual read failures, plan mismatch failures, and structural redaction.
 
+### Implemented initialization boundary
+
+`MCP-009` implements the first end-to-end application journey through the
+Cargo-built binary. This remains automated macOS-contract evidence rather than
+the controlled current-client verification reserved for `MCP-013`:
+
+- `mcp-sync init` refuses an existing canonical path before client discovery,
+  reads only the two global M1 client files, treats missing files as empty, and
+  creates `<config-home>/mcp-sync/config.json` only after every input has been
+  parsed, normalized, merged, validated, and serialized successfully.
+- The pure import step sorts client sources and server names, unions unique
+  local definitions, and imports an identical shared definition once. Unequal
+  definitions produce a stable report naming the server, both clients, and
+  only the differing field categories; commands, arguments, and environment
+  values never enter diagnostics.
+- Commandless Cursor entries remain unrepresentable in canonical JSON v1. Their
+  sorted names are reported as skipped, while a same-name local definition is
+  an actionable conflict rather than an implicit conversion or overwrite.
+- Conflict, malformed-input, permission, and existing-canonical outcomes are
+  non-zero and stop before the create boundary. Native Claude Desktop, global
+  Cursor, and project-level Cursor fixture bytes remain unchanged, and `init`
+  never starts a configured server process.
+- Six focused import tests plus six bounded `assert_cmd` journeys cover source-
+  order determinism, exact redacted conflicts, empty discovery, malformed JSON,
+  permission failure, no-clobber behavior, native/project isolation, temporary-
+  file cleanup, and the executable non-launch sentinel through `SyntheticHome`.
+
 ## Deliverables
 
 | ID | Deliverable | Milestone | Owner | Target | Status | Completion evidence |
@@ -523,7 +554,7 @@ verification reserved for `MCP-013`:
 | D-02 | Runnable Rust CLI skeleton | M0 | Codex | 2026-08-06 | Done | [Cargo.toml](Cargo.toml), [src/main.rs](src/main.rs), [CLI smoke tests](tests/cli.rs), [Cargo.lock](Cargo.lock), and locked build/install verification |
 | D-03 | Deterministic test and CI foundation | M0 | Codex | 2026-08-06 | Done | [Local quality gate](scripts/check.sh), [CI workflow](.github/workflows/ci.yml), [`tempfile`-owned synthetic-home CLI harness](tests/support/mod.rs), [macOS path fixtures](src/paths.rs), and [successful baseline CI run](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31137308671) |
 | D-04 | Versioned canonical configuration contract | M0 | Codex | 2026-08-06 | Done | [Strict canonical model and tests](src/config.rs), [canonical v1 example](examples/config.v1.json), [public configuration contract](README.md), [accepted version policy](#canonical-configuration-v1-decision), and [dependency policy](deny.toml) |
-| D-05 | Two-client import and conflict reporting | M1 | Unassigned | Unscheduled | In progress | [Global Claude Desktop adapter and native fixtures](src/claude_desktop.rs), [global Cursor adapter](src/cursor.rs), and [Cursor fixtures](tests/fixtures/cursor); import orchestration remains in `MCP-009` |
+| D-05 | Two-client import and conflict reporting | M1 | Codex | 2026-08-07 | Done | [Initialization use case](src/init.rs), [CLI command](src/main.rs), [global Claude Desktop adapter](src/claude_desktop.rs), [global Cursor adapter](src/cursor.rs), [create-only filesystem boundary](src/filesystem.rs), and [built-binary journeys](tests/init.rs) |
 | D-06 | Redacted plan and safe multi-target apply | M1 | Unassigned | Unscheduled | In progress | [Pure deterministic and structurally redacted plan engine](src/reconciliation.rs); dry-run/apply parity, backup, atomic write, and rollback remain in `MCP-011` |
 | D-07 | Complete M1 CLI journey and user guide | M1 | Unassigned | Unscheduled | Proposed | Golden synthetic journey, controlled current-client macOS smoke test, and README verification |
 | D-08 | Five-client, cross-platform support matrix | M2 | Unassigned | Unscheduled | Proposed | Platform/client CI matrix with native JSON and TOML fixtures |
@@ -550,8 +581,8 @@ predecessor, so only the first incomplete row can become `Ready`.
 | MCP-006 | Build the pure normalized reconciliation and redacted plan engine | M1 | P0 | Codex | Done | `MCP-005` | [Pure sorted engine, redacted plan types, seven focused examples, and five bounded property suites](src/reconciliation.rs), [development dependency](Cargo.toml), and [lockfile](Cargo.lock); local format, Clippy, 43 tests, locked build, dependency review, and policy checks pass |
 | MCP-007 | Implement the global Claude Desktop macOS adapter | M1 | P0 | Codex | Done | `MCP-006` | [Global discovery, strict native parsing, plan-driven bounded rendering, and 16 focused tests](src/claude_desktop.rs), [exact current/desired/merged fixtures](tests/fixtures/claude-desktop), [arbitrary-precision JSON configuration](Cargo.toml), [lockfile](Cargo.lock), and [read-only boundary](src/filesystem.rs); local format, Clippy, 59 tests, locked build, dependency review, and policy checks pass |
 | MCP-008 | Implement the global Cursor macOS adapter | M1 | P0 | Codex | Done | `MCP-007` | [Global-only discovery, local/unmanaged parsing, plan-driven bounded rendering, and 19 focused tests](src/cursor.rs), [exact current/desired/merged and project-isolation fixtures](tests/fixtures/cursor), and [read-only filesystem boundary](src/filesystem.rs); format, Clippy, all 78 tests through a synthetic home, locked build, dependency policy, fixture, and documentation checks pass |
-| MCP-009 | Implement `init` discovery, import, normalization, and conflict reporting | M1 | P0 | Unassigned | Ready | `MCP-008` | `assert_cmd` built-binary journeys for deterministic two-client import and no-mutation conflict behavior through the synthetic home |
-| MCP-010 | Implement `add` and redacted `list` against the canonical config | M1 | P0 | Unassigned | Proposed | `MCP-009` | Upsert/list CLI tests, atomic canonical write, no secret output |
+| MCP-009 | Implement `init` discovery, import, normalization, and conflict reporting | M1 | P0 | Codex | Done | `MCP-008` | [Deterministic import and redacted conflict use case](src/init.rs), [wired CLI](src/main.rs), [no-clobber canonical creation](src/filesystem.rs), [isolated built-binary success and no-mutation failure journeys](tests/init.rs), [synthetic-home helpers](tests/support/mod.rs), [manifest](Cargo.toml), and [lockfile](Cargo.lock); format, Clippy, all 93 tests, locked build, dependency policy, redaction, and documentation checks pass |
+| MCP-010 | Implement `add` and redacted `list` against the canonical config | M1 | P0 | Unassigned | Ready | `MCP-009` | Upsert/list CLI tests, atomic canonical write, no secret output |
 | MCP-011 | Implement `sync --dry-run` and safe apply with backup and transaction recovery | M1 | P0 | Unassigned | Proposed | `MCP-010` | Plan/apply parity, no-op, atomic write, failure rollback tests |
 | MCP-012 | Prove the golden MVP journey and failure matrix | M1 | P0 | Unassigned | Proposed | `MCP-011` | All M1 acceptance criteria pass through the built binary; coverage and targeted mutation results are reviewed, and the full-suite runner decision is recorded |
 | MCP-013 | Verify M1 against current clients and the north-star README, then publish detailed usage and recovery guidance | M1 | P0 | Unassigned | Proposed | `MCP-012` | Delivered commands match their README contract, a controlled current-client macOS smoke test passes, and the guide records current operational limitations |
@@ -585,11 +616,11 @@ arbitrary numeric release gate.
 | `serde` and `serde_json` | `MCP-004` — Done | Adopted product dependencies | The strict v1 types and shared duplicate-rejecting JSON boundary prove normalization, malformed input, deterministic bytes, literal round trips, redaction, and unsupported-version behavior. `MCP-007` enables `serde_json` arbitrary-precision numbers so unowned native values survive adapter reserialization without numeric loss. |
 | `pretty_assertions` | `MCP-004` — evaluated | Not adopted | The exact documents and table-driven cases remain small and readable with standard assertions, so another development dependency would not materially improve diagnosis. Reconsider only if future nested comparisons become difficult to review. |
 | `cargo-deny` | `MCP-004` — Done | Adopted development/CI tool | The committed policy has no broad exceptions, the official action and tool release are pinned for CI and local use, and advisories, allowed licenses, sources, bans, and duplicate versions pass. |
-| `tempfile` | `MCP-005` — Done | Adopted development dependency | Version 3.27.0 backs `SyntheticHome`, macOS path cases, and filesystem fixtures with explicit owned lifetimes. Its current release, Rust floor, MIT/Apache-2.0 license, all-target transitive graph, duplicate-version impact, advisories, and source policy were checked at adoption; every resolved fixture path remains under its disposable root. |
+| `tempfile` | `MCP-005` — Done; runtime use added by `MCP-009` | Adopted product and development dependency | Version 3.27.0 backs `SyntheticHome`, path cases, and filesystem fixtures with explicit owned lifetimes. `MCP-009` promotes the same reviewed crate to the product graph for securely named same-directory temporary files and no-clobber publication. Its release, Rust floor, MIT/Apache-2.0 license, all-target transitive graph, duplicate-version impact, advisories, and source policy pass; every test path remains under its disposable root. |
 | `proptest` | `MCP-006` — Done | Adopted development dependency | Version 1.11.0 runs five pure suites with 128 cases each and a bounded shrink limit using only its `std` feature. The suites prove exact outcomes, determinism, input immutability, insertion-order independence, stable no-ops, and generated-value redaction without I/O; default failure persistence retains minimized regressions. Its feature-complete, passively maintained status, compatibility, MIT/Apache-2.0 license, all-target transitive graph, duplicate-version impact, advisories, and source policy were reviewed at adoption. |
 | Checked-in native fixtures | `MCP-007` — Done; reused by `MCP-008` | Adopted baseline method | Small synthetic current, desired, and merged documents use unmistakably fake secrets and exact byte comparisons. Claude Desktop fixtures cover every reconciliation outcome and bounded preservation. Cursor adds a project sentinel and covers unmanaged remote entries, local-name collisions, project-file isolation, arbitrary-precision native data, deterministic rendering, and reparsing. Reuse this pattern for later adapters. |
 | `insta` | `MCP-007` — evaluated | Not adopted | The three exact native fixtures remain small and directly reviewable, so snapshot tooling would add approval state and a dependency without improving diagnosis. Reconsider only when later native documents become unwieldy under direct comparisons. |
-| `assert_cmd` | `MCP-009` | Required development dependency | Run the Cargo-built `mcp-sync` binary through `SyntheticHome`, preserve `env_clear` isolation, set bounded timeouts where a command could wait, and assert exit status, stdout, stderr, and filesystem effects together. Reuse this harness for later CLI journeys. |
+| [`assert_cmd`](https://docs.rs/assert_cmd/2.2.2/assert_cmd/) | `MCP-009` — Done | Adopted development dependency | Version 2.2.2 runs the Cargo-built `mcp-sync` binary through `SyntheticHome` with inherited environment cleared and a five-second bound, then asserts status, exact stdout/stderr where stable, redaction, and filesystem effects together. The current release and active repository, Rust 1.85 floor, MIT/Apache-2.0 license, cross-platform support, nine-package development-only graph addition, duplicate-version impact, advisories, and source policy were checked; the existing locked `cargo test` CI path runs all six journeys. Reuse this harness for later CLI journeys. |
 | `cargo-nextest` | `MCP-012` | Conditional test runner | Adopt when the full M1 suite demonstrates a useful runtime or isolation benefit. Pin CI installation, disable retries so nondeterminism stays visible, retain `cargo test` as the compatibility baseline, and run doctests separately if the selected nextest release does not run them. |
 | `cargo-llvm-cov` | `MCP-012` | Diagnostic development/CI tool | Generate and review coverage for schema rejection, reconciliation, redaction, adapter preservation, apply, and rollback paths. Record meaningful gaps; do not substitute an arbitrary percentage for behavior-based acceptance criteria. |
 | `cargo-mutants` | `MCP-012` | Diagnostic development tool | Run a bounded mutation pass over reconciliation, redaction, and safe-apply modules after their deterministic tests pass. Use its isolated-copy mode, never mutate the working tree in place, and either close surviving safety-critical mutants with tests or document a justified exclusion. |
@@ -656,11 +687,11 @@ must satisfy the side-quest rules before it is marked `Ready`.
 
 ### Immediate focus
 
-1. Start only `MCP-009`; assign its owner and activate its canonical goal before
-   implementing deterministic two-client import and conflict reporting.
-2. After `MCP-009` is `Done`, update its evidence and move only `MCP-010` to
+1. Start only `MCP-010`; assign its owner and activate its canonical goal before
+   implementing canonical `add` and redacted `list` behavior.
+2. After `MCP-010` is `Done`, update its evidence and move only `MCP-011` to
    `Ready`.
-3. Continue one row at a time; do not begin `MCP-010` or any later ticket early.
+3. Continue one row at a time; do not begin `MCP-011` or any later ticket early.
 4. Perform the accepted controlled Claude Desktop and Cursor smoke test in
    `MCP-013` before claiming M1 support.
 
@@ -688,6 +719,7 @@ must satisfy the side-quest rules before it is marked `Ready`.
 | DEC-018 | Resolve macOS configuration roots from an injected environment and keep the initial filesystem port read-only | Accepted | 2026-08-06 | Required absolute, traversal-free `HOME` and optional `XDG_CONFIG_HOME` inputs make path behavior deterministic without touching real user configuration; deferring mutation methods prevents atomicity, backup, and rollback contracts from being guessed before their owning tickets |
 | DEC-019 | Manage only `command`, `args`, and `env` inside each Claude Desktop `mcpServers` entry | Accepted | 2026-08-06 | Matches canonical JSON v1 and the current local STDIO contract while preserving unknown top-level data, target-only servers, and native fields such as `cwd`; the adapter consumes an existing plan and never interprets remote account connectors or desktop extensions as this local file format |
 | DEC-020 | Manage only command-based local entries in global Cursor configuration | Accepted | 2026-08-07 | Cursor stores global and project configuration separately and places local STDIO plus remote HTTP/SSE entries in `mcpServers`. M1 resolves only `~/.cursor/mcp.json`, owns only `command`, `args`, and `env` within compatible local entries, preserves `envFile` and all remote or unknown data, and refuses local additions that collide with unmanaged remote names; project-level `.cursor/mcp.json` remains outside the adapter boundary |
+| DEC-021 | Make initialization a deterministic, create-only import transaction | Accepted | 2026-08-07 | `init` checks that canonical state is absent, completes both client reads and the entire pure merge before mutation, reports structural disagreements or unsupported-name collisions, and publishes validated bytes through a synced same-directory temporary file without replacing an existing path. Native files remain read-only; broader replacement, backup, and rollback semantics stay with `MCP-010` and `MCP-011` |
 
 ### Open decisions
 
@@ -701,10 +733,10 @@ must satisfy the side-quest rules before it is marked `Ready`.
 
 | ID | Risk | Impact | Likelihood | Current mitigation | Trigger for escalation | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| RISK-01 | A merge or partial failure loses user configuration | Critical | Medium | Pure plan/apply separation, non-mutating drift, bounded Claude and Cursor field ownership, Cursor remote-collision refusal, and project-file isolation are implemented; backups, atomic replacement, rollback, and failure tests remain sequenced | Any unrecoverable fixture mutation or ambiguous ownership case | Open — M1 gate |
-| RISK-02 | Secrets leak through plans, errors, logs, fixtures, or snapshots | High | Medium | Plan plus both native document/render debug surfaces expose structure only; example, generated, malformed-input, remote-header, and native-fixture sentinel tests reject raw process values | Any test or output path observes a secret value | Open — M1 gate |
+| RISK-01 | A merge or partial failure loses user configuration | Critical | Medium | Pure plan/apply separation, deterministic import conflicts, create-only canonical publication, non-mutating drift, bounded client field ownership, remote-collision refusal, and native/project no-mutation journeys are implemented; replacement backups, rollback, and forced-failure tests remain sequenced | Any unrecoverable fixture mutation or ambiguous ownership case | Open — M1 gate |
+| RISK-02 | Secrets leak through plans, errors, logs, fixtures, or snapshots | High | Medium | Import conflicts, plans, and both native document/render debug surfaces expose structure only; exact CLI diagnostics plus example, generated, malformed-input, remote-header, and native-fixture sentinels reject raw process values | Any test or output path observes a secret value | Open — M1 gate |
 | RISK-03 | Native client schemas or paths drift | High | Medium | Both M1 clients' current global contracts are revalidated and fixture-backed; a controlled current-client smoke test still gates the M1 support claim | Client update invalidates fixture or discovery behavior | Open |
-| RISK-04 | Cross-platform file replacement behaves differently | High | Medium | Injected macOS path resolver, replaceable read-only filesystem, and later Linux/Windows CI; mutation contracts remain deferred to safe-apply work | Platform work requires weakening atomicity or rollback | Open |
+| RISK-04 | Cross-platform file replacement behaves differently | High | Medium | Injected macOS paths and a narrow no-clobber create port are implemented; replacement remains isolated behind later backup/apply work and Linux/Windows CI | Platform work requires weakening atomicity or rollback | Open |
 | RISK-05 | Health checks hang or leave child processes running | High | Medium | Deferred to its own bounded slice with timeout and cleanup contract | `MCP-017` begins | Deferred with feature |
 | RISK-06 | Broad client/platform scope delays the first usable proof | High | High | Two-client M1 boundary, strict story sequence, WIP limit, milestone gates | `MCP-014` starts before `MCP-013` is done | Mitigated by plan |
 | RISK-07 | Premature plug-in or workspace abstractions slow iteration | Medium | Medium | One crate; abstractions require real variation or consumer | New public trait/package has only one hypothetical implementation | Mitigated by guidance |

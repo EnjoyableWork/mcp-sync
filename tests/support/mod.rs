@@ -1,3 +1,8 @@
+#![allow(
+    dead_code,
+    reason = "shared integration support exposes helpers used by different test crates"
+)]
+
 use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 use std::fs;
@@ -55,6 +60,47 @@ impl SyntheticHome {
         command.env("NO_COLOR", "1");
         command.env("TZ", "UTC");
         command
+    }
+
+    pub fn root(&self) -> &Path {
+        self.root.path()
+    }
+
+    pub fn user_root(&self) -> &Path {
+        &self.user_root
+    }
+
+    pub fn canonical_configuration(&self) -> PathBuf {
+        self.user_root.join(".config/mcp-sync/config.json")
+    }
+
+    pub fn claude_desktop_configuration(&self) -> PathBuf {
+        self.user_root
+            .join("Library/Application Support/Claude/claude_desktop_config.json")
+    }
+
+    pub fn cursor_configuration(&self) -> PathBuf {
+        self.user_root.join(".cursor/mcp.json")
+    }
+
+    pub fn write_file(&self, path: &Path, contents: impl AsRef<[u8]>) {
+        assert!(
+            path.starts_with(self.root.path()),
+            "synthetic files must remain inside the disposable root"
+        );
+        fs::create_dir_all(path.parent().expect("a synthetic file path has a parent"))
+            .unwrap_or_else(|error| {
+                panic!(
+                    "synthetic parent directory {} should be created: {error}",
+                    path.display()
+                )
+            });
+        fs::write(path, contents).unwrap_or_else(|error| {
+            panic!(
+                "synthetic file {} should be written: {error}",
+                path.display()
+            )
+        });
     }
 
     pub fn assert_command_is_isolated(&self, command: &Command) {
