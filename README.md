@@ -116,12 +116,27 @@ Add a new server with a command binary, arguments, and optional environment vari
 
 ```bash
 mcp-sync add postgres \
-  --cmd "npx" \
-  --args "-y @modelcontextprotocol/server-postgres" \
+  --command "npx" \
+  --arg "-y" \
+  --arg "@modelcontextprotocol/server-postgres" \
   --env "POSTGRES_URL=postgresql://localhost:5432/dev"
 ```
 
-### 3. Test the process connection
+Arguments are literal and ordered, so repeat `--arg` once per process argument
+instead of passing a shell command string. `--cmd` is also accepted as a shorter
+alias for `--command`.
+
+### 3. Review configured servers safely
+
+List server names and structural metadata without printing commands, arguments,
+or environment values:
+
+```bash
+mcp-sync list
+# "postgres": command: <redacted>; arguments: 2; environment keys: "POSTGRES_URL"
+```
+
+### 4. Test the process connection
 
 Verify that the server boots cleanly via STDIO and responds to an MCP `initialize` request:
 
@@ -130,7 +145,7 @@ mcp-sync test postgres
 # Output: ✔ Connecting via STDIO... Connected! (Protocol Version: 2024-11-05)
 ```
 
-### 4. Sync configuration across all clients
+### 5. Sync configuration across all clients
 
 Push the updated master server definitions to all detected local IDEs and AI applications:
 

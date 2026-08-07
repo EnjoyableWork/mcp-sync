@@ -1,8 +1,9 @@
-use clap::{Parser, Subcommand};
+use clap::{ArgAction, Args, Parser, Subcommand};
 use std::error::Error;
 use std::fmt;
 use std::process::ExitCode;
 
+mod catalog;
 #[allow(
     dead_code,
     reason = "the adapter's render boundary is consumed by later sync use cases"
@@ -36,25 +37,84 @@ mod paths;
 mod reconciliation;
 
 /// Synchronize local Model Context Protocol server configurations.
-#[derive(Debug, Parser)]
+#[derive(Parser)]
 #[command(name = "mcp-sync", version)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Subcommand)]
 enum Command {
     /// Discover client configurations and create the canonical configuration.
     Init,
+    /// Add or replace one complete server definition in canonical configuration.
+    Add(AddCommand),
+    /// List canonical servers without exposing commands, arguments, or values.
+    List,
 }
 
-fn run(command: Command) -> Result<init::InitReport, ApplicationError> {
+#[derive(Args)]
+struct AddCommand {
+    /// Canonical name of the server definition.
+    name: String,
+
+    /// Executable or command to store (redacted from all command output).
+    #[arg(long, visible_alias = "cmd", value_name = "EXECUTABLE")]
+    command: String,
+
+    /// One literal ordered argument; repeat this option for multiple arguments.
+    #[arg(
+        long = "arg",
+        value_name = "ARGUMENT",
+        action = ArgAction::Append,
+        allow_hyphen_values = true
+    )]
+    arguments: Vec<String>,
+
+    /// One literal environment assignment; repeat as KEY=VALUE.
+    #[arg(long = "env", value_name = "KEY=VALUE", action = ArgAction::Append)]
+    environment: Vec<String>,
+}
+
+fn run(command: Command) -> Result<CommandReport, ApplicationError> {
+    let paths = paths::MacOsConfigurationPaths::resolve(&paths::ProcessEnvironment)
+        .map_err(ApplicationError::ResolvePaths)?;
+
     match command {
-        Command::Init => {
-            let paths = paths::MacOsConfigurationPaths::resolve(&paths::ProcessEnvironment)
-                .map_err(ApplicationError::ResolvePaths)?;
-            init::initialize(&paths, &filesystem::OsFileSystem).map_err(ApplicationError::Init)
+        Command::Init => init::initialize(&paths, &filesystem::OsFileSystem)
+            .map(CommandReport::Init)
+            .map_err(ApplicationError::Init),
+        Command::Add(command) => catalog::add_server(
+            &paths,
+            &filesystem::OsFileSystem,
+            catalog::AddRequest::new(
+                command.name,
+                command.command,
+                command.arguments,
+                command.environment,
+            ),
+        )
+        .map(CommandReport::Add)
+        .map_err(ApplicationError::Catalog),
+        Command::List => catalog::list_servers(&paths, &filesystem::OsFileSystem)
+            .map(CommandReport::List)
+            .map_err(ApplicationError::Catalog),
+    }
+}
+
+enum CommandReport {
+    Init(init::InitReport),
+    Add(catalog::AddReport),
+    List(catalog::ListReport),
+}
+
+impl fmt::Display for CommandReport {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Init(report) => report.fmt(formatter),
+            Self::Add(report) => report.fmt(formatter),
+            Self::List(report) => report.fmt(formatter),
         }
     }
 }
@@ -76,6 +136,7 @@ fn main() -> ExitCode {
 enum ApplicationError {
     ResolvePaths(paths::PathResolutionError),
     Init(init::InitError),
+    Catalog(catalog::CatalogError),
 }
 
 impl fmt::Display for ApplicationError {
@@ -83,6 +144,7 @@ impl fmt::Display for ApplicationError {
         match self {
             Self::ResolvePaths(error) => error.fmt(formatter),
             Self::Init(error) => error.fmt(formatter),
+            Self::Catalog(error) => error.fmt(formatter),
         }
     }
 }
@@ -92,6 +154,7 @@ impl Error for ApplicationError {
         match self {
             Self::ResolvePaths(error) => Some(error),
             Self::Init(error) => Some(error),
+            Self::Catalog(error) => Some(error),
         }
     }
 }
