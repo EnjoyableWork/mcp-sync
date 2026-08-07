@@ -21,6 +21,8 @@ fn help_describes_the_installed_binary() {
     assert!(stdout.contains("Synchronize local Model Context Protocol server configurations"));
     assert!(stdout.contains("Usage: mcp-sync"));
     assert!(stdout.contains("init"));
+    assert!(stdout.contains("add"));
+    assert!(stdout.contains("list"));
     assert!(stdout.contains("--version"));
 }
 
