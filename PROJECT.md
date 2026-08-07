@@ -9,7 +9,7 @@ lightweight enough to use before a hosted tracker is justified.
 | Document state | Active |
 | Product state | Pre-MVP; runnable Rust CLI walking skeleton implemented |
 | Current milestone | M0 — Walking skeleton |
-| Overall status | `MCP-002` complete; `MCP-003` ready; no later implementation has begun |
+| Overall status | `MCP-003` in progress; no later implementation has begun |
 | Current focus | Add deterministic quality gates and synthetic-home CI for `MCP-003` |
 | Milestone target | Unscheduled; set after an owner and delivery capacity are known |
 | Last reviewed | 2026-08-06 |
@@ -358,7 +358,7 @@ Rules that protect later growth:
 | --- | --- | --- | --- | --- | --- | --- |
 | D-01 | Project operating model and north-star product page | M0 | Repository | 2026-08-06 | Done | [AGENTS.md](AGENTS.md), this tracker, and [README.md](README.md) |
 | D-02 | Runnable Rust CLI skeleton | M0 | Codex | 2026-08-06 | Done | [Cargo.toml](Cargo.toml), [src/main.rs](src/main.rs), [CLI smoke tests](tests/cli.rs), [Cargo.lock](Cargo.lock), and locked build/install verification |
-| D-03 | Deterministic test and CI foundation | M0 | Unassigned | Unscheduled | Ready | Format, lint, unit, integration, and synthetic-home checks in CI |
+| D-03 | Deterministic test and CI foundation | M0 | Codex | Unscheduled | In progress | Format, lint, unit, integration, and synthetic-home checks in CI |
 | D-04 | Versioned canonical configuration contract | M0 | Unassigned | Unscheduled | Proposed | Schema types, examples, validation tests, and version policy |
 | D-05 | Two-client import and conflict reporting | M1 | Unassigned | Unscheduled | Proposed | Claude/Cursor fixtures and import journey evidence |
 | D-06 | Redacted plan and safe multi-target apply | M1 | Unassigned | Unscheduled | Proposed | Dry-run, no-op, backup, atomic write, and rollback tests |
@@ -381,7 +381,7 @@ predecessor, so only the first incomplete row can become `Ready`.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | MCP-001 | Establish repository guidance, living tracker, Rust direction, and north-star README role | M0 | P0 | Repository | Done | — | [AGENTS.md](AGENTS.md), this tracker, [README.md](README.md), and documentation checks |
 | MCP-002 | Bootstrap one Rust binary crate with CLI help and version output | M0 | P0 | Codex | Done | `MCP-001` | Registry name verified; [manifest](Cargo.toml), [binary](src/main.rs), [smoke tests](tests/cli.rs), and [lockfile](Cargo.lock); format, Clippy, tests, locked build, help/version, isolated install, RustSec audit, and dependency-license inventory pass |
-| MCP-003 | Add format, Clippy, test, and CI quality gates using a synthetic home | M0 | P0 | Unassigned | Ready | `MCP-002` | Documented local checks pass in CI without touching real config |
+| MCP-003 | Add format, Clippy, test, and CI quality gates using a synthetic home | M0 | P0 | Codex | In progress | `MCP-002` | Documented local checks pass in CI without touching real config |
 | MCP-004 | Define the versioned canonical server model and JSON validation contract | M0 | P0 | Unassigned | Proposed | `MCP-003` | Types, example config, deterministic round-trip tests, unknown-version error |
 | MCP-005 | Introduce injectable config-path and filesystem boundaries | M0 | P0 | Unassigned | Proposed | `MCP-004` | macOS path fixtures, synthetic-home enforcement, contextual I/O errors |
 | MCP-006 | Build the pure normalized reconciliation and redacted plan engine | M1 | P0 | Unassigned | Proposed | `MCP-005` | Deterministic add/update/no-op/drift plans and redaction tests |

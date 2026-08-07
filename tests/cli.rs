@@ -1,10 +1,13 @@
-use std::process::{Command, Output};
+mod support;
+
+use std::process::Output;
+use support::SyntheticHome;
 
 fn run_cli(argument: &str) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_mcp-sync"))
-        .arg(argument)
-        .output()
-        .expect("mcp-sync should start")
+    let synthetic_home = SyntheticHome::new();
+    let mut command = synthetic_home.command();
+    command.arg(argument);
+    command.output().expect("mcp-sync should start")
 }
 
 #[test]
@@ -29,4 +32,10 @@ fn version_uses_the_binary_name_and_package_version() {
 
     let stdout = String::from_utf8(output.stdout).expect("version output should be UTF-8");
     assert_eq!(stdout, format!("mcp-sync {}\n", env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn cli_processes_receive_only_synthetic_user_locations() {
+    let synthetic_home = SyntheticHome::new();
+    synthetic_home.assert_command_is_isolated(&synthetic_home.command());
 }
