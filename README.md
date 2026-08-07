@@ -2,7 +2,7 @@
 
 The unified configuration engine for Model Context Protocol (MCP) servers.
 
-Define your local MCP servers once. `mcp-sync` validates process health and automatically updates configuration files across Claude Desktop, Cursor, Windsurf, and VS Code in a single command.
+Define your local MCP servers once. `mcp-sync` validates process health and automatically updates configuration files across Claude Desktop, Cursor, Windsurf, VS Code, and Codex in a single command.
 
 ## ⚡ The Problem
 
@@ -12,6 +12,7 @@ Adding an MCP server—such as Postgres, GitHub, or Brave Search—to your local
 - **Cursor:** `~/.cursor/mcp.json`
 - **Windsurf:** `~/.codeium/windsurf/mcp_config.json`
 - **VS Code (Cline/Roo/Copilot):** `~/.config/Code/User/globalStorage/.../settings.json`
+- **Codex (ChatGPT desktop app / Codex CLI / IDE extension):** `~/.codex/config.toml`
 
 This fragmentation leads to syntax errors, environment variable drift, broken credentials, and wasted setup time whenever a new server or API key is updated.
 
@@ -27,35 +28,51 @@ This fragmentation leads to syntax errors, environment variable drift, broken cr
                                       │
                                   mcp-sync sync
                                       │
-         ┌──────────────────┬─────────┴─────────┬──────────────────┐
-         ▼                  ▼                   ▼                  ▼
-┌──────────────────┐┌───────────────┐┌──────────────────┐┌──────────────────┐
-│  Claude Desktop  ││    Cursor     ││     Windsurf     ││     VS Code      │
-│  config.json     ││  mcp.json     ││  mcp_config.json ││  settings.json   │
-└──────────────────┘└───────────────┘└──────────────────┘└──────────────────┘
+                ┌─────────────────────┴─────────────────────┐
+                │            Native target adapters         │
+                └─────────────────────┬─────────────────────┘
+                                      │
+┌────────────────┐ ┌────────────┐ ┌────────────────┐ ┌───────────────┐ ┌────────────────┐
+│ Claude Desktop │ │ Cursor     │ │ Windsurf       │ │ VS Code       │ │ Codex          │
+│ config.json    │ │ mcp.json   │ │ mcp_config.json│ │ settings.json │ │ config.toml    │
+└────────────────┘ └────────────┘ └────────────────┘ └───────────────┘ └────────────────┘
 ```
 
 ## ✨ Features
 
 - 🔍 **Auto-Discovery:** Scrapes and imports existing MCP configurations on first launch.
-- 🔄 **Multi-Client Sync:** Maps master configurations into native client JSON formats instantly.
+- 🔄 **Multi-Client Sync:** Maps master configurations into each client's native format instantly.
 - 🩺 **STDIO Health Testing:** Dry-runs server binaries using JSON-RPC handshakes before writing configs.
 - 🛡️ **Atomic Writes & Backups:** Automatically creates `.bak` copies before modifying target files.
 - ⚡ **Zero Latency:** Operates purely as a configuration tool and gets out of the way during runtime.
 
 ## 📦 Installation
 
-Run instantly with `npx`—no permanent installation required:
+### Homebrew (macOS and Linux)
 
 ```bash
-npx mcp-sync --help
+brew install EnjoyableWork/tap/mcp-sync
 ```
 
-Or install globally via npm, Yarn, or pnpm:
+### Windows Package Manager
+
+```powershell
+winget install EnjoyableWork.mcp-sync
+```
+
+### Cargo
+
+The Cargo package has a distinct registry name but installs the same
+`mcp-sync` executable:
 
 ```bash
-npm install -g mcp-sync
+cargo install enjoyable-mcp-sync
 ```
+
+### Prebuilt binaries
+
+Download a prebuilt archive for macOS, Linux, or Windows from the
+[latest GitHub release](https://github.com/EnjoyableWork/mcp-sync/releases/latest).
 
 ## 📖 Quickstart & Usage
 
@@ -103,6 +120,11 @@ mcp-sync sync
 | Cursor | macOS, Linux, Windows | `mcp.json` |
 | Windsurf | macOS, Linux, Windows | `mcp_config.json` |
 | VS Code (Cline / Copilot) | macOS, Linux, Windows | `cline_mcp_settings.json` |
+| Codex (ChatGPT desktop app / Codex CLI / IDE extension) | macOS, Linux, Windows | `~/.codex/config.toml` |
+
+The ChatGPT desktop app, Codex CLI, and Codex IDE extension share the same host
+configuration, so one Codex target keeps their MCP server definitions aligned
+while preserving unrelated Codex settings.
 
 ## 🏗️ Technical Architecture
 
@@ -117,9 +139,10 @@ mcp-sync sync
           ▼                                       ▼
 ┌───────────────────┐               ┌──────────────────────────┐
 │  Master Config    │               │ Client Targets           │
-│  ~/.config/       │               │ • Claude Desktop Config  │
-│  mcp-sync/        │               │ • Cursor mcp.json        │
-│  config.json      │               │ • Windsurf mcp_config    │
+│  ~/.config/       │               │ • Claude Desktop JSON    │
+│  mcp-sync/        │               │ • Cursor / Windsurf JSON │
+│  config.json      │               │ • VS Code JSON           │
+│                   │               │ • Codex TOML              │
 └───────────────────┘               └──────────────────────────┘
 ```
 
