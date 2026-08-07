@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 use std::time::Duration;
-use support::SyntheticHome;
+use support::{SyntheticHome, assert_file_matches};
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 const CLAUDE_CURRENT: &[u8] = include_bytes!("fixtures/claude-desktop/current.json");
@@ -180,47 +180,41 @@ fn assert_native_result(home: &SyntheticHome, process_command: &str) {
     .expect("Cursor output should remain valid JSON");
 
     for target in [&claude, &cursor] {
-        assert_eq!(target["mcpServers"]["added"]["command"], process_command);
-        assert_eq!(
-            target["mcpServers"]["updated"]["command"],
-            "/synthetic/bin/new"
-        );
-        assert_eq!(target["mcpServers"]["updated"]["args"][1], "two");
-        assert_eq!(
-            target["mcpServers"]["updated"]["env"]["ROTATE"],
-            "fixture-new-secret"
+        assert!(
+            target["mcpServers"]["added"]["command"].as_str() == Some(process_command)
+                && target["mcpServers"]["updated"]["command"].as_str()
+                    == Some("/synthetic/bin/new")
+                && target["mcpServers"]["updated"]["args"][1].as_str() == Some("two")
+                && target["mcpServers"]["updated"]["env"]["ROTATE"].as_str()
+                    == Some("fixture-new-secret"),
+            "managed process values should match canonical state"
         );
     }
 
-    assert_eq!(
-        claude["mcpServers"]["target-only"]["env"]["LOCAL_TOKEN"],
-        "fixture-local-secret"
+    assert!(
+        claude["mcpServers"]["target-only"]["env"]["LOCAL_TOKEN"].as_str()
+            == Some("fixture-local-secret")
+            && cursor["mcpServers"]["target-only"]["env"]["LOCAL_TOKEN"].as_str()
+                == Some("fixture-cursor-local-secret")
+            && claude["mcpServers"]["updated"]["cwd"].as_str()
+                == Some("/synthetic/workspace/preserved")
+            && cursor["mcpServers"]["updated"]["envFile"].as_str()
+                == Some("/synthetic/env/preserved.env")
+            && cursor["mcpServers"]["updated"]["type"].as_str() == Some("stdio")
+            && cursor["mcpServers"]["remote-only"]["headers"]["Authorization"].as_str()
+                == Some("Bearer fixture-cursor-remote-secret"),
+        "unowned, drift, and unmanaged native values should be preserved"
     );
-    assert_eq!(
-        cursor["mcpServers"]["target-only"]["env"]["LOCAL_TOKEN"],
-        "fixture-cursor-local-secret"
-    );
-
-    assert_eq!(
-        claude["mcpServers"]["updated"]["cwd"],
-        "/synthetic/workspace/preserved"
-    );
-    assert_eq!(
-        claude["futureTopLevel"]["preciseNumber"].to_string(),
-        "1234567890123456789012345678901234567890"
-    );
-    assert_eq!(
-        cursor["mcpServers"]["updated"]["envFile"],
-        "/synthetic/env/preserved.env"
-    );
-    assert_eq!(cursor["mcpServers"]["updated"]["type"], "stdio");
-    assert_eq!(
-        cursor["mcpServers"]["remote-only"]["headers"]["Authorization"],
-        "Bearer fixture-cursor-remote-secret"
-    );
-    assert_eq!(
-        cursor["futureTopLevel"]["preciseNumber"].to_string(),
-        "1234567890123456789012345678901234567890"
+    assert!(
+        claude["futureTopLevel"]["preciseNumber"]
+            .as_number()
+            .is_some_and(|number| number.as_str() == "1234567890123456789012345678901234567890")
+            && cursor["futureTopLevel"]["preciseNumber"]
+                .as_number()
+                .is_some_and(|number| {
+                    number.as_str() == "1234567890123456789012345678901234567890"
+                }),
+        "arbitrary-precision unowned numbers should be preserved"
     );
 }
 
@@ -254,19 +248,26 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
     assert!(dry_output.contains("preserve target-only \"target-only\""));
     assert!(dry_output.contains("preserve unmanaged \"remote-only\""));
     assert_output_omits(&dry_output, &fixture.private_values());
-    assert_eq!(
-        fs::read(home.canonical_configuration()).unwrap(),
-        fixture.canonical
+    assert_file_matches(
+        &home.canonical_configuration(),
+        &fixture.canonical,
+        "dry-run should preserve canonical bytes",
     );
-    assert_eq!(
-        fs::read(home.claude_desktop_configuration()).unwrap(),
-        fixture.claude
+    assert_file_matches(
+        &home.claude_desktop_configuration(),
+        &fixture.claude,
+        "dry-run should preserve Claude bytes",
     );
-    assert_eq!(
-        fs::read(home.cursor_configuration()).unwrap(),
-        fixture.cursor
+    assert_file_matches(
+        &home.cursor_configuration(),
+        &fixture.cursor,
+        "dry-run should preserve Cursor bytes",
     );
-    assert_eq!(fs::read(&fixture.project_path).unwrap(), PROJECT_CURSOR);
+    assert_file_matches(
+        &fixture.project_path,
+        PROJECT_CURSOR,
+        "dry-run should preserve project Cursor bytes",
+    );
     assert!(!claude_backup.exists());
     assert!(!cursor_backup.exists());
     assert!(!fixture.process_marker.exists());
@@ -277,13 +278,26 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
     assert!(apply_output.contains("Claude Desktop: updated with recoverable backup"));
     assert!(apply_output.contains("Cursor: updated with recoverable backup"));
     assert_output_omits(&apply_output, &fixture.private_values());
-    assert_eq!(fs::read(&claude_backup).unwrap(), fixture.claude);
-    assert_eq!(fs::read(&cursor_backup).unwrap(), fixture.cursor);
-    assert_eq!(
-        fs::read(home.canonical_configuration()).unwrap(),
-        fixture.canonical
+    assert_file_matches(
+        &claude_backup,
+        &fixture.claude,
+        "Claude backup should contain exact prior bytes",
     );
-    assert_eq!(fs::read(&fixture.project_path).unwrap(), PROJECT_CURSOR);
+    assert_file_matches(
+        &cursor_backup,
+        &fixture.cursor,
+        "Cursor backup should contain exact prior bytes",
+    );
+    assert_file_matches(
+        &home.canonical_configuration(),
+        &fixture.canonical,
+        "apply should preserve canonical bytes",
+    );
+    assert_file_matches(
+        &fixture.project_path,
+        PROJECT_CURSOR,
+        "apply should preserve project Cursor bytes",
+    );
     assert!(!fixture.process_marker.exists());
     assert_native_result(&home, &fixture.process_command);
     assert_no_temporary_files(&home.claude_desktop_configuration());
@@ -313,17 +327,31 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
         "(add: 0; update: 0; unchanged: 3; drift preserved: 1; unmanaged preserved: 1)."
     ));
     assert_output_omits(&no_op_output, &fixture.private_values());
-    assert_eq!(
-        fs::read(home.claude_desktop_configuration()).unwrap(),
-        claude_after_apply
+    assert_file_matches(
+        &home.claude_desktop_configuration(),
+        &claude_after_apply,
+        "no-op should preserve Claude bytes",
     );
-    assert_eq!(
-        fs::read(home.cursor_configuration()).unwrap(),
-        cursor_after_apply
+    assert_file_matches(
+        &home.cursor_configuration(),
+        &cursor_after_apply,
+        "no-op should preserve Cursor bytes",
     );
-    assert_eq!(fs::read(&claude_backup).unwrap(), claude_backup_after_apply);
-    assert_eq!(fs::read(&cursor_backup).unwrap(), cursor_backup_after_apply);
-    assert_eq!(fs::read(&fixture.project_path).unwrap(), PROJECT_CURSOR);
+    assert_file_matches(
+        &claude_backup,
+        &claude_backup_after_apply,
+        "no-op should preserve Claude backup bytes",
+    );
+    assert_file_matches(
+        &cursor_backup,
+        &cursor_backup_after_apply,
+        "no-op should preserve Cursor backup bytes",
+    );
+    assert_file_matches(
+        &fixture.project_path,
+        PROJECT_CURSOR,
+        "no-op should preserve project Cursor bytes",
+    );
     assert!(!fixture.process_marker.exists());
 }
 
@@ -346,21 +374,32 @@ fn a_real_second_target_failure_restores_the_first_target_and_its_prior_backup()
     assert!(diagnostic.contains("Per-target outcomes:"));
     assert_output_omits(&diagnostic, &fixture.private_values());
     assert!(!diagnostic.contains("older private Claude backup bytes"));
-    assert_eq!(
-        fs::read(home.claude_desktop_configuration()).unwrap(),
-        fixture.claude
+    assert_file_matches(
+        &home.claude_desktop_configuration(),
+        &fixture.claude,
+        "rollback should restore Claude bytes",
     );
-    assert_eq!(fs::read(&claude_backup).unwrap(), previous_claude_backup);
-    assert_eq!(
-        fs::read(home.cursor_configuration()).unwrap(),
-        fixture.cursor
+    assert_file_matches(
+        &claude_backup,
+        previous_claude_backup,
+        "rollback should restore the previous Claude backup",
+    );
+    assert_file_matches(
+        &home.cursor_configuration(),
+        &fixture.cursor,
+        "failed Cursor target should remain unchanged",
     );
     assert!(cursor_backup.is_dir());
-    assert_eq!(
-        fs::read(home.canonical_configuration()).unwrap(),
-        fixture.canonical
+    assert_file_matches(
+        &home.canonical_configuration(),
+        &fixture.canonical,
+        "failed sync should preserve canonical bytes",
     );
-    assert_eq!(fs::read(&fixture.project_path).unwrap(), PROJECT_CURSOR);
+    assert_file_matches(
+        &fixture.project_path,
+        PROJECT_CURSOR,
+        "failed sync should preserve project Cursor bytes",
+    );
     assert!(!fixture.process_marker.exists());
     assert_no_temporary_files(&home.claude_desktop_configuration());
     assert_no_temporary_files(&home.cursor_configuration());
@@ -383,12 +422,17 @@ fn a_created_first_target_is_removed_when_the_second_target_fails() {
     assert_output_omits(&diagnostic, &fixture.private_values());
     assert!(!home.claude_desktop_configuration().exists());
     assert!(!backup_path(&home.claude_desktop_configuration()).exists());
-    assert_eq!(
-        fs::read(home.cursor_configuration()).unwrap(),
-        fixture.cursor
+    assert_file_matches(
+        &home.cursor_configuration(),
+        &fixture.cursor,
+        "creation rollback should preserve Cursor bytes",
     );
     assert!(cursor_backup.is_dir());
-    assert_eq!(fs::read(&fixture.project_path).unwrap(), PROJECT_CURSOR);
+    assert_file_matches(
+        &fixture.project_path,
+        PROJECT_CURSOR,
+        "creation rollback should preserve project Cursor bytes",
+    );
     assert!(!fixture.process_marker.exists());
     assert_no_temporary_files(&home.claude_desktop_configuration());
     assert_no_temporary_files(&home.cursor_configuration());
@@ -408,14 +452,23 @@ fn malformed_later_target_state_stops_before_any_apply_mutation() {
     assert!(diagnostic.ends_with("; no target files were changed\n"));
     assert!(!diagnostic.contains("private-malformed-command"));
     assert_output_omits(&diagnostic, &fixture.private_values());
-    assert_eq!(
-        fs::read(home.claude_desktop_configuration()).unwrap(),
-        fixture.claude
+    assert_file_matches(
+        &home.claude_desktop_configuration(),
+        &fixture.claude,
+        "preflight failure should preserve Claude bytes",
     );
-    assert_eq!(fs::read(home.cursor_configuration()).unwrap(), malformed);
+    assert_file_matches(
+        &home.cursor_configuration(),
+        malformed,
+        "preflight failure should preserve malformed Cursor bytes",
+    );
     assert!(!backup_path(&home.claude_desktop_configuration()).exists());
     assert!(!backup_path(&home.cursor_configuration()).exists());
-    assert_eq!(fs::read(&fixture.project_path).unwrap(), PROJECT_CURSOR);
+    assert_file_matches(
+        &fixture.project_path,
+        PROJECT_CURSOR,
+        "preflight failure should preserve project Cursor bytes",
+    );
     assert!(!fixture.process_marker.exists());
 }
 
@@ -438,11 +491,16 @@ fn missing_or_malformed_canonical_state_fails_before_native_discovery() {
     assert!(invalid.contains("canonical configuration"));
     assert!(invalid.contains("is invalid: invalid JSON:"));
     assert!(!invalid.contains("malformed-private-value"));
-    assert_eq!(
-        fs::read(home.claude_desktop_configuration()).unwrap(),
-        claude
+    assert_file_matches(
+        &home.claude_desktop_configuration(),
+        claude,
+        "canonical validation failure should preserve Claude bytes",
     );
-    assert_eq!(fs::read(home.cursor_configuration()).unwrap(), cursor);
+    assert_file_matches(
+        &home.cursor_configuration(),
+        cursor,
+        "canonical validation failure should preserve Cursor bytes",
+    );
     assert!(!backup_path(&home.claude_desktop_configuration()).exists());
     assert!(!backup_path(&home.cursor_configuration()).exists());
 }
@@ -467,17 +525,23 @@ fn an_unmanaged_cursor_name_collision_fails_the_complete_plan_before_apply() {
     ));
     assert!(diagnostic.ends_with("; no target files were changed\n"));
     assert_output_omits(&diagnostic, &fixture.private_values());
-    assert_eq!(
-        fs::read(home.claude_desktop_configuration()).unwrap(),
-        fixture.claude
+    assert_file_matches(
+        &home.claude_desktop_configuration(),
+        &fixture.claude,
+        "collision failure should preserve Claude bytes",
     );
-    assert_eq!(
-        fs::read(home.cursor_configuration()).unwrap(),
-        fixture.cursor
+    assert_file_matches(
+        &home.cursor_configuration(),
+        &fixture.cursor,
+        "collision failure should preserve Cursor bytes",
     );
     assert!(!backup_path(&home.claude_desktop_configuration()).exists());
     assert!(!backup_path(&home.cursor_configuration()).exists());
-    assert_eq!(fs::read(&fixture.project_path).unwrap(), PROJECT_CURSOR);
+    assert_file_matches(
+        &fixture.project_path,
+        PROJECT_CURSOR,
+        "collision failure should preserve project Cursor bytes",
+    );
     assert!(!fixture.process_marker.exists());
 }
 
@@ -513,16 +577,22 @@ fn a_second_target_permission_failure_rolls_back_the_first_target() {
     assert!(diagnostic.contains("Cursor: update failed"));
     assert!(diagnostic.contains("Permission denied"));
     assert_output_omits(&diagnostic, &fixture.private_values());
-    assert_eq!(
-        fs::read(home.claude_desktop_configuration()).unwrap(),
-        fixture.claude
+    assert_file_matches(
+        &home.claude_desktop_configuration(),
+        &fixture.claude,
+        "permission rollback should restore Claude bytes",
     );
-    assert_eq!(
-        fs::read(home.cursor_configuration()).unwrap(),
-        fixture.cursor
+    assert_file_matches(
+        &home.cursor_configuration(),
+        &fixture.cursor,
+        "permission failure should preserve Cursor bytes",
     );
     assert!(!backup_path(&home.claude_desktop_configuration()).exists());
     assert!(!backup_path(&home.cursor_configuration()).exists());
-    assert_eq!(fs::read(&fixture.project_path).unwrap(), PROJECT_CURSOR);
+    assert_file_matches(
+        &fixture.project_path,
+        PROJECT_CURSOR,
+        "permission failure should preserve project Cursor bytes",
+    );
     assert!(!fixture.process_marker.exists());
 }

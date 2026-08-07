@@ -10,6 +10,32 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
 
+#[track_caller]
+pub fn assert_bytes_match(actual: &[u8], expected: &[u8], context: &str) {
+    let first_difference = actual
+        .iter()
+        .zip(expected)
+        .position(|(actual, expected)| actual != expected)
+        .unwrap_or_else(|| actual.len().min(expected.len()));
+    assert!(
+        actual == expected,
+        "{context}: bytes differ at offset {first_difference} (actual length {}, expected length {})",
+        actual.len(),
+        expected.len()
+    );
+}
+
+#[track_caller]
+pub fn assert_file_matches(path: &Path, expected: &[u8], context: &str) {
+    let actual = fs::read(path).unwrap_or_else(|error| {
+        panic!(
+            "synthetic file {} should be readable: {error}",
+            path.display()
+        )
+    });
+    assert_bytes_match(&actual, expected, context);
+}
+
 pub struct SyntheticHome {
     root: TempDir,
     user_root: PathBuf,
@@ -47,6 +73,7 @@ impl SyntheticHome {
     }
 
     pub fn command(&self) -> Command {
+        let coverage_profile = std::env::var_os("LLVM_PROFILE_FILE");
         let mut command = Command::new(env!("CARGO_BIN_EXE_mcp-sync"));
         command.env_clear();
 
@@ -59,6 +86,9 @@ impl SyntheticHome {
         command.env("MCP_SYNC_TEST_MODE", "1");
         command.env("NO_COLOR", "1");
         command.env("TZ", "UTC");
+        if let Some(coverage_profile) = coverage_profile {
+            command.env("LLVM_PROFILE_FILE", coverage_profile);
+        }
         command
     }
 

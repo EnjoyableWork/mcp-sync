@@ -4,8 +4,9 @@ use assert_cmd::Command as AssertCommand;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
+use std::process::Output;
 use std::time::Duration;
-use support::SyntheticHome;
+use support::{SyntheticHome, assert_file_matches};
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -19,6 +20,34 @@ fn init_command(home: &SyntheticHome) -> AssertCommand {
     let mut command = AssertCommand::from_std(home.command());
     command.arg("init").timeout(COMMAND_TIMEOUT);
     command
+}
+
+fn run_success(mut command: AssertCommand) -> Output {
+    let output = command.assert().get_output().clone();
+    assert!(
+        output.status.code() == Some(0),
+        "the built CLI should exit zero"
+    );
+    assert!(output.stderr.is_empty(), "success should not write stderr");
+    output
+}
+
+fn run_failure(mut command: AssertCommand) -> Output {
+    let output = command.assert().get_output().clone();
+    assert!(
+        output.status.code() == Some(1),
+        "an application failure should exit with code 1"
+    );
+    assert!(output.stdout.is_empty(), "failure should not write stdout");
+    output
+}
+
+fn stdout(output: &Output) -> String {
+    String::from_utf8(output.stdout.clone()).expect("stdout should be UTF-8")
+}
+
+fn stderr(output: &Output) -> String {
+    String::from_utf8(output.stderr.clone()).expect("stderr should be UTF-8")
 }
 
 fn assert_no_temporary_files(destination: &Path) {
@@ -99,56 +128,58 @@ fn init_imports_both_clients_without_executing_servers_or_touching_native_files(
     home.write_file(&home.cursor_configuration(), &cursor);
     home.write_file(&project_path, project_bytes);
 
-    init_command(&home)
-        .assert()
-        .success()
-        .stdout(
-            "Initialized canonical configuration with 3 servers from 2 client configurations.\n\
-             Skipped 1 unsupported Cursor entry: \"remote-only\".\n",
-        )
-        .stderr("");
+    let output = stdout(&run_success(init_command(&home)));
+    assert!(
+        output
+            == "Initialized canonical configuration with 3 servers from 2 client configurations.\n\
+                Skipped 1 unsupported Cursor entry: \"remote-only\".\n",
+        "init success output should be exact and structural"
+    );
 
     let canonical_path = home.canonical_configuration();
     let canonical_bytes = fs::read(&canonical_path)
         .expect("successful initialization should create the canonical configuration");
     let canonical: Value =
         serde_json::from_slice(&canonical_bytes).expect("canonical output should be valid JSON");
-    assert_eq!(
-        canonical,
-        json!({
-            "schemaVersion": 1,
-            "servers": {
-                "alpha": {
-                    "command": sentinel.to_string_lossy(),
-                    "args": ["--alpha"],
-                    "env": {"SYNTHETIC_TOKEN": "claude-synthetic-value"}
-                },
-                "beta": {
-                    "command": "beta-server",
-                    "args": [],
-                    "env": {}
-                },
-                "shared": {
-                    "command": "shared-server",
-                    "args": ["--stdio"],
-                    "env": {"MODE": "synthetic"}
+    assert!(
+        canonical
+            == json!({
+                "schemaVersion": 1,
+                "servers": {
+                    "alpha": {
+                        "command": sentinel.to_string_lossy(),
+                        "args": ["--alpha"],
+                        "env": {"SYNTHETIC_TOKEN": "claude-synthetic-value"}
+                    },
+                    "beta": {
+                        "command": "beta-server",
+                        "args": [],
+                        "env": {}
+                    },
+                    "shared": {
+                        "command": "shared-server",
+                        "args": ["--stdio"],
+                        "env": {"MODE": "synthetic"}
+                    }
                 }
-            }
-        })
+            }),
+        "canonical import should preserve the normalized definitions"
     );
     assert!(canonical_bytes.ends_with(b"\n"));
-    assert_eq!(
-        fs::read(home.claude_desktop_configuration())
-            .expect("Claude Desktop configuration should remain readable"),
-        claude
+    assert_file_matches(
+        &home.claude_desktop_configuration(),
+        &claude,
+        "init should preserve Claude Desktop bytes",
     );
-    assert_eq!(
-        fs::read(home.cursor_configuration()).expect("Cursor configuration should remain readable"),
-        cursor
+    assert_file_matches(
+        &home.cursor_configuration(),
+        &cursor,
+        "init should preserve Cursor bytes",
     );
-    assert_eq!(
-        fs::read(&project_path).expect("project Cursor sentinel should remain readable"),
-        project_bytes
+    assert_file_matches(
+        &project_path,
+        project_bytes,
+        "init should preserve project Cursor bytes",
     );
     assert!(!marker.exists(), "init must not execute configured servers");
     assert_no_temporary_files(&canonical_path);
@@ -191,26 +222,28 @@ fn init_reports_an_exact_redacted_conflict_and_mutates_nothing() {
     home.write_file(&project_path, project_bytes);
 
     let expected_stderr = "error: cannot initialize because server \"shared\" differs between Claude Desktop and Cursor in command, arguments, environment keys, and environment values; make the definitions identical, rename one, or remove one, then rerun `mcp-sync init`\n";
-    init_command(&home)
-        .assert()
-        .failure()
-        .stdout("")
-        .stderr(expected_stderr);
+    let diagnostic = stderr(&run_failure(init_command(&home)));
+    assert!(
+        diagnostic == expected_stderr,
+        "conflict output should be exact and structural"
+    );
 
     assert!(!home.canonical_configuration().exists());
     assert!(!home.user_root().join(".config/mcp-sync").exists());
-    assert_eq!(
-        fs::read(home.claude_desktop_configuration())
-            .expect("Claude Desktop configuration should remain readable"),
-        claude
+    assert_file_matches(
+        &home.claude_desktop_configuration(),
+        &claude,
+        "conflict handling should preserve Claude Desktop bytes",
     );
-    assert_eq!(
-        fs::read(home.cursor_configuration()).expect("Cursor configuration should remain readable"),
-        cursor
+    assert_file_matches(
+        &home.cursor_configuration(),
+        &cursor,
+        "conflict handling should preserve Cursor bytes",
     );
-    assert_eq!(
-        fs::read(&project_path).expect("project Cursor sentinel should remain readable"),
-        project_bytes
+    assert_file_matches(
+        &project_path,
+        project_bytes,
+        "conflict handling should preserve project Cursor bytes",
     );
     assert!(
         !marker.exists(),
@@ -249,10 +282,7 @@ fn init_rejects_malformed_native_json_without_creating_canonical_state() {
     home.write_file(&home.claude_desktop_configuration(), malformed);
     home.write_file(&home.cursor_configuration(), &cursor);
 
-    let mut command = init_command(&home);
-    let assertion = command.assert().failure().stdout("");
-    let stderr = String::from_utf8(assertion.get_output().stderr.clone())
-        .expect("diagnostics should be UTF-8");
+    let stderr = stderr(&run_failure(init_command(&home)));
 
     assert!(stderr.starts_with(
         "error: cannot import Claude Desktop configuration: invalid Claude Desktop JSON:"
@@ -260,14 +290,15 @@ fn init_rejects_malformed_native_json_without_creating_canonical_state() {
     assert!(stderr.ends_with("; fix the file or its permissions, then rerun `mcp-sync init`\n"));
     assert!(!stderr.contains("must-not-appear"));
     assert!(!home.canonical_configuration().exists());
-    assert_eq!(
-        fs::read(home.claude_desktop_configuration())
-            .expect("malformed Claude bytes should remain readable"),
-        malformed
+    assert_file_matches(
+        &home.claude_desktop_configuration(),
+        malformed,
+        "malformed input should preserve Claude Desktop bytes",
     );
-    assert_eq!(
-        fs::read(home.cursor_configuration()).expect("Cursor bytes should remain readable"),
-        cursor
+    assert_file_matches(
+        &home.cursor_configuration(),
+        &cursor,
+        "malformed input should preserve Cursor bytes",
     );
 }
 
@@ -275,13 +306,12 @@ fn init_rejects_malformed_native_json_without_creating_canonical_state() {
 fn init_creates_a_valid_empty_config_when_both_clients_are_missing() {
     let home = SyntheticHome::new();
 
-    init_command(&home)
-        .assert()
-        .success()
-        .stdout(
-            "Initialized canonical configuration with 0 servers from 0 client configurations.\n",
-        )
-        .stderr("");
+    let output = stdout(&run_success(init_command(&home)));
+    assert!(
+        output
+            == "Initialized canonical configuration with 0 servers from 0 client configurations.\n",
+        "empty initialization output should be exact"
+    );
 
     assert_eq!(
         fs::read_to_string(home.canonical_configuration())
@@ -304,11 +334,11 @@ fn init_never_replaces_an_existing_canonical_configuration() {
         "error: canonical configuration already exists at `{}`; move or remove it before rerunning `mcp-sync init`\n",
         home.canonical_configuration().display()
     );
-    init_command(&home)
-        .assert()
-        .failure()
-        .stdout("")
-        .stderr(expected_stderr);
+    let diagnostic = stderr(&run_failure(init_command(&home)));
+    assert!(
+        diagnostic == expected_stderr,
+        "existing canonical state should produce an exact diagnostic"
+    );
 
     assert_eq!(
         fs::read(home.canonical_configuration())
@@ -332,10 +362,7 @@ fn init_reports_a_native_permission_failure_without_mutation() {
     fs::set_permissions(&claude_path, fs::Permissions::from_mode(0o000))
         .expect("the fixture should become unreadable");
 
-    let mut command = init_command(&home);
-    let assertion = command.assert().failure().stdout("");
-    let stderr = String::from_utf8(assertion.get_output().stderr.clone())
-        .expect("diagnostics should be UTF-8");
+    let stderr = stderr(&run_failure(init_command(&home)));
 
     fs::set_permissions(&claude_path, fs::Permissions::from_mode(0o600))
         .expect("the fixture permissions should be restored");
@@ -343,8 +370,9 @@ fn init_reports_a_native_permission_failure_without_mutation() {
     assert!(stderr.contains("could not read file"));
     assert!(stderr.contains("Permission denied"));
     assert!(!home.canonical_configuration().exists());
-    assert_eq!(
-        fs::read(claude_path).expect("restored Claude bytes should be readable"),
-        claude
+    assert_file_matches(
+        &claude_path,
+        &claude,
+        "permission failure should preserve Claude Desktop bytes",
     );
 }

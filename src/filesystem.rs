@@ -585,7 +585,8 @@ impl From<FileIoError> for FileMutationError {
 mod tests {
     use super::{
         ExpectedFile, FileCreator, FileIoError, FileMutationError, FileOperation, FileReplacer,
-        FileSystem, OsFileSystem, TransactionalFileUpdater, UnsupportedFileKind, backup_path,
+        FileSnapshot, FileSystem, OsFileSystem, TransactionalFileUpdater, UnsupportedFileKind,
+        backup_path, ensure_regular_file, ensure_snapshot_unchanged,
         replace_existing_with_backup_after,
     };
     use std::error::Error;
@@ -744,13 +745,13 @@ mod tests {
             .apply_file_change(&path, ExpectedFile::Existing(original), replacement)
             .expect("the transactional replacement should apply");
 
-        assert_eq!(
-            std::fs::read(&path).expect("the replacement should be readable"),
-            replacement
+        assert!(
+            std::fs::read(&path).expect("the replacement should be readable") == replacement,
+            "transactional apply should publish exact replacement bytes"
         );
-        assert_eq!(
-            std::fs::read(&backup).expect("the new backup should be readable"),
-            original
+        assert!(
+            std::fs::read(&backup).expect("the new backup should be readable") == original,
+            "transactional apply should back up exact original bytes"
         );
         let debug = format!("{receipt:?}");
         for private in [
@@ -765,13 +766,13 @@ mod tests {
             .rollback_file_change(&receipt)
             .expect("rollback should restore both pre-transaction files");
 
-        assert_eq!(
-            std::fs::read(&path).expect("the original should be restored"),
-            original
+        assert!(
+            std::fs::read(&path).expect("the original should be restored") == original,
+            "rollback should restore exact original bytes"
         );
-        assert_eq!(
-            std::fs::read(&backup).expect("the prior backup should be restored"),
-            previous_backup
+        assert!(
+            std::fs::read(&backup).expect("the prior backup should be restored") == previous_backup,
+            "rollback should restore exact pre-transaction backup bytes"
         );
         assert_no_temporary_files(fixture.path());
     }
@@ -892,6 +893,138 @@ mod tests {
             previous_backup
         );
         assert_no_temporary_files(fixture.path());
+    }
+
+    #[test]
+    fn interrupted_replacement_reports_an_explicit_backup_recovery_failure() {
+        let fixture = tempfile::tempdir().expect("temporary filesystem fixture should be created");
+        let path = fixture.path().join("config.json");
+        let backup = backup_path(&path);
+        let original = b"original private configuration\n";
+        let previous_backup = b"older private backup\n";
+        let concurrent_target = b"concurrent private target\n";
+        let concurrent_backup = b"concurrent private backup\n";
+        std::fs::write(&path, original).expect("the original fixture should be written");
+        std::fs::write(&backup, previous_backup)
+            .expect("the previous backup fixture should be written");
+
+        let error = replace_existing_with_backup_after(
+            &path,
+            original,
+            b"planned private replacement\n",
+            || {
+                std::fs::write(&path, concurrent_target)
+                    .expect("the injected interruption should change the target");
+                std::fs::write(&backup, concurrent_backup)
+                    .expect("the injected interruption should change the backup");
+            },
+        )
+        .expect_err("concurrent target and backup edits must keep recovery unsuccessful");
+
+        let FileMutationError::RecoveryFailed {
+            path: error_path,
+            failure,
+            recovery,
+        } = &error
+        else {
+            panic!("a failed compensation should retain both failure causes");
+        };
+        assert!(error_path == &path);
+        assert!(matches!(
+            failure.as_ref(),
+            FileMutationError::ConcurrentModification {
+                path: failure_path,
+            } if failure_path == &path
+        ));
+        assert!(matches!(
+            recovery.as_ref(),
+            FileMutationError::ConcurrentModification {
+                path: recovery_path,
+            } if recovery_path == &backup
+        ));
+        assert!(std::error::Error::source(&error).is_some());
+        let diagnostic = error.to_string();
+        assert!(
+            diagnostic.contains("failed")
+                && diagnostic.contains("prior backup state could not be restored"),
+            "recovery failure should remain explicit and actionable"
+        );
+        for private in [
+            "original private configuration",
+            "older private backup",
+            "concurrent private target",
+            "concurrent private backup",
+            "planned private replacement",
+        ] {
+            assert!(!diagnostic.contains(private));
+        }
+        assert!(
+            std::fs::read(&path).expect("the concurrent target should remain readable")
+                == concurrent_target,
+            "recovery must not clobber a concurrent target edit"
+        );
+        assert!(
+            std::fs::read(&backup).expect("the concurrent backup should remain readable")
+                == concurrent_backup,
+            "recovery must not clobber a concurrent backup edit"
+        );
+        assert_no_temporary_files(fixture.path());
+    }
+
+    #[test]
+    fn missing_snapshot_guard_rejects_created_paths_and_inspection_failures() {
+        let fixture = tempfile::tempdir().expect("temporary filesystem fixture should be created");
+        let path = fixture.path().join("snapshot.json");
+
+        ensure_snapshot_unchanged(&path, &FileSnapshot::Missing)
+            .expect("an optional path should remain missing");
+
+        std::fs::write(&path, b"concurrent snapshot bytes\n")
+            .expect("a concurrent snapshot should be created");
+        let created = ensure_snapshot_unchanged(&path, &FileSnapshot::Missing)
+            .expect_err("a newly created path must invalidate a missing snapshot");
+        assert!(matches!(
+            created,
+            FileMutationError::ConcurrentModification {
+                path: ref error_path,
+            } if error_path == &path
+        ));
+
+        let blocking_file = fixture.path().join("not-a-directory");
+        std::fs::write(&blocking_file, b"blocking fixture\n")
+            .expect("the blocking fixture should be created");
+        let nested = blocking_file.join("snapshot.json");
+        let inspection = ensure_snapshot_unchanged(&nested, &FileSnapshot::Missing)
+            .expect_err("inspection errors other than not-found must not look like absence");
+        assert!(matches!(
+            inspection,
+            FileMutationError::Io(ref source) if source.kind() != io::ErrorKind::NotFound
+        ));
+    }
+
+    #[test]
+    fn regular_file_guard_distinguishes_optional_absence_from_required_or_invalid_paths() {
+        let fixture = tempfile::tempdir().expect("temporary filesystem fixture should be created");
+        let missing = fixture.path().join("missing.json");
+
+        ensure_regular_file(&missing, false).expect("an optional regular file may be absent");
+        let required = ensure_regular_file(&missing, true)
+            .expect_err("a required regular file must not be absent");
+        assert!(matches!(
+            required,
+            FileMutationError::Io(ref source) if source.kind() == io::ErrorKind::NotFound
+        ));
+
+        let blocking_file = fixture.path().join("not-a-directory");
+        std::fs::write(&blocking_file, b"blocking fixture\n")
+            .expect("the blocking fixture should be created");
+        let nested = blocking_file.join("optional.json");
+        let invalid = ensure_regular_file(&nested, false)
+            .expect_err("optional paths must preserve non-not-found inspection failures");
+        assert!(matches!(
+            invalid,
+            FileMutationError::Io(ref source) if source.kind() != io::ErrorKind::NotFound
+        ));
     }
 
     fn assert_no_temporary_files(directory: &Path) {

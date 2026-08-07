@@ -737,8 +737,14 @@ mod tests {
             .expect("the same fixture plan should render deterministically");
 
         assert!(first.changed());
-        assert_eq!(first.bytes(), second.bytes());
-        assert_eq!(first.bytes(), MERGED_FIXTURE);
+        assert!(
+            first.bytes() == second.bytes(),
+            "the same plan should render deterministic bytes"
+        );
+        assert!(
+            first.bytes() == MERGED_FIXTURE,
+            "rendered bytes should match the reviewed merged fixture"
+        );
 
         let merged = ClaudeDesktopDocument::parse(first.bytes())
             .expect("rendered fixture should parse again");
@@ -779,7 +785,10 @@ mod tests {
         assert!(!plan.requires_mutation());
         assert!(plan.has_drift());
         assert!(!rendered.changed());
-        assert_eq!(rendered.bytes(), CURRENT_FIXTURE);
+        assert!(
+            rendered.bytes() == CURRENT_FIXTURE,
+            "non-mutating work should preserve exact native bytes"
+        );
     }
 
     #[test]
@@ -826,7 +835,10 @@ mod tests {
         assert!(document.canonical_config().servers().is_empty());
         assert_eq!(document.preserved_root_fields(), ["futureSetting"]);
         assert!(!rendered.changed());
-        assert_eq!(rendered.bytes(), bytes);
+        assert!(
+            rendered.bytes() == bytes,
+            "an empty plan should preserve exact native bytes"
+        );
     }
 
     #[test]
@@ -1012,6 +1024,9 @@ mod tests {
 
         assert!(debug.contains("byte_count"));
         assert!(!debug.contains("fixture-added-secret"));
-        assert_eq!(rendered.into_bytes(), MERGED_FIXTURE);
+        assert!(
+            rendered.into_bytes() == MERGED_FIXTURE,
+            "consumed rendered bytes should match the reviewed fixture"
+        );
     }
 }
