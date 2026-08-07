@@ -7,13 +7,13 @@ lightweight enough to use before a hosted tracker is justified.
 | Control | Current state |
 | --- | --- |
 | Document state | Active |
-| Product state | Pre-MVP; M0 foundation implemented with a runnable Rust CLI, canonical JSON v1, injected macOS paths, a read-only filesystem port, and disposable test homes |
+| Product state | Pre-MVP; M0 foundation and a pure, deterministic, structurally redacted reconciliation plan engine are implemented |
 | Current milestone | M1 — Town MVP |
-| Overall status | `MCP-005` complete and the M0 exit gate met; only `MCP-006` is ready; no reconciliation or client implementation has begun |
-| Current focus | Build the pure normalized reconciliation and redacted plan engine in `MCP-006` |
+| Overall status | `MCP-006` complete; only `MCP-007` is ready; no client implementation has begun |
+| Current focus | Implement the global Claude Desktop macOS adapter in `MCP-007` |
 | Milestone target | Unscheduled; set after an owner and delivery capacity are known |
 | Last reviewed | 2026-08-06 |
-| Next review trigger | Completion of `MCP-006`, or any change to the MVP boundary |
+| Next review trigger | Completion of `MCP-007`, or any change to the MVP boundary |
 
 ## Document roles
 
@@ -205,7 +205,7 @@ the final platform immediately.
 | Milestone | Metaphor | Outcome | Exit gate | Status |
 | --- | --- | --- | --- | --- |
 | M0 | Survey and foundations | A runnable Rust skeleton, versioned config contract, quality gates, and fixture harness | Clean checkout can build, lint, test, and show CLI help; the first schema and test environment are documented | Done |
-| M1 | Town — MVP | One safe vertical journey across Claude Desktop and Cursor on macOS | Every MVP acceptance criterion below passes against a synthetic home directory | Ready |
+| M1 | Town — MVP | One safe vertical journey across Claude Desktop and Cursor on macOS | Every MVP acceptance criterion below passes against a synthetic home directory | In progress |
 | M2 | City — dependable daily tool | README client coverage, health checks, cross-platform behavior, restore UX, and accessible release channels | Supported matrix passes in CI and one tagged release installs and smoke-tests through every advertised channel | Proposed |
 | M3 | Metropolis — extensible ecosystem | More clients, profiles, migrations, secret references, and a proven adapter contract | New adapters can be added without changing reconciliation invariants; upgrade paths are tested | Deferred |
 | M4 | Country — managed platform hypothesis | Optional team/fleet policy, richer interfaces, and ecosystem distribution | Requires validated demand, a separate product plan, and compatibility commitments | Deferred |
@@ -428,6 +428,28 @@ use cases; it does not perform discovery, parsing, reconciliation, or mutation:
   `tempfile`-owned directories. They do not resolve or access the test runner's
   real home or configuration files.
 
+### Implemented reconciliation boundary
+
+`MCP-006` establishes a pure plan between normalized canonical states; it does
+not discover clients, parse native formats, access paths, perform I/O, or apply
+changes:
+
+- Reconciliation compares validated `CanonicalConfig` values exactly and
+  literally. It walks the lexicographically sorted union of server names and
+  produces one deterministic `Add`, `Update`, `NoOp`, or `Drift` outcome for
+  every name.
+- Desired-only definitions are adds, unequal shared definitions are updates,
+  and exact matches are stable no-ops. Target-only definitions are preserved as
+  non-mutating drift; the plan has no deletion outcome.
+- Public plan structure exposes server names, argument counts, environment key
+  names, and changed-field categories, but never commands, arguments, or
+  environment values. Validated desired definitions remain private plan data
+  available only to future add/update application work, and custom debug output
+  omits their values.
+- Seven focused examples and five bounded property suites prove sorted and
+  complete outcomes, determinism, input immutability, insertion-order
+  independence, stable no-ops, non-mutating drift, and structural redaction.
+
 ## Deliverables
 
 | ID | Deliverable | Milestone | Owner | Target | Status | Completion evidence |
@@ -437,7 +459,7 @@ use cases; it does not perform discovery, parsing, reconciliation, or mutation:
 | D-03 | Deterministic test and CI foundation | M0 | Codex | 2026-08-06 | Done | [Local quality gate](scripts/check.sh), [CI workflow](.github/workflows/ci.yml), [`tempfile`-owned synthetic-home CLI harness](tests/support/mod.rs), [macOS path fixtures](src/paths.rs), and [successful baseline CI run](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31137308671) |
 | D-04 | Versioned canonical configuration contract | M0 | Codex | 2026-08-06 | Done | [Strict canonical model and tests](src/config.rs), [canonical v1 example](examples/config.v1.json), [public configuration contract](README.md), [accepted version policy](#canonical-configuration-v1-decision), and [dependency policy](deny.toml) |
 | D-05 | Two-client import and conflict reporting | M1 | Unassigned | Unscheduled | Proposed | Claude/Cursor fixtures and import journey evidence |
-| D-06 | Redacted plan and safe multi-target apply | M1 | Unassigned | Unscheduled | Proposed | Dry-run, no-op, backup, atomic write, and rollback tests |
+| D-06 | Redacted plan and safe multi-target apply | M1 | Unassigned | Unscheduled | In progress | [Pure deterministic and structurally redacted plan engine](src/reconciliation.rs); dry-run/apply parity, backup, atomic write, and rollback remain in `MCP-011` |
 | D-07 | Complete M1 CLI journey and user guide | M1 | Unassigned | Unscheduled | Proposed | Golden synthetic journey, controlled current-client macOS smoke test, and README verification |
 | D-08 | Five-client, cross-platform support matrix | M2 | Unassigned | Unscheduled | Proposed | Platform/client CI matrix with native JSON and TOML fixtures |
 | D-09 | Bounded STDIO health testing | M2 | Unassigned | Unscheduled | Proposed | Protocol, timeout, cleanup, and redaction tests |
@@ -460,8 +482,8 @@ predecessor, so only the first incomplete row can become `Ready`.
 | MCP-003 | Add format, Clippy, test, and CI quality gates using a synthetic home | M0 | P0 | Codex | Done | `MCP-002` | [Documented local gate](README.md), [quality script](scripts/check.sh), [CI workflow](.github/workflows/ci.yml), [unit and isolated CLI tests](tests), and [successful CI run](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31137308671) |
 | MCP-004 | Define the versioned canonical server model and JSON validation contract | M0 | P0 | Codex | Done | `MCP-003` | [Strict model, duplicate-safe parser, canonical serializer, typed/redacted errors, and 17 focused tests](src/config.rs), [tested v1 example](examples/config.v1.json), [manifest](Cargo.toml), [lockfile](Cargo.lock), [dependency policy](deny.toml), and [pinned CI gate](.github/workflows/ci.yml); local format, Clippy, 21 tests, locked build, and all dependency checks pass |
 | MCP-005 | Introduce injectable config-path and filesystem boundaries | M0 | P0 | Codex | Done | `MCP-004` | [Injected resolver and six disposable macOS path tests](src/paths.rs), [read-only port and four adapter/error tests](src/filesystem.rs), [`tempfile`-owned synthetic-home enforcement](tests/support/mod.rs), [manifest](Cargo.toml), and [lockfile](Cargo.lock); local format, Clippy, 31 tests, build/help, dependency review, and policy checks pass |
-| MCP-006 | Build the pure normalized reconciliation and redacted plan engine | M1 | P0 | Unassigned | Ready | `MCP-005` | Deterministic example tests plus `proptest` invariants for add/update/no-op/drift behavior and structural redaction |
-| MCP-007 | Implement the global Claude Desktop macOS adapter | M1 | P0 | Unassigned | Proposed | `MCP-006` | Current native global fixture round trips while unrelated keys survive |
+| MCP-006 | Build the pure normalized reconciliation and redacted plan engine | M1 | P0 | Codex | Done | `MCP-005` | [Pure sorted engine, redacted plan types, seven focused examples, and five bounded property suites](src/reconciliation.rs), [development dependency](Cargo.toml), and [lockfile](Cargo.lock); local format, Clippy, 43 tests, locked build, dependency review, and policy checks pass |
+| MCP-007 | Implement the global Claude Desktop macOS adapter | M1 | P0 | Unassigned | Ready | `MCP-006` | Current native global fixture round trips while unrelated keys survive |
 | MCP-008 | Implement the global Cursor macOS adapter | M1 | P0 | Unassigned | Proposed | `MCP-007` | Current native global fixture round trips while unrelated keys survive and project-level `.cursor/mcp.json` remains untouched |
 | MCP-009 | Implement `init` discovery, import, normalization, and conflict reporting | M1 | P0 | Unassigned | Proposed | `MCP-008` | `assert_cmd` built-binary journeys for deterministic two-client import and no-mutation conflict behavior through the synthetic home |
 | MCP-010 | Implement `add` and redacted `list` against the canonical config | M1 | P0 | Unassigned | Proposed | `MCP-009` | Upsert/list CLI tests, atomic canonical write, no secret output |
@@ -499,7 +521,7 @@ arbitrary numeric release gate.
 | `pretty_assertions` | `MCP-004` — evaluated | Not adopted | The exact documents and table-driven cases remain small and readable with standard assertions, so another development dependency would not materially improve diagnosis. Reconsider only if future nested comparisons become difficult to review. |
 | `cargo-deny` | `MCP-004` — Done | Adopted development/CI tool | The committed policy has no broad exceptions, the official action and tool release are pinned for CI and local use, and advisories, allowed licenses, sources, bans, and duplicate versions pass. |
 | `tempfile` | `MCP-005` — Done | Adopted development dependency | Version 3.27.0 backs `SyntheticHome`, macOS path cases, and filesystem fixtures with explicit owned lifetimes. Its current release, Rust floor, MIT/Apache-2.0 license, all-target transitive graph, duplicate-version impact, advisories, and source policy were checked at adoption; every resolved fixture path remains under its disposable root. |
-| `proptest` | `MCP-006` | Required development dependency | Exercise pure reconciliation properties such as determinism, idempotence, input-order independence, structural redaction, and no-op stability. Keep generated cases away from real I/O, bound case counts for CI, and retain minimized regressions. |
+| `proptest` | `MCP-006` — Done | Adopted development dependency | Version 1.11.0 runs five pure suites with 128 cases each and a bounded shrink limit using only its `std` feature. The suites prove exact outcomes, determinism, input immutability, insertion-order independence, stable no-ops, and generated-value redaction without I/O; default failure persistence retains minimized regressions. Its feature-complete, passively maintained status, compatibility, MIT/Apache-2.0 license, all-target transitive graph, duplicate-version impact, advisories, and source policy were reviewed at adoption. |
 | Checked-in native fixtures | `MCP-007` | Baseline method | Prefer small, synthetic JSON or TOML input and expected-output fixtures with exact comparisons for adapters. Fixtures must cover preservation boundaries and use unmistakably fake secret values. |
 | `insta` | `MCP-007` | Conditional development dependency | Adopt only if exact adapter outputs become too large for reviewable fixture comparisons. Snapshot only synthetic, structurally redacted data; reject pending snapshot updates in CI and add a sentinel assertion that raw secret values never appear. |
 | `assert_cmd` | `MCP-009` | Required development dependency | Run the Cargo-built `mcp-sync` binary through `SyntheticHome`, preserve `env_clear` isolation, set bounded timeouts where a command could wait, and assert exit status, stdout, stderr, and filesystem effects together. Reuse this harness for later CLI journeys. |
@@ -569,14 +591,15 @@ must satisfy the side-quest rules before it is marked `Ready`.
 
 ### Immediate focus
 
-1. Assign and complete only `MCP-006`; keep reconciliation pure and do not add
-   client logic or filesystem mutation.
-2. After `MCP-006` is `Done`, update its evidence and move only `MCP-007` to
+1. Assign and complete only `MCP-007`; revalidate the current stable Claude
+   Desktop global configuration contract before implementation and do not add
+   Cursor logic or filesystem mutation.
+2. After `MCP-007` is `Done`, update its evidence and move only `MCP-008` to
    `Ready`.
-3. Continue one row at a time; do not begin `MCP-007` or any later ticket early.
-4. Revalidate the current stable Claude Desktop and Cursor global configuration
-   contracts before `MCP-007`, and perform the accepted controlled smoke test
-   in `MCP-013` before claiming M1 support.
+3. Continue one row at a time; do not begin `MCP-008` or any later ticket early.
+4. Revalidate Cursor's current stable global configuration contract before
+   `MCP-008`, and perform the accepted controlled two-client smoke test in
+   `MCP-013` before claiming M1 support.
 
 ## Decision log
 
@@ -587,7 +610,7 @@ must satisfy the side-quest rules before it is marked `Ready`.
 | DEC-003 | Use this Markdown document as the initial project tracker | Accepted | 2026-08-06 | Keeps scope and evidence beside the code; migrate issue detail later without duplicating milestone truth |
 | DEC-004 | Use the strict, client-independent [canonical JSON v1 contract](#canonical-configuration-v1-decision) for local STDIO servers | Accepted | 2026-08-06 | Named server-map entries contain literal command, ordered arguments, and literal environment strings; deterministic writes and explicit unsupported-version failures prevent ambiguous normalization |
 | DEC-005 | Prove M1 on macOS with current stable Claude Desktop and Cursor, managing only global user configuration | Accepted | 2026-08-06 | The repository owner confirmed the complete `OPEN-01` recommendation and access to both clients for later verification. [Claude Desktop's global JSON](https://modelcontextprotocol.io/docs/develop/connect-local-servers) and [Cursor's global JSON](https://docs.cursor.com/context/model-context-protocol) exercise two real adapters without adding another platform or TOML; Cursor project configuration remains untouched, Linux and Windows stay sequenced later, and a controlled current-client macOS smoke test gates the support claim |
-| DEC-006 | Preserve target-only entries and report drift rather than silently pruning in M1 | Working assumption | 2026-08-06 | Prevents accidental loss before managed ownership and explicit deletion semantics are designed |
+| DEC-006 | Reconcile exact normalized definitions as sorted add/update/no-op work and preserve target-only entries as non-mutating drift | Accepted | 2026-08-06 | One outcome per unioned server name makes plans deterministic; omitting deletion prevents accidental loss before managed ownership and explicit prune semantics are designed in `OPEN-03` |
 | DEC-007 | Keep health testing outside M1 | Working assumption | 2026-08-06 | Safe reconciliation is the core proof; process lifecycle and protocol handling become the next vertical feature |
 | DEC-008 | Complete the main story in strict order and isolate optional work as side quests | Accepted | 2026-08-06 | Prevents foundation gaps and hidden prerequisites; a blocked story ticket blocks later story work until resolved or formally replaced |
 | DEC-009 | Preserve README as the north-star product specification and public marketing page | Accepted | 2026-08-06 | README describes the intended finished experience; PROJECT, code, tests, and releases track current delivery truth |
@@ -613,8 +636,8 @@ must satisfy the side-quest rules before it is marked `Ready`.
 
 | ID | Risk | Impact | Likelihood | Current mitigation | Trigger for escalation | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| RISK-01 | A merge or partial failure loses user configuration | Critical | Medium | Plan/apply separation, field ownership, backups, atomic replacement, rollback, failure tests | Any unrecoverable fixture mutation or ambiguous ownership case | Open — M1 gate |
-| RISK-02 | Secrets leak through plans, errors, logs, fixtures, or snapshots | High | Medium | Structural redaction and synthetic tests; no raw config output | Any test or output path observes a secret value | Open — M1 gate |
+| RISK-01 | A merge or partial failure loses user configuration | Critical | Medium | Pure plan/apply separation and non-mutating drift are implemented; field ownership, backups, atomic replacement, rollback, and failure tests remain sequenced | Any unrecoverable fixture mutation or ambiguous ownership case | Open — M1 gate |
+| RISK-02 | Secrets leak through plans, errors, logs, fixtures, or snapshots | High | Medium | Plan debug output exposes structure only, and example plus generated sentinel tests reject raw process values; later presentation paths require the same invariant | Any test or output path observes a secret value | Open — M1 gate |
 | RISK-03 | Native client schemas or paths drift | High | Medium | Per-client adapters, versioned fixtures, official-contract revalidation before adapter work, and a controlled current-client smoke test before the M1 support claim | Client update invalidates fixture or discovery behavior | Open |
 | RISK-04 | Cross-platform file replacement behaves differently | High | Medium | Injected macOS path resolver, replaceable read-only filesystem, and later Linux/Windows CI; mutation contracts remain deferred to safe-apply work | Platform work requires weakening atomicity or rollback | Open |
 | RISK-05 | Health checks hang or leave child processes running | High | Medium | Deferred to its own bounded slice with timeout and cleanup contract | `MCP-017` begins | Deferred with feature |

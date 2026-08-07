@@ -53,10 +53,11 @@ consumer and an accepted decision in `PROJECT.md`.
 The implemented foundation is one Rust 2024 binary crate with a package named
 `enjoyable-mcp-sync`, an installed binary named `mcp-sync`, and only
 help/version CLI behavior. It also contains the strict canonical JSON v1 model,
-an injected macOS configuration-path resolver, and a replaceable read-only
-filesystem boundary. Use the existing Clap command tree as CLI behavior grows;
-do not introduce a second parser. Reconciliation, client adapters, filesystem
-mutation, and process behavior remain later-ticket scope.
+an injected macOS configuration-path resolver, a replaceable read-only
+filesystem boundary, and a pure deterministic reconciliation engine with
+structurally redacted plans. Use the existing Clap command tree as CLI behavior
+grows; do not introduce a second parser. Client adapters, application use
+cases, filesystem mutation, and process behavior remain later-ticket scope.
 
 “Extensible” currently means:
 
