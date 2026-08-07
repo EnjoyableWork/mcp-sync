@@ -7,13 +7,13 @@ lightweight enough to use before a hosted tracker is justified.
 | Control | Current state |
 | --- | --- |
 | Document state | Active |
-| Product state | Pre-MVP; the M0 foundation plus built-binary `init`, canonical `add`, structurally redacted `list`, two-target `sync --dry-run` / transactional `sync`, and the synthetic-home golden M1 failure matrix are implemented; controlled current-client verification and detailed operational guidance remain |
+| Product state | Pre-MVP; the M0 foundation plus built-binary `init`, canonical `add`, structurally redacted `list`, two-target `sync --dry-run` / transactional `sync`, the synthetic-home golden M1 failure matrix, and controlled current-stable Claude Desktop and Cursor verification are implemented; detailed operational guidance remains |
 | Current milestone | M1 — Town MVP |
-| Overall status | `MCP-012` is blocked after completing its automated evidence: its exact goal requires every M1 criterion, while the still-unrun controlled current-client criterion is assigned to successor `MCP-013`; no later ticket is ready and M1 support is not claimed |
-| Current focus | Resolve whether the controlled current-client criterion must move into `MCP-012` or the `MCP-012` goal and done condition must be narrowed to automated evidence; do not start `MCP-013` until that sequencing decision is accepted |
+| Overall status | `MCP-012` is complete; every M1 acceptance criterion and the ticket-done gate pass with durable synthetic, failure-matrix, current-client, dependency-policy, and documentation evidence; only `MCP-013` is ready |
+| Current focus | `MCP-013` is the next eligible ticket and has not started; it owns the north-star README audit refresh plus detailed usage and recovery guidance |
 | Milestone target | Unscheduled; set after an owner and delivery capacity are known |
 | Last reviewed | 2026-08-07 |
-| Next review trigger | Resolution of the `MCP-012` / `MCP-013` acceptance-criterion ownership conflict, or any change to the MVP boundary |
+| Next review trigger | Completion of `MCP-013`, or any change to the MVP boundary |
 
 ## Document roles
 
@@ -442,13 +442,27 @@ value:
 - Delivered M1 behavior matches the corresponding README contract, and this
   tracker clearly records which north-star capabilities remain beyond M1.
 
-`MCP-012` has completed the synthetic, automatable portion of this gate with
-durable built-binary, unit, adapter, and filesystem evidence. Its active exact
-goal nevertheless requires every criterion before completion, while the
-controlled current-client criterion remains deliberately unsatisfied and is
-owned by `MCP-013`. An accepted sequencing decision must either move that work
-into `MCP-012` or narrow its goal and done condition to automated evidence;
-fixtures alone cannot justify a support claim.
+`MCP-012` completes this gate with durable built-binary, unit, adapter,
+filesystem, and controlled current-client evidence. `DEC-025` resolves the
+former ownership conflict by requiring the two-client gate in this ticket, as
+its exact goal already requires every M1 criterion. Current-stable Claude
+Desktop and Cursor both accept the rendered definitions and complete MCP
+initialization; the support proof no longer rests on fixtures alone.
+
+The completion audit maps every criterion to durable evidence:
+
+| M1 criterion | Durable evidence |
+| --- | --- |
+| Stable-toolchain build and documented checks | [`rust-toolchain.toml`](rust-toolchain.toml), [source-checkout commands](README.md), and [`scripts/check.sh`](scripts/check.sh); locked build, format, Clippy, tests, and dependency policy pass |
+| Versioned deterministic schema and unknown-version behavior | [Strict canonical v1 model and tests](src/config.rs) plus the [canonical example](examples/config.v1.json) |
+| Discovery-order-independent import | [Pure import tests](src/init.rs) and the [reversed-client built-binary journey](tests/golden.rs) |
+| One generated plan for dry-run and apply | [Plan-once application tests](src/sync.rs) and the [combined CLI journey](tests/golden.rs) |
+| Parseable native output and bounded preservation | [Claude fixtures](tests/fixtures/claude-desktop), [Cursor fixtures](tests/fixtures/cursor), adapter tests, and the [combined CLI journey](tests/golden.rs) |
+| Non-zero failure and recovery matrix | [Built-binary failure matrix](tests/golden.rs), [filesystem recovery tests](src/filesystem.rs), and [transaction tests](tests/sync.rs) |
+| Structural redaction in every diagnostic surface | [Safe CLI assertions](tests/support/mod.rs), redaction-focused unit tests, and private-value sentinels throughout the built-binary journeys |
+| Unit, fixture, filesystem, and golden tests under synthetic roots | [`SyntheticHome`](tests/support/mod.rs), all 140 locked tests, and the canonical quality script's disposable user environment |
+| Backup-protected current-stable two-client verification | [Controlled current-client evidence](#controlled-current-client-evidence) for signed Cursor `3.15.6` and Claude Desktop `1.26832.0` |
+| README alignment and explicit post-M1 gaps | [README audit](#controlled-current-client-evidence), [M1 boundary](#m1-mvp-boundary), and the ordered `MCP-013` through `MCP-021` tracker rows |
 
 ## Target architecture
 
@@ -545,8 +559,8 @@ changes:
 ### Implemented Claude Desktop boundary
 
 `MCP-007` implements the fixture-backed global Claude Desktop adapter for
-macOS. This is automated contract evidence, not the controlled current-client
-support verification reserved for `MCP-013`:
+macOS. This ticket supplies automated contract evidence; the controlled
+current-client gate now belongs to `MCP-012` under `DEC-025`:
 
 - The current contract was revalidated on 2026-08-06 against the official
   [local-server setup](https://modelcontextprotocol.io/docs/develop/connect-local-servers),
@@ -577,8 +591,8 @@ support verification reserved for `MCP-013`:
 ### Implemented Cursor boundary
 
 `MCP-008` implements the fixture-backed global Cursor adapter for macOS. This
-is automated contract evidence, not the controlled current-client support
-verification reserved for `MCP-013`:
+ticket supplies automated contract evidence; the controlled current-client
+gate now belongs to `MCP-012` under `DEC-025`:
 
 - The current contract was revalidated on 2026-08-07 against the official
   [Cursor MCP documentation](https://cursor.com/docs/mcp). The adapter discovers
@@ -610,8 +624,8 @@ verification reserved for `MCP-013`:
 ### Implemented initialization boundary
 
 `MCP-009` implements the first end-to-end application journey through the
-Cargo-built binary. This remains automated macOS-contract evidence rather than
-the controlled current-client verification reserved for `MCP-013`:
+Cargo-built binary. This ticket supplies automated macOS-contract evidence;
+the controlled current-client gate now belongs to `MCP-012` under `DEC-025`:
 
 - `mcp-sync init` refuses an existing canonical path before client discovery,
   reads only the two global M1 client files, treats missing files as empty, and
@@ -669,8 +683,8 @@ built-binary journeys without beginning target reconciliation:
 ### Implemented sync transaction boundary
 
 `MCP-011` implements the first target-writing journey across the two M1
-clients. This remains automated macOS-contract evidence rather than the
-controlled current-client verification reserved for `MCP-013`:
+clients. This ticket supplies automated macOS-contract evidence; the controlled
+current-client gate now belongs to `MCP-012` under `DEC-025`:
 
 - `mcp-sync sync --dry-run` validates canonical state first, discovers and
   parses both native targets, renders and reparses every desired output, and
@@ -739,6 +753,44 @@ journey and audits every automatable M1 failure class against disposable homes:
 140-test suite runs locally in about one second, has no retry or isolation need,
 and remains clearest under the documented authoritative `cargo test` command.
 
+### Controlled current-client evidence
+
+The 2026-08-07 macOS ARM64 smoke uses the same built binary and synthetic
+global files as the golden journey, then verifies the resulting configuration
+with vendor-signed current clients. It never prints a native configuration or
+copies authentication state:
+
+- The [Cursor download page](https://cursor.com/en-US/download) identified
+  `3.15` as current stable. The downloaded ARM64 `3.15.6` build had SHA-256
+  `deaef4ff90e235c7f4c0aa3b7c4bd89e471c827a954586da2aace0ef44bb40a8`,
+  passed strict code-signing validation and macOS notarization assessment, and
+  ran with disposable home, user-data, extension, and workspace directories.
+  It discovered both synced global entries, launched each through its dedicated
+  MCP process, completed `initialize`, `notifications/initialized`, and
+  `tools/list`, and left the synthetic project-level Cursor sentinel unchanged.
+  Metadata for the real global Cursor file remained unchanged.
+- Claude Desktop self-updated from `1.25927.0` to `1.26832.0`; the new universal
+  build passed strict code-signing validation and notarization assessment, and
+  its updater then reported it current. A no-clobber exact backup and exit trap
+  protected the real global file while the synthetic synced file was installed
+  atomically for the authenticated smoke. The app launched both synced entries;
+  each completed `initialize`, `notifications/initialized`, and `tools/list`,
+  then stopped when the app quit. The trap restored the immediately preceding
+  native bytes exactly, the file remains mode `0600`, and no temporary backup
+  remains. No credential, account data, or configuration value was read or
+  printed.
+- The [current Claude local-server guidance](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)
+  places connection status in Developer settings. The observed client-to-server
+  initialization and tool-list exchange provides direct runtime evidence for
+  both synthetic entries without exposing the account or native document.
+- The implemented README steps for canonical v1, `init`, complete-definition
+  `add`, structurally redacted `list`, plan-first `sync --dry-run`, transactional
+  `sync`, backups, rollback, and stable no-ops match the delivered behavior.
+  Health testing, additional adapters and platforms, restore UX, and release
+  channels remain the explicit M2 gap in this tracker, preserving the README as
+  the north-star product page rather than misrepresenting those items as M1
+  delivery.
+
 ## Deliverables
 
 | ID | Deliverable | Milestone | Owner | Target | Status | Completion evidence |
@@ -749,7 +801,7 @@ and remains clearest under the documented authoritative `cargo test` command.
 | D-04 | Versioned canonical configuration contract | M0 | Codex | 2026-08-06 | Done | [Strict canonical model and tests](src/config.rs), [canonical v1 example](examples/config.v1.json), [public configuration contract](README.md), [accepted version policy](#canonical-configuration-v1-decision), and [dependency policy](deny.toml) |
 | D-05 | Two-client import and conflict reporting | M1 | Codex | 2026-08-07 | Done | [Initialization use case](src/init.rs), [CLI command](src/main.rs), [global Claude Desktop adapter](src/claude_desktop.rs), [global Cursor adapter](src/cursor.rs), [create-only filesystem boundary](src/filesystem.rs), and [built-binary journeys](tests/init.rs) |
 | D-06 | Redacted plan and safe multi-target apply | M1 | Codex | 2026-08-07 | Done | [Plan-once sync use case and focused transaction tests](src/sync.rs), [reversible exact-byte filesystem boundary and recovery tests](src/filesystem.rs), [seven isolated built-binary sync journeys](tests/sync.rs), [wired CLI](src/main.rs), and [public sync contract](README.md) |
-| D-07 | Complete M1 CLI journey and user guide | M1 | Unassigned | Unscheduled | In progress | The combined [golden built-binary journey and failure matrix](tests/golden.rs), command-specific journeys, and matching [README quickstart](README.md) are implemented; only the controlled current-client smoke test and detailed recovery guidance remain in `MCP-013` |
+| D-07 | Complete M1 CLI journey and user guide | M1 | Unassigned | Unscheduled | In progress | The combined [golden built-binary journey and failure matrix](tests/golden.rs), command-specific journeys, matching [README quickstart](README.md), and [controlled current-stable two-client smoke](#controlled-current-client-evidence) are complete; only the detailed usage and recovery guidance remains in `MCP-013` |
 | D-08 | Five-client, cross-platform support matrix | M2 | Unassigned | Unscheduled | Proposed | Platform/client CI matrix with native JSON and TOML fixtures plus the accepted six-target OS/CPU release matrix |
 | D-09 | Bounded STDIO health testing | M2 | Unassigned | Unscheduled | Proposed | Protocol, timeout, cleanup, and redaction tests |
 | D-10 | Accessible release channels and recovery runbook | M2 | Unassigned | Unscheduled | Proposed | Six signed or platform-appropriate binaries, immutable GitHub Release, SHA-256 manifest, SPDX SBOMs, attestations, Homebrew, WinGet, Cargo, per-target install smoke tests, and restore exercise |
@@ -777,8 +829,8 @@ predecessor, so only the first incomplete row can become `Ready`.
 | MCP-009 | Implement `init` discovery, import, normalization, and conflict reporting | M1 | P0 | Codex | Done | `MCP-008` | [Deterministic import and redacted conflict use case](src/init.rs), [wired CLI](src/main.rs), [no-clobber canonical creation](src/filesystem.rs), [isolated built-binary success and no-mutation failure journeys](tests/init.rs), [synthetic-home helpers](tests/support/mod.rs), [manifest](Cargo.toml), and [lockfile](Cargo.lock); format, Clippy, all 93 tests, locked build, dependency policy, redaction, and documentation checks pass |
 | MCP-010 | Implement `add` and redacted `list` against the canonical config | M1 | P0 | Codex | Done | `MCP-009` | [Deterministic and redacted catalog use cases](src/catalog.rs), [wired CLI](src/main.rs), [guarded backup and atomic replacement](src/filesystem.rs), [ten isolated built-binary journeys](tests/catalog.rs), and [public command contract](README.md); format, warning-free Clippy, all 115 tests through a synthetic home, locked build, dependency policy, redaction, filesystem safety, and documentation checks pass |
 | MCP-011 | Implement `sync --dry-run` and safe apply with backup and transaction recovery | M1 | P0 | Codex | Done | `MCP-010` | [Plan-once dry-run/apply orchestration and four focused tests](src/sync.rs), [reversible atomic filesystem receipts and five focused recovery tests](src/filesystem.rs), [seven synthetic-home success, no-op, redaction, and forced-failure journeys](tests/sync.rs), [Clap wiring](src/main.rs), and [README contract](README.md); format, warning-free Clippy, all 131 tests, `cargo deny`, redaction, filesystem safety, and documentation checks pass |
-| MCP-012 | Prove the golden MVP journey and failure matrix | M1 | P0 | Codex | Blocked | `MCP-011` | [Three combined built-binary journeys](tests/golden.rs), [safe synthetic-home diagnostics](tests/support/mod.rs), and focused [filesystem](src/filesystem.rs) / [sync](src/sync.rs) regressions prove the automatable M1 journey and failure matrix; all 140 locked tests plus format, warning-free Clippy, `cargo deny`, and documentation checks pass; coverage is 92.77% lines / 91.95% regions / 91.14% functions; bounded mutation results are 49 caught, 8 compile-unviable, 0 missed, and 0 timed out; `cargo-nextest` was not adopted because the settled full suite runs in about one second. Blocker: the active exact goal requires every M1 criterion, but the unrun controlled current-client criterion is assigned to `MCP-013`; an accepted sequencing decision must resolve that conflict before this row can be `Done` |
-| MCP-013 | Verify M1 against current clients and the north-star README, then publish detailed usage and recovery guidance | M1 | P0 | Unassigned | Proposed | `MCP-012` | Delivered commands match their README contract, a controlled current-client macOS smoke test passes, and the guide records current operational limitations |
+| MCP-012 | Prove the golden MVP journey and failure matrix | M1 | P0 | Codex | Done | `MCP-011` | [Three combined built-binary journeys](tests/golden.rs), [safe synthetic-home diagnostics](tests/support/mod.rs), and focused [filesystem](src/filesystem.rs) / [sync](src/sync.rs) regressions prove the automatable M1 journey and failure matrix; [controlled current-client evidence](#controlled-current-client-evidence) proves signed current-stable Cursor `3.15.6` and Claude Desktop `1.26832.0` each initialize both rendered entries while the real files remain isolated or exactly restored. All 140 locked tests plus stable-toolchain build, format, warning-free Clippy, `cargo deny`, and documentation checks pass; coverage is 92.77% lines / 91.95% regions / 91.14% functions; bounded mutation results are 49 caught, 8 compile-unviable, 0 missed, and 0 timed out; the README audit and `cargo-nextest` decision are recorded |
+| MCP-013 | Verify M1 against current clients and the north-star README, then publish detailed usage and recovery guidance | M1 | P0 | Unassigned | Ready | `MCP-012` | Delivered commands match their README contract, a controlled current-client macOS smoke test passes, and the guide records current operational limitations |
 | MCP-014 | Add the Windsurf target adapter | M2 | P1 | Unassigned | Proposed | `MCP-013` | Fixture, merge-boundary, discovery, and journey coverage |
 | MCP-015 | Add the VS Code target adapter and define extension-shape boundaries | M2 | P1 | Unassigned | Proposed | `MCP-014` | Supported extension contract plus fixtures and journey coverage |
 | MCP-016 | Add the Codex adapter for the shared ChatGPT desktop, Codex CLI, and IDE host configuration | M2 | P1 | Unassigned | Proposed | `MCP-015` | The global TOML fixture round-trips, unrelated Codex settings and unsupported MCP fields survive, and the shared server map has discovery and journey coverage |
@@ -880,13 +932,12 @@ must satisfy the side-quest rules before it is marked `Ready`.
 
 ### Immediate focus
 
-1. Resolve the acceptance conflict: either authorize the controlled
-   current-client criterion inside `MCP-012`, or accept a tracker and goal
-   correction that makes `MCP-012` the automated proof and keeps the smoke test
-   in `MCP-013`.
-2. Do not start `MCP-013` or any later ticket while `MCP-012` is blocked.
-3. After the accepted resolution makes `MCP-012` `Done`, move only `MCP-013`
-   to `Ready`; perform its controlled smoke test before claiming M1 support.
+1. Intentionally start `MCP-013` only with its exact goal-catalog objective;
+   refresh current-client and README evidence where needed and publish detailed
+   usage and recovery guidance without diluting the README's target-state role.
+2. Keep `MCP-014` and all later tickets `Proposed` until `MCP-013` is `Done`.
+3. Do not claim the M1 milestone complete until `MCP-013` closes its remaining
+   documentation gate.
 
 ## Decision log
 
@@ -916,6 +967,7 @@ must satisfy the side-quest rules before it is marked `Ready`.
 | DEC-022 | Treat canonical `add` as a complete-definition upsert and `list` as structural metadata only | Accepted | 2026-08-07 | Repeated literal `--arg` and `--env KEY=VALUE` inputs avoid shell parsing; an existing name is replaced as one validated unit, exact semantic equality skips all writes, and changed state receives an exact `.bak` before guarded atomic replacement. Normal output may show escaped names, argument counts, and escaped environment key names, but never commands, arguments, or environment values |
 | DEC-023 | Preserve target-only entries in M1 and require explicit ownership provenance before any future prune | Accepted | 2026-08-07 | M1 sync may add desired names and update only `command`, `args`, and `env` inside compatible local entries while preserving every unowned field. Canonical absence produces non-mutating drift, never deletion; unmanaged remote-name collisions remain errors. A future prune requires a separately accepted command, provenance model, recovery contract, and ticket rather than inferring ownership from absence |
 | DEC-024 | Adopt the six-target signed, attested, and immutable release contract | Accepted | 2026-08-07 | [The release contract](#release-artifact-and-trust-contract) fixes separate ARM64 and x64 artifacts for macOS, GNU/Linux, and Windows; mandatory Apple signing/notarization and Windows Public Trust signing; SHA-256, per-target SPDX SBOMs, build attestations, and immutable GitHub Releases; stable public identifiers; and `v0.1.0` as the first release. Missing signing authority blocks stable publication rather than producing unsigned advertised artifacts |
+| DEC-025 | Satisfy the controlled two-client M1 criterion inside `MCP-012` | Accepted | 2026-08-07 | The repository owner's exact active objective requires every M1 acceptance criterion before `MCP-012` is `Done`, so the current-client gate cannot remain exclusively in its successor. `MCP-012` owns the first passing backup-protected Claude Desktop and Cursor verification; `MCP-013` remains the immediate successor for the north-star README audit, refreshed client verification as needed, and detailed usage and recovery guidance |
 
 ### Open decisions
 
@@ -927,9 +979,9 @@ must satisfy the side-quest rules before it is marked `Ready`.
 
 | ID | Risk | Impact | Likelihood | Current mitigation | Trigger for escalation | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| RISK-01 | A merge or partial failure loses user configuration | Critical | Medium | Pure plan/apply separation, guarded exact-byte writes, recoverable backups, reversible receipts, reverse-order multi-target rollback, non-mutating drift, bounded client ownership, remote-collision refusal, interrupted-write compensation, and the complete synthetic M1 failure matrix are implemented; controlled current-client verification remains in `MCP-013` | Any unrecoverable fixture mutation or ambiguous ownership case | Open — current-client M1 gate |
-| RISK-02 | Secrets leak through plans, errors, logs, fixtures, or snapshots | High | Medium | Import conflicts, canonical add/list reports, sync plans, per-target transaction reports, rollback errors, and native document/render debug surfaces expose structure only; built-binary output sentinels and safe byte/structural test assertions cover the complete synthetic matrix without printing fixture contents | Any test or output path observes a secret value | Open — current-client M1 gate |
-| RISK-03 | Native client schemas or paths drift | High | Medium | Both M1 clients' current global contracts are revalidated and fixture-backed; a controlled current-client smoke test still gates the M1 support claim | Client update invalidates fixture or discovery behavior | Open |
+| RISK-01 | A merge or partial failure loses user configuration | Critical | Medium | Pure plan/apply separation, guarded exact-byte writes, recoverable backups, reversible receipts, reverse-order multi-target rollback, non-mutating drift, bounded client ownership, remote-collision refusal, interrupted-write compensation, and the complete synthetic M1 failure matrix are implemented. Current Cursor verification is isolated; current Claude verification uses a no-clobber backup and verified exact restore | Any unrecoverable fixture mutation or ambiguous ownership case | Mitigated — M1 proof; monitor later targets |
+| RISK-02 | Secrets leak through plans, errors, logs, fixtures, or snapshots | High | Medium | Import conflicts, canonical add/list reports, sync plans, per-target transaction reports, rollback errors, and native document/render debug surfaces expose structure only; built-binary output sentinels and safe byte/structural test assertions cover the complete synthetic matrix without printing fixture contents. Both current-client smokes read only synthetic output and structural status; no real configuration, credential, or account value was displayed | Any test or output path observes a secret value | Mitigated — M1 proof |
+| RISK-03 | Native client schemas or paths drift | High | Medium | Both M1 clients' current global contracts are fixture-backed; current Cursor `3.15.6` and current Claude Desktop `1.26832.0` accept and initialize both rendered global entries | Client update invalidates fixture or discovery behavior | Mitigated — monitor client updates |
 | RISK-04 | Cross-platform file replacement behaves differently | High | Medium | No-clobber creation, guarded atomic replacement, reversible target receipts, and reverse-order rollback are isolated behind filesystem ports with disposable backup, stale-byte, interrupted-write, symlink, non-regular, permission, and cleanup tests. M1 remains macOS-scoped; Linux and Windows native CI stay sequenced | Platform work requires weakening atomicity or rollback | Open |
 | RISK-05 | Health checks hang or leave child processes running | High | Medium | Deferred to its own bounded slice with timeout and cleanup contract | `MCP-017` begins | Deferred with feature |
 | RISK-06 | Broad client/platform scope delays the first usable proof | High | High | Two-client M1 boundary, strict story sequence, WIP limit, milestone gates | `MCP-014` starts before `MCP-013` is done | Mitigated by plan |
