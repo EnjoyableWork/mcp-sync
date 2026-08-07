@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "servers": {
+    "project-files": {
+      "command": "example-mcp-server",
+      "args": [
+        "--transport",
+        "stdio"
+      ],
+      "env": {
+        "ACCESS_MODE": "read-only"
+      }
+    }
+  }
+}

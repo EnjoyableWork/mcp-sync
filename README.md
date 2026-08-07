@@ -38,6 +38,32 @@ This fragmentation leads to syntax errors, environment variable drift, broken cr
 └────────────────┘ └────────────┘ └────────────────┘ └───────────────┘ └────────────────┘
 ```
 
+## 🧭 Canonical Configuration
+
+The source of truth is versioned, client-independent JSON. Version 1 describes
+local STDIO servers with one literal executable, an ordered argument array, and
+literal environment strings:
+
+```json
+{
+  "schemaVersion": 1,
+  "servers": {
+    "project-files": {
+      "command": "example-mcp-server",
+      "args": ["--transport", "stdio"],
+      "env": {
+        "ACCESS_MODE": "read-only"
+      }
+    }
+  }
+}
+```
+
+`command`, `args`, and `env` values are preserved exactly rather than parsed as
+shell syntax or expanded as variables. Canonical output has deterministic key
+and field ordering so unchanged configuration remains stable. A complete
+checked-in example is available at [examples/config.v1.json](examples/config.v1.json).
+
 ## ✨ Features
 
 - 🔍 **Auto-Discovery:** Scrapes and imports existing MCP configurations on first launch.
@@ -154,13 +180,18 @@ To build and verify `mcp-sync` from a source checkout:
 cargo build --locked
 cargo run --locked -- --help
 ./scripts/check.sh
+cargo deny --all-features --locked check
 ```
 
 `./scripts/check.sh` is the canonical local quality gate. It runs deterministic
 formatting, Clippy, unit, and integration checks with the committed lockfile.
 Every command receives disposable `HOME`, XDG, macOS, and Windows-style user
 configuration roots, and the CLI integration harness clears inherited process
-state before supplying its own synthetic home.
+state before supplying its own synthetic home. The dependency-policy command
+requires the CI-pinned `cargo-deny` 0.20.2 release; install that exact version
+with `cargo install --locked cargo-deny --version 0.20.2`. Its committed policy
+checks security advisories, licenses, duplicate or banned dependencies, and
+dependency sources.
 
 Contributions are welcome! Feel free to submit a pull request:
 

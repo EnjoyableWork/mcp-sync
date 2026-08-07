@@ -227,8 +227,8 @@ The normal substantive-change handoff checks are:
 1. `cargo fmt --all -- --check`
 2. `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`
 3. `cargo test --workspace --all-targets --all-features --locked`
-4. Any configured dependency, license, schema, or release checks affected by
-   the change
+4. `cargo deny --all-features --locked check`
+5. Any additional schema or release checks affected by the change
 
 For documentation-only work, also run `git diff --check` and inspect headings,
 tables, relative links, code fences, and claims.
