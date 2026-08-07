@@ -82,6 +82,7 @@ impl ReconciliationPlan {
         self.entries.iter().any(PlanEntry::requires_mutation)
     }
 
+    #[cfg(test)]
     pub fn has_drift(&self) -> bool {
         self.entries
             .iter()
@@ -138,7 +139,7 @@ impl PlanEntry {
     /// Returns the validated desired definition for add and update work.
     ///
     /// The values can contain credentials. They are deliberately omitted from
-    /// every plan `Debug` implementation and must remain behind the later apply
+    /// every plan `Debug` implementation and must remain behind the apply
     /// boundary.
     pub fn desired_server(&self) -> Option<&CanonicalServer> {
         self.desired_server.as_ref()
@@ -350,6 +351,7 @@ impl PlanSummary {
         self.drift
     }
 
+    #[cfg(test)]
     pub fn total(self) -> usize {
         self.add + self.update + self.no_op + self.drift
     }

@@ -60,6 +60,7 @@ pub enum ClaudeDesktopDiscovery {
 }
 
 impl ClaudeDesktopDiscovery {
+    #[cfg(test)]
     pub fn document(&self) -> Option<&ClaudeDesktopDocument> {
         match self {
             Self::Missing => None,
@@ -121,6 +122,11 @@ impl ClaudeDesktopDocument {
         &self.canonical_config
     }
 
+    /// Exact bytes observed during discovery for guarded sync application.
+    pub fn original_bytes(&self) -> &[u8] {
+        &self.original_bytes
+    }
+
     pub fn preserved_root_fields(&self) -> Vec<&str> {
         self.root
             .keys()
@@ -129,6 +135,7 @@ impl ClaudeDesktopDocument {
             .collect()
     }
 
+    #[cfg(test)]
     pub fn preserved_server_fields(&self, server_name: &str) -> Option<Vec<&str>> {
         let fields = self
             .root
@@ -275,6 +282,7 @@ impl RenderedClaudeDesktopDocument {
         Self { bytes, changed }
     }
 
+    #[cfg(test)]
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }

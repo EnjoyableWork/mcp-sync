@@ -13,8 +13,8 @@ pub trait FileSystem {
 ///
 /// Implementations must publish complete bytes from a temporary file in the
 /// destination directory and must never replace an existing path. Existing-file
-/// replacement uses the separate `FileReplacer` port; multi-file rollback
-/// belongs to the later sync apply boundary.
+/// replacement uses the separate `FileReplacer` port; multi-file sync uses the
+/// reversible `TransactionalFileUpdater` boundary.
 pub trait FileCreator {
     fn create_new(&self, path: &Path, contents: &[u8]) -> Result<(), FileIoError>;
 }
@@ -32,6 +32,36 @@ pub trait FileReplacer {
         expected_current: &[u8],
         replacement: &[u8],
     ) -> Result<(), FileMutationError>;
+}
+
+/// The exact file state observed while a higher-level transaction is planned.
+///
+/// Existing bytes may contain credentials. Implementations must use them only
+/// for guarded mutation and must never include them in diagnostics or debug
+/// output.
+#[derive(Clone, Copy)]
+pub enum ExpectedFile<'a> {
+    Missing,
+    Existing(&'a [u8]),
+}
+
+/// Reversible target-file mutation used by multi-target sync.
+///
+/// A successful apply returns an opaque receipt containing enough private
+/// state to restore both the target and any backup that predated the
+/// transaction. Rollback must refuse to overwrite a target that no longer
+/// matches the bytes written by apply.
+pub trait TransactionalFileUpdater {
+    type Receipt;
+
+    fn apply_file_change(
+        &self,
+        path: &Path,
+        expected: ExpectedFile<'_>,
+        replacement: &[u8],
+    ) -> Result<Self::Receipt, FileMutationError>;
+
+    fn rollback_file_change(&self, receipt: &Self::Receipt) -> Result<(), FileMutationError>;
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -76,27 +106,239 @@ impl FileReplacer for OsFileSystem {
         expected_current: &[u8],
         replacement: &[u8],
     ) -> Result<(), FileMutationError> {
-        ensure_regular_file(path, true)?;
-        let backup_path = backup_path(path);
-        ensure_regular_file(&backup_path, false)?;
-
-        let replacement_file = prepare_temporary_file(path, replacement)?;
-        let backup_file = prepare_temporary_file(&backup_path, expected_current)?;
-
-        ensure_expected_bytes(path, expected_current)?;
-        backup_file.persist(&backup_path).map_err(|error| {
-            FileIoError::new(FileOperation::ReplaceFile, &backup_path, error.error)
-        })?;
-
-        // Check again after publishing the backup so an edit observed during
-        // preparation cannot be overwritten by the final atomic rename.
-        ensure_regular_file(path, true)?;
-        ensure_expected_bytes(path, expected_current)?;
-        replacement_file
-            .persist(path)
-            .map_err(|error| FileIoError::new(FileOperation::ReplaceFile, path, error.error))?;
-        Ok(())
+        replace_existing_with_backup(path, expected_current, replacement).map(drop)
     }
+}
+
+/// Opaque operating-system receipt for one applied target-file change.
+///
+/// The receipt deliberately exposes no byte accessors and its custom debug
+/// output reports only state and byte counts.
+pub struct FileUpdateReceipt {
+    path: PathBuf,
+    original: FileSnapshot,
+    replacement: Vec<u8>,
+    previous_backup: Option<FileSnapshot>,
+}
+
+impl fmt::Debug for FileUpdateReceipt {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("FileUpdateReceipt")
+            .field("path", &self.path)
+            .field("original", &self.original.redacted_description())
+            .field("replacement_byte_count", &self.replacement.len())
+            .field(
+                "previous_backup",
+                &self
+                    .previous_backup
+                    .as_ref()
+                    .map(FileSnapshot::redacted_description),
+            )
+            .finish()
+    }
+}
+
+impl TransactionalFileUpdater for OsFileSystem {
+    type Receipt = FileUpdateReceipt;
+
+    fn apply_file_change(
+        &self,
+        path: &Path,
+        expected: ExpectedFile<'_>,
+        replacement: &[u8],
+    ) -> Result<Self::Receipt, FileMutationError> {
+        match expected {
+            ExpectedFile::Missing => {
+                self.create_new(path, replacement)?;
+                Ok(FileUpdateReceipt {
+                    path: path.to_owned(),
+                    original: FileSnapshot::Missing,
+                    replacement: replacement.to_vec(),
+                    previous_backup: None,
+                })
+            }
+            ExpectedFile::Existing(original) => {
+                let previous_backup = replace_existing_with_backup(path, original, replacement)?;
+                Ok(FileUpdateReceipt {
+                    path: path.to_owned(),
+                    original: FileSnapshot::Existing(original.to_vec()),
+                    replacement: replacement.to_vec(),
+                    previous_backup: Some(previous_backup),
+                })
+            }
+        }
+    }
+
+    fn rollback_file_change(&self, receipt: &Self::Receipt) -> Result<(), FileMutationError> {
+        match &receipt.original {
+            FileSnapshot::Missing => remove_if_unchanged(&receipt.path, &receipt.replacement),
+            FileSnapshot::Existing(original) => {
+                replace_without_backup_if_unchanged(&receipt.path, &receipt.replacement, original)?;
+
+                let previous_backup = receipt
+                    .previous_backup
+                    .as_ref()
+                    .expect("an existing target receipt records its prior backup state");
+                restore_snapshot_if_unchanged(
+                    &backup_path(&receipt.path),
+                    original,
+                    previous_backup,
+                )
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
+enum FileSnapshot {
+    Missing,
+    Existing(Vec<u8>),
+}
+
+impl FileSnapshot {
+    fn redacted_description(&self) -> String {
+        match self {
+            Self::Missing => "missing".to_owned(),
+            Self::Existing(bytes) => format!("existing ({} bytes)", bytes.len()),
+        }
+    }
+}
+
+impl fmt::Debug for FileSnapshot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.redacted_description())
+    }
+}
+
+fn replace_existing_with_backup(
+    path: &Path,
+    expected_current: &[u8],
+    replacement: &[u8],
+) -> Result<FileSnapshot, FileMutationError> {
+    replace_existing_with_backup_after(path, expected_current, replacement, || {})
+}
+
+fn replace_existing_with_backup_after(
+    path: &Path,
+    expected_current: &[u8],
+    replacement: &[u8],
+    after_backup: impl FnOnce(),
+) -> Result<FileSnapshot, FileMutationError> {
+    ensure_regular_file(path, true)?;
+    let backup_path = backup_path(path);
+    let previous_backup = snapshot_optional_regular_file(&backup_path)?;
+
+    let replacement_file = prepare_temporary_file(path, replacement)?;
+    let backup_file = prepare_temporary_file(&backup_path, expected_current)?;
+
+    ensure_expected_bytes(path, expected_current)?;
+    ensure_snapshot_unchanged(&backup_path, &previous_backup)?;
+    match &previous_backup {
+        FileSnapshot::Missing => backup_file
+            .persist_noclobber(&backup_path)
+            .map_err(|error| {
+                FileIoError::new(FileOperation::PublishNewFile, &backup_path, error.error)
+            })?,
+        FileSnapshot::Existing(_) => backup_file.persist(&backup_path).map_err(|error| {
+            FileIoError::new(FileOperation::ReplaceFile, &backup_path, error.error)
+        })?,
+    };
+
+    after_backup();
+
+    // Check again after publishing the backup so an edit observed during
+    // preparation cannot be overwritten by the final atomic rename.
+    let replacement_result = ensure_regular_file(path, true)
+        .and_then(|()| ensure_expected_bytes(path, expected_current))
+        .and_then(|()| {
+            replacement_file.persist(path).map(|_| ()).map_err(|error| {
+                FileIoError::new(FileOperation::ReplaceFile, path, error.error).into()
+            })
+        });
+
+    if let Err(failure) = replacement_result {
+        return match restore_snapshot_if_unchanged(&backup_path, expected_current, &previous_backup)
+        {
+            Ok(()) => Err(failure),
+            Err(recovery) => Err(FileMutationError::RecoveryFailed {
+                path: path.to_owned(),
+                failure: Box::new(failure),
+                recovery: Box::new(recovery),
+            }),
+        };
+    }
+
+    Ok(previous_backup)
+}
+
+fn snapshot_optional_regular_file(path: &Path) -> Result<FileSnapshot, FileMutationError> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            ensure_supported_file_type(path, metadata.file_type())?;
+            std::fs::read(path)
+                .map(FileSnapshot::Existing)
+                .map_err(|source| FileIoError::read(path, source).into())
+        }
+        Err(source) if source.kind() == io::ErrorKind::NotFound => Ok(FileSnapshot::Missing),
+        Err(source) => Err(FileIoError::new(FileOperation::InspectFile, path, source).into()),
+    }
+}
+
+fn ensure_snapshot_unchanged(
+    path: &Path,
+    expected: &FileSnapshot,
+) -> Result<(), FileMutationError> {
+    match expected {
+        FileSnapshot::Missing => match std::fs::symlink_metadata(path) {
+            Err(source) if source.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(source) => Err(FileIoError::new(FileOperation::InspectFile, path, source).into()),
+            Ok(metadata) => {
+                ensure_supported_file_type(path, metadata.file_type())?;
+                Err(FileMutationError::ConcurrentModification {
+                    path: path.to_owned(),
+                })
+            }
+        },
+        FileSnapshot::Existing(bytes) => {
+            ensure_regular_file(path, true)?;
+            ensure_expected_bytes(path, bytes)
+        }
+    }
+}
+
+fn restore_snapshot_if_unchanged(
+    path: &Path,
+    expected_current: &[u8],
+    previous: &FileSnapshot,
+) -> Result<(), FileMutationError> {
+    match previous {
+        FileSnapshot::Missing => remove_if_unchanged(path, expected_current),
+        FileSnapshot::Existing(previous) => {
+            replace_without_backup_if_unchanged(path, expected_current, previous)
+        }
+    }
+}
+
+fn replace_without_backup_if_unchanged(
+    path: &Path,
+    expected_current: &[u8],
+    replacement: &[u8],
+) -> Result<(), FileMutationError> {
+    ensure_regular_file(path, true)?;
+    let replacement_file = prepare_temporary_file(path, replacement)?;
+    ensure_expected_bytes(path, expected_current)?;
+    replacement_file
+        .persist(path)
+        .map_err(|error| FileIoError::new(FileOperation::ReplaceFile, path, error.error).into())
+        .map(drop)
+}
+
+fn remove_if_unchanged(path: &Path, expected_current: &[u8]) -> Result<(), FileMutationError> {
+    ensure_regular_file(path, true)?;
+    ensure_expected_bytes(path, expected_current)?;
+    std::fs::remove_file(path)
+        .map_err(|source| FileIoError::new(FileOperation::RemoveFile, path, source).into())
 }
 
 fn prepare_temporary_file(
@@ -148,7 +390,13 @@ fn ensure_regular_file(path: &Path, required: bool) -> Result<(), FileMutationEr
             return Err(FileIoError::new(FileOperation::InspectFile, path, source).into());
         }
     };
-    let file_type = metadata.file_type();
+    ensure_supported_file_type(path, metadata.file_type())
+}
+
+fn ensure_supported_file_type(
+    path: &Path,
+    file_type: std::fs::FileType,
+) -> Result<(), FileMutationError> {
     let kind = if file_type.is_symlink() {
         Some(UnsupportedFileKind::SymbolicLink)
     } else if file_type.is_dir() {
@@ -184,6 +432,7 @@ pub enum FileOperation {
     SyncTemporaryFile,
     PublishNewFile,
     ReplaceFile,
+    RemoveFile,
 }
 
 impl fmt::Display for FileOperation {
@@ -197,6 +446,7 @@ impl fmt::Display for FileOperation {
             Self::SyncTemporaryFile => formatter.write_str("synchronize temporary file for"),
             Self::PublishNewFile => formatter.write_str("create"),
             Self::ReplaceFile => formatter.write_str("atomically replace"),
+            Self::RemoveFile => formatter.write_str("remove"),
         }
     }
 }
@@ -221,10 +471,12 @@ impl FileIoError {
         Self::new(FileOperation::Read, path, source)
     }
 
+    #[cfg(test)]
     pub fn operation(&self) -> FileOperation {
         self.operation
     }
 
+    #[cfg(test)]
     pub fn path(&self) -> &Path {
         &self.path
     }
@@ -279,6 +531,11 @@ pub enum FileMutationError {
         path: PathBuf,
         kind: UnsupportedFileKind,
     },
+    RecoveryFailed {
+        path: PathBuf,
+        failure: Box<FileMutationError>,
+        recovery: Box<FileMutationError>,
+    },
 }
 
 impl fmt::Display for FileMutationError {
@@ -295,6 +552,15 @@ impl fmt::Display for FileMutationError {
                 "refusing to replace {kind} `{}`; a regular file is required",
                 path.display()
             ),
+            Self::RecoveryFailed {
+                path,
+                failure,
+                recovery,
+            } => write!(
+                formatter,
+                "file update for `{}` failed ({failure}) and its prior backup state could not be restored ({recovery})",
+                path.display()
+            ),
         }
     }
 }
@@ -303,6 +569,7 @@ impl Error for FileMutationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Io(source) => Some(source),
+            Self::RecoveryFailed { failure, .. } => Some(failure.as_ref()),
             Self::ConcurrentModification { .. } | Self::UnsupportedFileType { .. } => None,
         }
     }
@@ -317,8 +584,9 @@ impl From<FileIoError> for FileMutationError {
 #[cfg(test)]
 mod tests {
     use super::{
-        FileCreator, FileIoError, FileMutationError, FileOperation, FileReplacer, FileSystem,
-        OsFileSystem, UnsupportedFileKind, backup_path,
+        ExpectedFile, FileCreator, FileIoError, FileMutationError, FileOperation, FileReplacer,
+        FileSystem, OsFileSystem, TransactionalFileUpdater, UnsupportedFileKind, backup_path,
+        replace_existing_with_backup_after,
     };
     use std::error::Error;
     use std::io;
@@ -458,6 +726,185 @@ mod tests {
                 .iter()
                 .all(|name| !name.to_string_lossy().starts_with(".mcp-sync-"))
         );
+    }
+
+    #[test]
+    fn transactional_replacement_rollback_restores_target_and_preexisting_backup_exactly() {
+        let fixture = tempfile::tempdir().expect("temporary filesystem fixture should be created");
+        let path = fixture.path().join("config.json");
+        let backup = backup_path(&path);
+        let original = b"original private configuration\n";
+        let replacement = b"replacement private configuration\n";
+        let previous_backup = b"older private backup\n";
+        std::fs::write(&path, original).expect("the original fixture should be written");
+        std::fs::write(&backup, previous_backup)
+            .expect("the previous backup fixture should be written");
+
+        let receipt = OsFileSystem
+            .apply_file_change(&path, ExpectedFile::Existing(original), replacement)
+            .expect("the transactional replacement should apply");
+
+        assert_eq!(
+            std::fs::read(&path).expect("the replacement should be readable"),
+            replacement
+        );
+        assert_eq!(
+            std::fs::read(&backup).expect("the new backup should be readable"),
+            original
+        );
+        let debug = format!("{receipt:?}");
+        for private in [
+            "original private configuration",
+            "replacement private configuration",
+            "older private backup",
+        ] {
+            assert!(!debug.contains(private));
+        }
+
+        OsFileSystem
+            .rollback_file_change(&receipt)
+            .expect("rollback should restore both pre-transaction files");
+
+        assert_eq!(
+            std::fs::read(&path).expect("the original should be restored"),
+            original
+        );
+        assert_eq!(
+            std::fs::read(&backup).expect("the prior backup should be restored"),
+            previous_backup
+        );
+        assert_no_temporary_files(fixture.path());
+    }
+
+    #[test]
+    fn transactional_replacement_rollback_removes_a_new_transaction_backup() {
+        let fixture = tempfile::tempdir().expect("temporary filesystem fixture should be created");
+        let path = fixture.path().join("config.json");
+        let original = b"original configuration\n";
+        let replacement = b"replacement configuration\n";
+        std::fs::write(&path, original).expect("the original fixture should be written");
+
+        let receipt = OsFileSystem
+            .apply_file_change(&path, ExpectedFile::Existing(original), replacement)
+            .expect("the transactional replacement should apply");
+        assert!(backup_path(&path).is_file());
+
+        OsFileSystem
+            .rollback_file_change(&receipt)
+            .expect("rollback should restore the target and absent backup state");
+
+        assert_eq!(
+            std::fs::read(&path).expect("the original should be restored"),
+            original
+        );
+        assert!(!backup_path(&path).exists());
+        assert_no_temporary_files(fixture.path());
+    }
+
+    #[test]
+    fn transactional_creation_rollback_removes_only_the_exact_created_file() {
+        let fixture = tempfile::tempdir().expect("temporary filesystem fixture should be created");
+        let path = fixture.path().join("nested/config.json");
+        let replacement = b"new configuration\n";
+
+        let receipt = OsFileSystem
+            .apply_file_change(&path, ExpectedFile::Missing, replacement)
+            .expect("the transactional creation should apply");
+        assert_eq!(
+            std::fs::read(&path).expect("the created target should be readable"),
+            replacement
+        );
+
+        OsFileSystem
+            .rollback_file_change(&receipt)
+            .expect("rollback should remove the exact created target");
+
+        assert!(!path.exists());
+        assert!(!backup_path(&path).exists());
+        assert_no_temporary_files(path.parent().expect("the target has a parent"));
+    }
+
+    #[test]
+    fn rollback_refuses_to_clobber_a_concurrently_changed_target_and_keeps_its_backup() {
+        let fixture = tempfile::tempdir().expect("temporary filesystem fixture should be created");
+        let path = fixture.path().join("config.json");
+        let original = b"original configuration\n";
+        let replacement = b"replacement configuration\n";
+        let concurrent = b"concurrent configuration\n";
+        std::fs::write(&path, original).expect("the original fixture should be written");
+        let receipt = OsFileSystem
+            .apply_file_change(&path, ExpectedFile::Existing(original), replacement)
+            .expect("the transactional replacement should apply");
+        std::fs::write(&path, concurrent).expect("the concurrent edit should be written");
+
+        let error = OsFileSystem
+            .rollback_file_change(&receipt)
+            .expect_err("rollback must refuse to overwrite a concurrent edit");
+
+        assert!(matches!(
+            error,
+            FileMutationError::ConcurrentModification {
+                path: ref error_path,
+            } if error_path == &path
+        ));
+        assert_eq!(
+            std::fs::read(&path).expect("the concurrent target should remain readable"),
+            concurrent
+        );
+        assert_eq!(
+            std::fs::read(backup_path(&path)).expect("the recovery backup should remain readable"),
+            original
+        );
+        assert_no_temporary_files(fixture.path());
+    }
+
+    #[test]
+    fn interrupted_replacement_restores_the_backup_state_without_clobbering_a_concurrent_edit() {
+        let fixture = tempfile::tempdir().expect("temporary filesystem fixture should be created");
+        let path = fixture.path().join("config.json");
+        let backup = backup_path(&path);
+        let original = b"original configuration\n";
+        let previous_backup = b"older backup configuration\n";
+        let concurrent = b"concurrent configuration\n";
+        std::fs::write(&path, original).expect("the original fixture should be written");
+        std::fs::write(&backup, previous_backup)
+            .expect("the previous backup fixture should be written");
+
+        let error =
+            replace_existing_with_backup_after(&path, original, b"planned replacement\n", || {
+                std::fs::write(&path, concurrent)
+                    .expect("the injected interruption should change the target")
+            })
+            .expect_err("a change after backup publication must abort replacement");
+
+        assert!(matches!(
+            error,
+            FileMutationError::ConcurrentModification {
+                path: ref error_path,
+            } if error_path == &path
+        ));
+        assert_eq!(
+            std::fs::read(&path).expect("the concurrent target should remain readable"),
+            concurrent
+        );
+        assert_eq!(
+            std::fs::read(&backup).expect("the prior backup should be restored"),
+            previous_backup
+        );
+        assert_no_temporary_files(fixture.path());
+    }
+
+    fn assert_no_temporary_files(directory: &Path) {
+        let has_temporary = std::fs::read_dir(directory)
+            .expect("the fixture directory should be readable")
+            .filter_map(Result::ok)
+            .any(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".mcp-sync-")
+            });
+        assert!(!has_temporary, "temporary files should be cleaned up");
     }
 
     #[test]

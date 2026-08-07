@@ -151,11 +151,23 @@ mcp-sync test postgres
 
 ### 5. Sync configuration across all clients
 
-Push the updated master server definitions to all detected local IDEs and AI applications:
+Preview one validated, structurally redacted plan without changing any files:
+
+```bash
+mcp-sync sync --dry-run
+```
+
+Then push the same planned server definitions to all detected local IDEs and
+AI applications:
 
 ```bash
 mcp-sync sync
 ```
+
+Targets that are already semantically current are not rewritten. Existing
+files receive recoverable `.bak` copies before atomic replacement, and if a
+later target fails, earlier target changes are rolled back and reported per
+target.
 
 ## 💻 Supported Clients
 

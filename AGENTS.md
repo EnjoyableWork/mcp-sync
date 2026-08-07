@@ -53,13 +53,14 @@ consumer and an accepted decision in `PROJECT.md`.
 The implemented foundation is one Rust 2024 binary crate with a package named
 `enjoyable-mcp-sync` and an installed binary named `mcp-sync`. The CLI now
 supports help, version, create-only `init`, complete-definition canonical
-`add`, and structurally redacted `list` journeys. It also contains the strict
-canonical JSON v1 model, an injected macOS configuration-path resolver, a
-replaceable filesystem boundary with read, no-clobber creation, and guarded
-single-file replacement ports, and a pure deterministic reconciliation engine
-with structurally redacted plans. Fixture-backed global Claude Desktop and
-Cursor macOS adapters discover and parse native JSON, then render plan-driven
-updates in memory while preserving unowned fields. `init` deterministically
+`add`, structurally redacted `list`, and two-target `sync --dry-run` / `sync`
+journeys. It also contains the strict canonical JSON v1 model, an injected
+macOS configuration-path resolver, a replaceable filesystem boundary with
+read, no-clobber creation, guarded replacement, and reversible transaction
+ports, and a pure deterministic reconciliation engine with structurally
+redacted plans. Fixture-backed global Claude Desktop and Cursor macOS adapters
+discover and parse native JSON, then render plan-driven updates in memory while
+preserving unowned fields. `init` deterministically
 imports compatible local definitions, reports structural conflicts without
 writing, skips named commandless Cursor entries that canonical v1 cannot
 represent, and creates only a previously missing canonical file through a
@@ -67,12 +68,16 @@ same-directory temporary file. `add` validates one complete definition before
 reading canonical state, performs a deterministic add/update, skips semantic
 no-ops, and backs up then atomically replaces only the canonical regular file;
 `list` exposes names, counts, and escaped environment key names but no process
-values. Neither command reads or writes client files or starts processes. The
-Cursor adapter manages only `~/.cursor/mcp.json` and cannot resolve
-project-level `.cursor/mcp.json` files. Use the existing Clap command tree as
-CLI behavior grows; do not introduce a second parser. Target sync,
-multi-target rollback, other client adapters, and process behavior remain
-later-ticket scope.
+values. `sync --dry-run` validates and structurally reports one fully rendered
+two-target plan without mutation; `sync` applies those exact bytes with no-op
+detection, recoverable backups, atomic replacement, per-target outcomes, and
+reverse-order rollback after a later failure. It preserves target-only and
+unowned native data, reports commandless Cursor entries without exposing their
+values, and never touches a project-level Cursor file. No implemented command
+starts configured server processes. Controlled current-client verification,
+other client adapters, and process behavior remain later-ticket scope. Use the
+existing Clap command tree as CLI behavior grows; do not introduce a second
+parser.
 
 “Extensible” currently means:
 
