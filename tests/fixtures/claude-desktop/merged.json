@@ -1,0 +1,63 @@
+{
+  "futureTopLevel": {
+    "nested": [
+      "preserve",
+      7,
+      true
+    ],
+    "preciseNumber": 1234567890123456789012345678901234567890
+  },
+  "globalShortcut": "CommandOrControl+Shift+Space",
+  "mcpServers": {
+    "added": {
+      "args": [
+        "--new"
+      ],
+      "command": "/synthetic/bin/added",
+      "env": {
+        "ADD_TOKEN": "fixture-added-secret"
+      }
+    },
+    "target-only": {
+      "args": [
+        "--local"
+      ],
+      "command": "/synthetic/bin/local",
+      "disabled": true,
+      "env": {
+        "LOCAL_TOKEN": "fixture-local-secret"
+      }
+    },
+    "unchanged": {
+      "args": [
+        "--mode",
+        "safe"
+      ],
+      "command": "/synthetic/bin/unchanged",
+      "cwd": "/synthetic/workspace/unchanged",
+      "env": {
+        "UNCHANGED_TOKEN": "fixture-unchanged-secret"
+      }
+    },
+    "updated": {
+      "args": [
+        "--new",
+        "two"
+      ],
+      "command": "/synthetic/bin/new",
+      "cwd": "/synthetic/workspace/preserved",
+      "env": {
+        "ADDED": "fixture-added-environment-secret",
+        "KEEP": "same",
+        "ROTATE": "fixture-new-secret"
+      },
+      "futureOption": {
+        "enabled": true
+      }
+    }
+  },
+  "preferences": {
+    "compactMode": true,
+    "theme": "system"
+  }
+}

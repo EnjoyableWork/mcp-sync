@@ -55,9 +55,12 @@ The implemented foundation is one Rust 2024 binary crate with a package named
 help/version CLI behavior. It also contains the strict canonical JSON v1 model,
 an injected macOS configuration-path resolver, a replaceable read-only
 filesystem boundary, and a pure deterministic reconciliation engine with
-structurally redacted plans. Use the existing Clap command tree as CLI behavior
-grows; do not introduce a second parser. Client adapters, application use
-cases, filesystem mutation, and process behavior remain later-ticket scope.
+structurally redacted plans. A fixture-backed global Claude Desktop macOS
+adapter now discovers and parses native JSON through that read-only boundary,
+then renders plan-driven updates in memory while preserving unowned fields. Use
+the existing Clap command tree as CLI behavior grows; do not introduce a second
+parser. Cursor and other client adapters, application use cases, filesystem
+mutation, and process behavior remain later-ticket scope.
 
 “Extensible” currently means:
 

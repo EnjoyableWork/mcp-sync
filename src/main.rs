@@ -2,6 +2,11 @@ use clap::Parser;
 
 #[allow(
     dead_code,
+    reason = "MCP-007 establishes the Claude Desktop adapter before application use cases consume it"
+)]
+mod claude_desktop;
+#[allow(
+    dead_code,
     reason = "MCP-004 establishes the canonical boundary before later use cases consume it"
 )]
 mod config;

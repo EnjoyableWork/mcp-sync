@@ -1,0 +1,42 @@
+{
+  "preferences": {
+    "theme": "system",
+    "compactMode": true
+  },
+  "mcpServers": {
+    "unchanged": {
+      "command": "/synthetic/bin/unchanged",
+      "args": ["--mode", "safe"],
+      "env": {
+        "UNCHANGED_TOKEN": "fixture-unchanged-secret"
+      },
+      "cwd": "/synthetic/workspace/unchanged"
+    },
+    "updated": {
+      "command": "/synthetic/bin/old",
+      "args": ["--old"],
+      "env": {
+        "KEEP": "same",
+        "REMOVE": "fixture-remove-secret",
+        "ROTATE": "fixture-old-secret"
+      },
+      "cwd": "/synthetic/workspace/preserved",
+      "futureOption": {
+        "enabled": true
+      }
+    },
+    "target-only": {
+      "command": "/synthetic/bin/local",
+      "args": ["--local"],
+      "env": {
+        "LOCAL_TOKEN": "fixture-local-secret"
+      },
+      "disabled": true
+    }
+  },
+  "globalShortcut": "CommandOrControl+Shift+Space",
+  "futureTopLevel": {
+    "nested": ["preserve", 7, true],
+    "preciseNumber": 1234567890123456789012345678901234567890
+  }
+}
