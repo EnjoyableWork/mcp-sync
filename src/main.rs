@@ -12,6 +12,7 @@ mod init;
 mod paths;
 mod reconciliation;
 mod sync;
+mod windsurf;
 
 /// Synchronize local Model Context Protocol server configurations.
 #[derive(Parser)]

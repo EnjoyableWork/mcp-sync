@@ -1,0 +1,53 @@
+{
+  "windsurfMetadata": {
+    "agent": "cascade",
+    "featureFlags": {
+      "nativeMcp": true
+    }
+  },
+  "mcpServers": {
+    "unchanged": {
+      "command": "/synthetic/bin/unchanged",
+      "args": ["--mode", "safe"],
+      "env": {
+        "UNCHANGED_TOKEN": "fixture-windsurf-unchanged-secret"
+      },
+      "disabledTools": ["fixture_preserved_tool"]
+    },
+    "updated": {
+      "command": "/synthetic/bin/old",
+      "args": ["--old"],
+      "env": {
+        "KEEP": "same",
+        "REMOVE": "fixture-windsurf-remove-secret",
+        "ROTATE": "fixture-windsurf-old-secret"
+      },
+      "disabledTools": ["fixture_update_tool"],
+      "futureOption": {
+        "enabled": true
+      }
+    },
+    "target-only": {
+      "command": "/synthetic/bin/local",
+      "args": ["--local"],
+      "env": {
+        "LOCAL_TOKEN": "fixture-windsurf-local-secret"
+      },
+      "disabled": true
+    },
+    "remote-only": {
+      "serverUrl": "https://windsurf.example.invalid/mcp",
+      "headers": {
+        "Authorization": "Bearer fixture-windsurf-remote-secret"
+      },
+      "disabledTools": ["fixture_remote_tool"],
+      "futureRemote": {
+        "retry": 5
+      }
+    }
+  },
+  "futureTopLevel": {
+    "nested": ["preserve", 9, true],
+    "preciseNumber": 9876543210987654321098765432109876543210
+  }
+}

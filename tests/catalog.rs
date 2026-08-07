@@ -110,10 +110,12 @@ fn add_and_list_are_redacted_and_never_access_target_clients() {
     let backup = backup_path(&canonical_path);
     let claude_bytes = b"Claude target must not be read by add or list\n";
     let cursor_bytes = b"Cursor target must not be read by add or list\n";
+    let windsurf_bytes = b"Windsurf target must not be read by add or list\n";
     let project_path = home.user_root().join("workspace/.cursor/mcp.json");
     let project_bytes = b"project target must remain outside every global operation\n";
     home.write_file(&home.claude_desktop_configuration(), claude_bytes);
     home.write_file(&home.cursor_configuration(), cursor_bytes);
+    home.write_file(&home.windsurf_configuration(), windsurf_bytes);
     home.write_file(&project_path, project_bytes);
     let process_marker = home.root().join("configured-server-was-started");
     let process_sentinel = home.root().join("synthetic-mcp-server");
@@ -234,6 +236,12 @@ fn add_and_list_are_redacted_and_never_access_target_clients() {
         fs::read(home.cursor_configuration()).expect("the Cursor sentinel should remain readable")
             == cursor_bytes,
         "add and list must not touch global Cursor state"
+    );
+    assert!(
+        fs::read(home.windsurf_configuration())
+            .expect("the Windsurf sentinel should remain readable")
+            == windsurf_bytes,
+        "add and list must not touch global Windsurf state"
     );
     assert!(
         fs::read(project_path).expect("the project sentinel should remain readable")

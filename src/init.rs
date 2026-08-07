@@ -5,13 +5,15 @@ use crate::config::{CanonicalConfig, CanonicalServer, ConfigError};
 use crate::cursor::{CursorAdapter, CursorAdapterError, CursorDiscovery};
 use crate::filesystem::{FileCreator, FileIoError, FileSystem};
 use crate::paths::MacOsConfigurationPaths;
+use crate::windsurf::{WindsurfAdapter, WindsurfAdapterError, WindsurfDiscovery};
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fmt;
 use std::io;
 use std::path::PathBuf;
 
-/// Discover the two M1 clients and create the first canonical configuration.
+/// Discover every implemented macOS client and create the first canonical
+/// configuration.
 ///
 /// Every read, parse, normalization, conflict, and serialization step finishes
 /// before the create-only filesystem boundary is called. Native client files
@@ -37,8 +39,12 @@ pub fn initialize(
     let cursor = CursorAdapter::for_macos(paths)
         .discover(filesystem)
         .map_err(|source| InitError::DiscoverCursor { source })?;
+    let windsurf = WindsurfAdapter::for_macos(paths)
+        .discover(filesystem)
+        .map_err(|source| InitError::DiscoverWindsurf { source })?;
 
-    let mut imports = Vec::with_capacity(2);
+    let mut imports = Vec::with_capacity(3);
+    let mut unmanaged_entries = BTreeMap::<Client, BTreeSet<String>>::new();
     if let ClaudeDesktopDiscovery::Found(document) = claude {
         imports.push(ClientImport::new(
             Client::ClaudeDesktop,
@@ -46,22 +52,37 @@ pub fn initialize(
         ));
     }
 
-    let mut unmanaged_cursor_entries = BTreeSet::new();
     if let CursorDiscovery::Found(document) = cursor {
-        unmanaged_cursor_entries.extend(
+        unmanaged_entries.insert(
+            Client::Cursor,
             document
                 .unmanaged_server_names()
                 .into_iter()
-                .map(str::to_owned),
+                .map(str::to_owned)
+                .collect(),
         );
         imports.push(ClientImport::new(
             Client::Cursor,
             document.canonical_config().clone(),
         ));
     }
+    if let WindsurfDiscovery::Found(document) = windsurf {
+        unmanaged_entries.insert(
+            Client::Windsurf,
+            document
+                .unmanaged_server_names()
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+        );
+        imports.push(ClientImport::new(
+            Client::Windsurf,
+            document.canonical_config().clone(),
+        ));
+    }
 
     let discovered_clients = imports.len();
-    let normalized = normalize_imports(imports, unmanaged_cursor_entries)
+    let normalized = normalize_imports(imports, unmanaged_entries)
         .map_err(|source| InitError::Conflicts { source })?;
     let config = CanonicalConfig::new(normalized.servers)
         .map_err(|source| InitError::BuildCanonical { source })?;
@@ -81,7 +102,7 @@ pub fn initialize(
     Ok(InitReport {
         imported_servers: config.servers().len(),
         discovered_clients,
-        skipped_cursor_entries: normalized.skipped_cursor_entries,
+        skipped_entries: normalized.skipped_entries,
     })
 }
 
@@ -89,7 +110,7 @@ pub fn initialize(
 pub struct InitReport {
     imported_servers: usize,
     discovered_clients: usize,
-    skipped_cursor_entries: Vec<String>,
+    skipped_entries: Vec<SkippedClientEntries>,
 }
 
 impl fmt::Display for InitReport {
@@ -103,23 +124,30 @@ impl fmt::Display for InitReport {
             plural(self.discovered_clients, "configuration", "configurations")
         )?;
 
-        if !self.skipped_cursor_entries.is_empty() {
-            let names = self
-                .skipped_cursor_entries
+        for skipped in &self.skipped_entries {
+            let names = skipped
+                .names
                 .iter()
                 .map(|name| format!("{name:?}"))
                 .collect::<Vec<_>>()
                 .join(", ");
             write!(
                 formatter,
-                "\nSkipped {} unsupported Cursor {}: {names}.",
-                self.skipped_cursor_entries.len(),
-                plural(self.skipped_cursor_entries.len(), "entry", "entries")
+                "\nSkipped {} unsupported {} {}: {names}.",
+                skipped.names.len(),
+                skipped.client,
+                plural(skipped.names.len(), "entry", "entries")
             )?;
         }
 
         Ok(())
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SkippedClientEntries {
+    client: Client,
+    names: Vec<String>,
 }
 
 fn plural<'a>(count: usize, singular: &'a str, plural: &'a str) -> &'a str {
@@ -132,6 +160,7 @@ pub enum InitError {
     ReadCanonical { source: FileIoError },
     DiscoverClaude { source: ClaudeDesktopAdapterError },
     DiscoverCursor { source: CursorAdapterError },
+    DiscoverWindsurf { source: WindsurfAdapterError },
     Conflicts { source: ImportConflicts },
     BuildCanonical { source: ConfigError },
     SerializeCanonical { source: ConfigError },
@@ -157,6 +186,10 @@ impl fmt::Display for InitError {
             Self::DiscoverCursor { source } => write!(
                 formatter,
                 "cannot import Cursor configuration: {source}; fix the file or its permissions, then rerun `mcp-sync init`"
+            ),
+            Self::DiscoverWindsurf { source } => write!(
+                formatter,
+                "cannot import Windsurf configuration: {source}; fix the file or its permissions, then rerun `mcp-sync init`"
             ),
             Self::Conflicts { source } => source.fmt(formatter),
             Self::BuildCanonical { source } => {
@@ -185,6 +218,7 @@ impl Error for InitError {
             Self::ReadCanonical { source } | Self::CreateCanonical { source } => Some(source),
             Self::DiscoverClaude { source } => Some(source),
             Self::DiscoverCursor { source } => Some(source),
+            Self::DiscoverWindsurf { source } => Some(source),
             Self::Conflicts { source } => Some(source),
             Self::BuildCanonical { source } | Self::SerializeCanonical { source } => Some(source),
         }
@@ -195,6 +229,7 @@ impl Error for InitError {
 enum Client {
     ClaudeDesktop,
     Cursor,
+    Windsurf,
 }
 
 impl fmt::Display for Client {
@@ -202,6 +237,7 @@ impl fmt::Display for Client {
         match self {
             Self::ClaudeDesktop => formatter.write_str("Claude Desktop"),
             Self::Cursor => formatter.write_str("Cursor"),
+            Self::Windsurf => formatter.write_str("Windsurf"),
         }
     }
 }
@@ -221,12 +257,12 @@ impl ClientImport {
 #[derive(Debug)]
 struct NormalizedImport {
     servers: BTreeMap<String, CanonicalServer>,
-    skipped_cursor_entries: Vec<String>,
+    skipped_entries: Vec<SkippedClientEntries>,
 }
 
 fn normalize_imports(
     mut imports: Vec<ClientImport>,
-    unmanaged_cursor_entries: BTreeSet<String>,
+    unmanaged_entries: BTreeMap<Client, BTreeSet<String>>,
 ) -> Result<NormalizedImport, ImportConflicts> {
     imports.sort_by_key(|source| source.client);
 
@@ -252,12 +288,15 @@ fn normalize_imports(
         }
     }
 
-    for name in &unmanaged_cursor_entries {
-        if let Some((client, _)) = imported.get(name) {
-            conflicts.push(ImportConflict::UnsupportedCursorCollision {
-                server: name.clone(),
-                local_client: *client,
-            });
+    for (unmanaged_client, names) in &unmanaged_entries {
+        for name in names {
+            if let Some((local_client, _)) = imported.get(name) {
+                conflicts.push(ImportConflict::UnsupportedNativeCollision {
+                    server: name.clone(),
+                    local_client: *local_client,
+                    unmanaged_client: *unmanaged_client,
+                });
+            }
         }
     }
 
@@ -275,7 +314,15 @@ fn normalize_imports(
             .into_iter()
             .map(|(name, (_, server))| (name, server))
             .collect(),
-        skipped_cursor_entries: unmanaged_cursor_entries.into_iter().collect(),
+        skipped_entries: unmanaged_entries
+            .into_iter()
+            .filter_map(|(client, names)| {
+                (!names.is_empty()).then(|| SkippedClientEntries {
+                    client,
+                    names: names.into_iter().collect(),
+                })
+            })
+            .collect(),
     })
 }
 
@@ -330,9 +377,10 @@ enum ImportConflict {
         second_client: Client,
         differences: Vec<ServerDifference>,
     },
-    UnsupportedCursorCollision {
+    UnsupportedNativeCollision {
         server: String,
         local_client: Client,
+        unmanaged_client: Client,
     },
 }
 
@@ -340,14 +388,14 @@ impl ImportConflict {
     fn server_name(&self) -> &str {
         match self {
             Self::DefinitionsDiffer { server, .. }
-            | Self::UnsupportedCursorCollision { server, .. } => server,
+            | Self::UnsupportedNativeCollision { server, .. } => server,
         }
     }
 
     fn kind_order(&self) -> u8 {
         match self {
             Self::DefinitionsDiffer { .. } => 0,
-            Self::UnsupportedCursorCollision { .. } => 1,
+            Self::UnsupportedNativeCollision { .. } => 1,
         }
     }
 }
@@ -370,12 +418,13 @@ impl fmt::Display for ImportConflict {
                         .collect()
                 )
             ),
-            Self::UnsupportedCursorCollision {
+            Self::UnsupportedNativeCollision {
                 server,
                 local_client,
+                unmanaged_client,
             } => write!(
                 formatter,
-                "server {server:?} is both a local {local_client} definition and an unsupported commandless Cursor entry"
+                "server {server:?} is both a local {local_client} definition and an unsupported commandless {unmanaged_client} entry"
             ),
         }
     }
@@ -444,6 +493,13 @@ mod tests {
         )
     }
 
+    fn unmanaged(client: Client, names: &[&str]) -> BTreeMap<Client, BTreeSet<String>> {
+        BTreeMap::from([(
+            client,
+            names.iter().map(|name| (*name).to_owned()).collect(),
+        )])
+    }
+
     #[test]
     fn compatible_imports_are_deterministic_regardless_of_discovery_order() {
         let shared = server("shared-command", "--shared", "shared-value");
@@ -461,17 +517,28 @@ mod tests {
                 ("shared", shared),
             ]),
         );
+        let windsurf = ClientImport::new(
+            Client::Windsurf,
+            config(vec![(
+                "beta",
+                server("beta-command", "--beta", "beta-value"),
+            )]),
+        );
+        let unmanaged_entries = BTreeMap::from([
+            (Client::Cursor, BTreeSet::from(["remote-only".to_owned()])),
+            (
+                Client::Windsurf,
+                BTreeSet::from(["windsurf-remote".to_owned()]),
+            ),
+        ]);
 
         let forward = normalize_imports(
-            vec![claude.clone(), cursor.clone()],
-            BTreeSet::from(["remote-only".to_owned()]),
+            vec![claude.clone(), cursor.clone(), windsurf.clone()],
+            unmanaged_entries.clone(),
         )
         .expect("compatible imports should normalize");
-        let reverse = normalize_imports(
-            vec![cursor, claude],
-            BTreeSet::from(["remote-only".to_owned()]),
-        )
-        .expect("discovery order should not affect normalization");
+        let reverse = normalize_imports(vec![windsurf, cursor, claude], unmanaged_entries)
+            .expect("discovery order should not affect normalization");
 
         let forward_json = CanonicalConfig::new(forward.servers)
             .expect("the merged map should be valid")
@@ -485,7 +552,19 @@ mod tests {
             forward_json == reverse_json,
             "discovery order should not change canonical bytes"
         );
-        assert_eq!(reverse.skipped_cursor_entries, ["remote-only"]);
+        assert_eq!(
+            reverse.skipped_entries,
+            [
+                SkippedClientEntries {
+                    client: Client::Cursor,
+                    names: vec!["remote-only".to_owned()],
+                },
+                SkippedClientEntries {
+                    client: Client::Windsurf,
+                    names: vec!["windsurf-remote".to_owned()],
+                },
+            ]
+        );
         assert!(forward_json.find("alpha").unwrap() < forward_json.find("shared").unwrap());
         assert!(forward_json.find("shared").unwrap() < forward_json.find("zeta").unwrap());
     }
@@ -516,7 +595,7 @@ mod tests {
             )]),
         );
 
-        let error = normalize_imports(vec![cursor, claude], BTreeSet::new())
+        let error = normalize_imports(vec![cursor, claude], BTreeMap::new())
             .expect_err("different definitions should conflict");
         let message = error.to_string();
 
@@ -538,7 +617,7 @@ mod tests {
     }
 
     #[test]
-    fn a_local_definition_cannot_hide_an_unsupported_cursor_entry() {
+    fn a_local_definition_cannot_hide_an_unsupported_native_entry() {
         let imports = vec![ClientImport::new(
             Client::ClaudeDesktop,
             config(vec![(
@@ -547,12 +626,12 @@ mod tests {
             )]),
         )];
 
-        let error = normalize_imports(imports, BTreeSet::from(["remote-collision".to_owned()]))
+        let error = normalize_imports(imports, unmanaged(Client::Windsurf, &["remote-collision"]))
             .expect_err("an unrepresentable collision should fail safely");
 
         assert_eq!(
             error.to_string(),
-            "cannot initialize because server \"remote-collision\" is both a local Claude Desktop definition and an unsupported commandless Cursor entry; make the definitions identical, rename one, or remove one, then rerun `mcp-sync init`"
+            "cannot initialize because server \"remote-collision\" is both a local Claude Desktop definition and an unsupported commandless Windsurf entry; make the definitions identical, rename one, or remove one, then rerun `mcp-sync init`"
         );
     }
 
@@ -573,7 +652,7 @@ mod tests {
             ]),
         );
 
-        let message = normalize_imports(vec![cursor, claude], BTreeSet::new())
+        let message = normalize_imports(vec![cursor, claude], BTreeMap::new())
             .expect_err("both definitions should conflict")
             .to_string();
 
@@ -585,12 +664,21 @@ mod tests {
         let empty = InitReport {
             imported_servers: 0,
             discovered_clients: 0,
-            skipped_cursor_entries: Vec::new(),
+            skipped_entries: Vec::new(),
         };
         let single = InitReport {
             imported_servers: 1,
             discovered_clients: 1,
-            skipped_cursor_entries: vec!["remote-only".to_owned()],
+            skipped_entries: vec![
+                SkippedClientEntries {
+                    client: Client::Cursor,
+                    names: vec!["remote-only".to_owned()],
+                },
+                SkippedClientEntries {
+                    client: Client::Windsurf,
+                    names: vec!["windsurf-remote".to_owned()],
+                },
+            ],
         };
 
         assert_eq!(
@@ -599,7 +687,7 @@ mod tests {
         );
         assert_eq!(
             single.to_string(),
-            "Initialized canonical configuration with 1 server from 1 client configuration.\nSkipped 1 unsupported Cursor entry: \"remote-only\"."
+            "Initialized canonical configuration with 1 server from 1 client configuration.\nSkipped 1 unsupported Cursor entry: \"remote-only\".\nSkipped 1 unsupported Windsurf entry: \"windsurf-remote\"."
         );
     }
 

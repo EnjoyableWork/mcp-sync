@@ -71,7 +71,7 @@ fn assert_no_temporary_files(destination: &Path) {
 }
 
 #[test]
-fn init_imports_both_clients_without_executing_servers_or_touching_native_files() {
+fn init_imports_all_clients_without_executing_servers_or_touching_native_files() {
     let home = SyntheticHome::new();
     let marker = home.root().join("configured-server-was-started");
     let sentinel = home.root().join("synthetic-mcp-server");
@@ -122,17 +122,39 @@ fn init_imports_both_clients_without_executing_servers_or_touching_native_files(
         },
         "cursorMetadata": 7
     }));
+    let windsurf = json_document(&json!({
+        "mcpServers": {
+            "gamma": {
+                "command": "gamma-server",
+                "args": ["--gamma"],
+                "env": {"WINDSURF_TOKEN": "windsurf-synthetic-value"},
+                "disabledTools": ["preserve_tool"]
+            },
+            "remote-windsurf": {
+                "serverUrl": "https://windsurf.invalid.example.test/mcp",
+                "headers": {"Authorization": "Bearer windsurf-remote-synthetic-value"}
+            },
+            "shared": {
+                "command": "shared-server",
+                "args": ["--stdio"],
+                "env": {"MODE": "synthetic"}
+            }
+        },
+        "windsurfMetadata": {"synthetic": true}
+    }));
     let project_path = home.user_root().join("workspace/.cursor/mcp.json");
     let project_bytes = b"{\"projectSentinel\":true}\n";
     home.write_file(&home.claude_desktop_configuration(), &claude);
     home.write_file(&home.cursor_configuration(), &cursor);
+    home.write_file(&home.windsurf_configuration(), &windsurf);
     home.write_file(&project_path, project_bytes);
 
     let output = stdout(&run_success(init_command(&home)));
     assert!(
         output
-            == "Initialized canonical configuration with 3 servers from 2 client configurations.\n\
-                Skipped 1 unsupported Cursor entry: \"remote-only\".\n",
+            == "Initialized canonical configuration with 4 servers from 3 client configurations.\n\
+                Skipped 1 unsupported Cursor entry: \"remote-only\".\n\
+                Skipped 1 unsupported Windsurf entry: \"remote-windsurf\".\n",
         "init success output should be exact and structural"
     );
 
@@ -156,6 +178,11 @@ fn init_imports_both_clients_without_executing_servers_or_touching_native_files(
                         "args": [],
                         "env": {}
                     },
+                    "gamma": {
+                        "command": "gamma-server",
+                        "args": ["--gamma"],
+                        "env": {"WINDSURF_TOKEN": "windsurf-synthetic-value"}
+                    },
                     "shared": {
                         "command": "shared-server",
                         "args": ["--stdio"],
@@ -175,6 +202,11 @@ fn init_imports_both_clients_without_executing_servers_or_touching_native_files(
         &home.cursor_configuration(),
         &cursor,
         "init should preserve Cursor bytes",
+    );
+    assert_file_matches(
+        &home.windsurf_configuration(),
+        &windsurf,
+        "init should preserve Windsurf bytes",
     );
     assert_file_matches(
         &project_path,
@@ -203,6 +235,15 @@ fn init_reports_an_exact_redacted_conflict_and_mutates_nothing() {
             }
         }
     }));
+    let windsurf = json_document(&json!({
+        "mcpServers": {
+            "windsurf-only": {
+                "command": "windsurf-private-command",
+                "args": ["--windsurf-private-argument"],
+                "env": {"WINDSURF_TOKEN": "windsurf-private-value"}
+            }
+        }
+    }));
     let cursor = json_document(&json!({
         "mcpServers": {
             "shared": {
@@ -219,6 +260,7 @@ fn init_reports_an_exact_redacted_conflict_and_mutates_nothing() {
     let project_bytes = b"{\"projectSentinel\":\"unchanged\"}\n";
     home.write_file(&home.claude_desktop_configuration(), &claude);
     home.write_file(&home.cursor_configuration(), &cursor);
+    home.write_file(&home.windsurf_configuration(), &windsurf);
     home.write_file(&project_path, project_bytes);
 
     let expected_stderr = "error: cannot initialize because server \"shared\" differs between Claude Desktop and Cursor in command, arguments, environment keys, and environment values; make the definitions identical, rename one, or remove one, then rerun `mcp-sync init`\n";
@@ -241,6 +283,11 @@ fn init_reports_an_exact_redacted_conflict_and_mutates_nothing() {
         "conflict handling should preserve Cursor bytes",
     );
     assert_file_matches(
+        &home.windsurf_configuration(),
+        &windsurf,
+        "conflict handling should preserve Windsurf bytes",
+    );
+    assert_file_matches(
         &project_path,
         project_bytes,
         "conflict handling should preserve project Cursor bytes",
@@ -257,13 +304,16 @@ fn init_reports_an_exact_redacted_conflict_and_mutates_nothing() {
         "claude-private-value",
         "cursor-private-value",
         "cursor-only-private-value",
+        "windsurf-private-command",
+        "--windsurf-private-argument",
+        "windsurf-private-value",
     ] {
         assert!(!expected_stderr.contains(private_value));
     }
 }
 
 #[test]
-fn init_rejects_malformed_native_json_without_creating_canonical_state() {
+fn init_rejects_malformed_later_windsurf_json_without_creating_canonical_state() {
     let home = SyntheticHome::new();
     let malformed = br#"{
   "mcpServers": {
@@ -274,25 +324,31 @@ fn init_rejects_malformed_native_json_without_creating_canonical_state() {
   }
 }
 "#;
+    let claude = json_document(&json!({
+        "mcpServers": {
+            "claude-only": {"command": "synthetic-claude-command"}
+        }
+    }));
     let cursor = json_document(&json!({
         "mcpServers": {
             "cursor-only": {"command": "synthetic-cursor-command"}
         }
     }));
-    home.write_file(&home.claude_desktop_configuration(), malformed);
+    home.write_file(&home.claude_desktop_configuration(), &claude);
     home.write_file(&home.cursor_configuration(), &cursor);
+    home.write_file(&home.windsurf_configuration(), malformed);
 
     let stderr = stderr(&run_failure(init_command(&home)));
 
-    assert!(stderr.starts_with(
-        "error: cannot import Claude Desktop configuration: invalid Claude Desktop JSON:"
-    ));
+    assert!(
+        stderr.starts_with("error: cannot import Windsurf configuration: invalid Windsurf JSON:")
+    );
     assert!(stderr.ends_with("; fix the file or its permissions, then rerun `mcp-sync init`\n"));
     assert!(!stderr.contains("must-not-appear"));
     assert!(!home.canonical_configuration().exists());
     assert_file_matches(
         &home.claude_desktop_configuration(),
-        malformed,
+        &claude,
         "malformed input should preserve Claude Desktop bytes",
     );
     assert_file_matches(
@@ -300,10 +356,15 @@ fn init_rejects_malformed_native_json_without_creating_canonical_state() {
         &cursor,
         "malformed input should preserve Cursor bytes",
     );
+    assert_file_matches(
+        &home.windsurf_configuration(),
+        malformed,
+        "malformed input should preserve Windsurf bytes",
+    );
 }
 
 #[test]
-fn init_creates_a_valid_empty_config_when_both_clients_are_missing() {
+fn init_creates_a_valid_empty_config_when_all_clients_are_missing() {
     let home = SyntheticHome::new();
 
     let output = stdout(&run_success(init_command(&home)));
