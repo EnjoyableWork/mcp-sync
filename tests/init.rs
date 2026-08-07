@@ -142,19 +142,69 @@ fn init_imports_all_clients_without_executing_servers_or_touching_native_files()
         },
         "windsurfMetadata": {"synthetic": true}
     }));
+    let vscode = json_document(&json!({
+        "servers": {
+            "delta": {
+                "type": "stdio",
+                "command": "delta-server",
+                "args": ["--delta"],
+                "env": {"VSCODE_TOKEN": "vscode-synthetic-value"},
+                "cwd": "${workspaceFolder}"
+            },
+            "native-env": {
+                "type": "stdio",
+                "command": "native-env-server",
+                "env": {"OPTIONAL": null, "PORT": 3000}
+            },
+            "remote-vscode": {
+                "type": "http",
+                "url": "https://vscode.invalid.example.test/mcp",
+                "headers": {"Authorization": "Bearer vscode-remote-synthetic-value"}
+            },
+            "shared": {
+                "command": "shared-server",
+                "args": ["--stdio"],
+                "env": {"MODE": "synthetic"},
+                "envFile": "${userHome}/.synthetic-env"
+            }
+        },
+        "inputs": [{"type": "promptString", "id": "synthetic-input"}],
+        "sandbox": {"enabled": true}
+    }));
     let project_path = home.user_root().join("workspace/.cursor/mcp.json");
     let project_bytes = b"{\"projectSentinel\":true}\n";
+    let excluded_vscode_bytes = b"not native default-profile VS Code configuration\n";
+    let excluded_vscode_paths = [
+        home.user_root().join("workspace/.vscode/mcp.json"),
+        home.user_root().join("workspace/.mcp.json"),
+        home.user_root().join(
+            "Library/Application Support/Code/User/profiles/synthetic-profile/mcp.json",
+        ),
+        home.user_root()
+            .join("Library/Application Support/Code - Insiders/User/mcp.json"),
+        home.user_root().join(
+            "Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+        ),
+        home.user_root()
+            .join(".cline/data/settings/cline_mcp_settings.json"),
+        home.user_root().join(".copilot/mcp-config.json"),
+    ];
     home.write_file(&home.claude_desktop_configuration(), &claude);
     home.write_file(&home.cursor_configuration(), &cursor);
     home.write_file(&home.windsurf_configuration(), &windsurf);
+    home.write_file(&home.vscode_configuration(), &vscode);
     home.write_file(&project_path, project_bytes);
+    for path in &excluded_vscode_paths {
+        home.write_file(path, excluded_vscode_bytes);
+    }
 
     let output = stdout(&run_success(init_command(&home)));
     assert!(
         output
-            == "Initialized canonical configuration with 4 servers from 3 client configurations.\n\
+            == "Initialized canonical configuration with 5 servers from 4 client configurations.\n\
                 Skipped 1 unsupported Cursor entry: \"remote-only\".\n\
-                Skipped 1 unsupported Windsurf entry: \"remote-windsurf\".\n",
+                Skipped 1 unsupported Windsurf entry: \"remote-windsurf\".\n\
+                Skipped 2 unsupported VS Code entries: \"native-env\", \"remote-vscode\".\n",
         "init success output should be exact and structural"
     );
 
@@ -183,6 +233,11 @@ fn init_imports_all_clients_without_executing_servers_or_touching_native_files()
                         "args": ["--gamma"],
                         "env": {"WINDSURF_TOKEN": "windsurf-synthetic-value"}
                     },
+                    "delta": {
+                        "command": "delta-server",
+                        "args": ["--delta"],
+                        "env": {"VSCODE_TOKEN": "vscode-synthetic-value"}
+                    },
                     "shared": {
                         "command": "shared-server",
                         "args": ["--stdio"],
@@ -209,10 +264,22 @@ fn init_imports_all_clients_without_executing_servers_or_touching_native_files()
         "init should preserve Windsurf bytes",
     );
     assert_file_matches(
+        &home.vscode_configuration(),
+        &vscode,
+        "init should preserve VS Code bytes",
+    );
+    assert_file_matches(
         &project_path,
         project_bytes,
         "init should preserve project Cursor bytes",
     );
+    for path in &excluded_vscode_paths {
+        assert_file_matches(
+            path,
+            excluded_vscode_bytes,
+            "init should preserve every excluded VS Code configuration shape",
+        );
+    }
     assert!(!marker.exists(), "init must not execute configured servers");
     assert_no_temporary_files(&canonical_path);
 }
@@ -232,6 +299,16 @@ fn init_reports_an_exact_redacted_conflict_and_mutates_nothing() {
                 "command": claude_command.to_string_lossy(),
                 "args": ["--claude-private-argument"],
                 "env": {"SYNTHETIC_TOKEN": "claude-private-value"}
+            }
+        }
+    }));
+    let vscode = json_document(&json!({
+        "servers": {
+            "vscode-only": {
+                "type": "stdio",
+                "command": "vscode-private-command",
+                "args": ["--vscode-private-argument"],
+                "env": {"VSCODE_TOKEN": "vscode-private-value"}
             }
         }
     }));
@@ -261,6 +338,7 @@ fn init_reports_an_exact_redacted_conflict_and_mutates_nothing() {
     home.write_file(&home.claude_desktop_configuration(), &claude);
     home.write_file(&home.cursor_configuration(), &cursor);
     home.write_file(&home.windsurf_configuration(), &windsurf);
+    home.write_file(&home.vscode_configuration(), &vscode);
     home.write_file(&project_path, project_bytes);
 
     let expected_stderr = "error: cannot initialize because server \"shared\" differs between Claude Desktop and Cursor in command, arguments, environment keys, and environment values; make the definitions identical, rename one, or remove one, then rerun `mcp-sync init`\n";
@@ -288,6 +366,11 @@ fn init_reports_an_exact_redacted_conflict_and_mutates_nothing() {
         "conflict handling should preserve Windsurf bytes",
     );
     assert_file_matches(
+        &home.vscode_configuration(),
+        &vscode,
+        "conflict handling should preserve VS Code bytes",
+    );
+    assert_file_matches(
         &project_path,
         project_bytes,
         "conflict handling should preserve project Cursor bytes",
@@ -307,17 +390,21 @@ fn init_reports_an_exact_redacted_conflict_and_mutates_nothing() {
         "windsurf-private-command",
         "--windsurf-private-argument",
         "windsurf-private-value",
+        "vscode-private-command",
+        "--vscode-private-argument",
+        "vscode-private-value",
     ] {
         assert!(!expected_stderr.contains(private_value));
     }
 }
 
 #[test]
-fn init_rejects_malformed_later_windsurf_json_without_creating_canonical_state() {
+fn init_rejects_malformed_final_vscode_json_without_creating_canonical_state() {
     let home = SyntheticHome::new();
     let malformed = br#"{
-  "mcpServers": {
+  "servers": {
     "malformed": {
+      "type": "stdio",
       "command": "synthetic-command",
       "env": {"SYNTHETIC_TOKEN": "must-not-appear",}
     }
@@ -334,14 +421,20 @@ fn init_rejects_malformed_later_windsurf_json_without_creating_canonical_state()
             "cursor-only": {"command": "synthetic-cursor-command"}
         }
     }));
+    let windsurf = json_document(&json!({
+        "mcpServers": {
+            "windsurf-only": {"command": "synthetic-windsurf-command"}
+        }
+    }));
     home.write_file(&home.claude_desktop_configuration(), &claude);
     home.write_file(&home.cursor_configuration(), &cursor);
-    home.write_file(&home.windsurf_configuration(), malformed);
+    home.write_file(&home.windsurf_configuration(), &windsurf);
+    home.write_file(&home.vscode_configuration(), malformed);
 
     let stderr = stderr(&run_failure(init_command(&home)));
 
     assert!(
-        stderr.starts_with("error: cannot import Windsurf configuration: invalid Windsurf JSON:")
+        stderr.starts_with("error: cannot import VS Code configuration: invalid VS Code JSON:")
     );
     assert!(stderr.ends_with("; fix the file or its permissions, then rerun `mcp-sync init`\n"));
     assert!(!stderr.contains("must-not-appear"));
@@ -358,8 +451,65 @@ fn init_rejects_malformed_later_windsurf_json_without_creating_canonical_state()
     );
     assert_file_matches(
         &home.windsurf_configuration(),
+        &windsurf,
+        "malformed later input should preserve Windsurf bytes",
+    );
+    assert_file_matches(
+        &home.vscode_configuration(),
         malformed,
-        "malformed input should preserve Windsurf bytes",
+        "malformed input should preserve VS Code bytes",
+    );
+}
+
+#[test]
+fn init_rejects_a_local_collision_with_an_unmanaged_vscode_entry() {
+    let home = SyntheticHome::new();
+    let claude = json_document(&json!({
+        "mcpServers": {
+            "native-collision": {
+                "command": "local-private-command",
+                "args": ["--local-private-argument"],
+                "env": {"TOKEN": "local-private-value"}
+            }
+        }
+    }));
+    let vscode = json_document(&json!({
+        "servers": {
+            "native-collision": {
+                "type": "stdio",
+                "command": "native-private-command",
+                "env": {"OPTIONAL": null, "PORT": 43117}
+            }
+        }
+    }));
+    home.write_file(&home.claude_desktop_configuration(), &claude);
+    home.write_file(&home.vscode_configuration(), &vscode);
+
+    let diagnostic = stderr(&run_failure(init_command(&home)));
+
+    assert_eq!(
+        diagnostic,
+        "error: cannot initialize because server \"native-collision\" is both a local Claude Desktop definition and an unsupported VS Code entry; make the definitions identical, rename one, or remove one, then rerun `mcp-sync init`\n"
+    );
+    for private in [
+        "local-private-command",
+        "--local-private-argument",
+        "local-private-value",
+        "native-private-command",
+        "43117",
+    ] {
+        assert!(!diagnostic.contains(private));
+    }
+    assert!(!home.canonical_configuration().exists());
+    assert_file_matches(
+        &home.claude_desktop_configuration(),
+        &claude,
+        "collision handling should preserve Claude Desktop bytes",
+    );
+    assert_file_matches(
+        &home.vscode_configuration(),
+        &vscode,
+        "collision handling should preserve VS Code bytes",
     );
 }
 

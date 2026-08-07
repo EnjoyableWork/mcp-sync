@@ -8,6 +8,7 @@ use crate::filesystem::{
 };
 use crate::paths::MacOsConfigurationPaths;
 use crate::reconciliation::{ReconciliationOutcome, ReconciliationPlan, ServerChanges, reconcile};
+use crate::vscode::{VsCodeAdapter, VsCodeAdapterError, VsCodeDiscovery, VsCodeDocument};
 use crate::windsurf::{WindsurfAdapter, WindsurfAdapterError, WindsurfDiscovery, WindsurfDocument};
 use std::error::Error;
 use std::fmt;
@@ -44,8 +45,14 @@ pub fn plan_sync(
         .map_err(|source| SyncError::DiscoverWindsurf { source })?;
     let windsurf = plan_windsurf(windsurf_adapter, windsurf_discovery, &desired)?;
 
+    let vscode_adapter = VsCodeAdapter::for_macos(paths);
+    let vscode_discovery = vscode_adapter
+        .discover(filesystem)
+        .map_err(|source| SyncError::DiscoverVsCode { source })?;
+    let vscode = plan_vscode(vscode_adapter, vscode_discovery, &desired)?;
+
     Ok(SyncPlan {
-        targets: vec![claude, cursor, windsurf],
+        targets: vec![claude, cursor, windsurf, vscode],
     })
 }
 
@@ -332,6 +339,62 @@ fn plan_windsurf(
     )
 }
 
+fn plan_vscode(
+    adapter: VsCodeAdapter,
+    discovery: VsCodeDiscovery,
+    desired: &CanonicalConfig,
+) -> Result<TargetPlan, SyncError> {
+    let (observed, document) = match discovery {
+        VsCodeDiscovery::Missing => (
+            ObservedFile::Missing,
+            VsCodeDiscovery::Missing.into_document(),
+        ),
+        VsCodeDiscovery::Found(document) => (
+            ObservedFile::Existing(document.original_bytes().to_vec()),
+            document,
+        ),
+    };
+    let unmanaged_entries = document
+        .unmanaged_server_names()
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    let reconciliation = reconcile(document.canonical_config(), desired);
+    let rendered = document
+        .render_plan(&reconciliation)
+        .map_err(|source| SyncError::RenderVsCode { source })?;
+    let changed = rendered.changed();
+    let replacement = rendered.into_bytes();
+    let verified =
+        VsCodeDocument::parse(&replacement).map_err(|source| SyncError::RenderVsCode { source })?;
+    let verified_unmanaged = verified
+        .unmanaged_server_names()
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    if !rendered_config_with_unmanaged_matches_plan(
+        document.canonical_config(),
+        desired,
+        verified.canonical_config(),
+        &unmanaged_entries,
+        &verified_unmanaged,
+    ) {
+        return Err(SyncError::InconsistentRenderedPlan {
+            target: Target::VsCode,
+        });
+    }
+
+    TargetPlan::new(
+        Target::VsCode,
+        adapter.configuration_path().to_owned(),
+        observed,
+        replacement,
+        reconciliation,
+        changed,
+        unmanaged_entries,
+    )
+}
+
 fn rendered_config_with_unmanaged_matches_plan(
     current: &CanonicalConfig,
     desired: &CanonicalConfig,
@@ -466,6 +529,7 @@ pub(crate) enum Target {
     ClaudeDesktop,
     Cursor,
     Windsurf,
+    VsCode,
 }
 
 impl fmt::Display for Target {
@@ -474,6 +538,7 @@ impl fmt::Display for Target {
             Self::ClaudeDesktop => formatter.write_str("Claude Desktop"),
             Self::Cursor => formatter.write_str("Cursor"),
             Self::Windsurf => formatter.write_str("Windsurf"),
+            Self::VsCode => formatter.write_str("VS Code"),
         }
     }
 }
@@ -766,6 +831,8 @@ pub enum SyncError {
     RenderCursor { source: CursorAdapterError },
     DiscoverWindsurf { source: WindsurfAdapterError },
     RenderWindsurf { source: WindsurfAdapterError },
+    DiscoverVsCode { source: VsCodeAdapterError },
+    RenderVsCode { source: VsCodeAdapterError },
     InconsistentRenderedPlan { target: Target },
     ApplyTransaction { targets: Vec<TargetReport> },
 }
@@ -818,6 +885,14 @@ impl fmt::Display for SyncError {
                 formatter,
                 "cannot render the validated Windsurf sync plan: {source}; no target files were changed"
             ),
+            Self::DiscoverVsCode { source } => write!(
+                formatter,
+                "cannot plan VS Code sync: {source}; no target files were changed"
+            ),
+            Self::RenderVsCode { source } => write!(
+                formatter,
+                "cannot render the validated VS Code sync plan: {source}; no target files were changed"
+            ),
             Self::InconsistentRenderedPlan { target } => write!(
                 formatter,
                 "{target} adapter produced bytes inconsistent with its validated reconciliation plan; no target files were changed"
@@ -853,6 +928,7 @@ impl Error for SyncError {
             Self::DiscoverClaude { source } | Self::RenderClaude { source } => Some(source),
             Self::DiscoverCursor { source } | Self::RenderCursor { source } => Some(source),
             Self::DiscoverWindsurf { source } | Self::RenderWindsurf { source } => Some(source),
+            Self::DiscoverVsCode { source } | Self::RenderVsCode { source } => Some(source),
             Self::ApplyTransaction { targets } => targets.iter().find_map(|target| {
                 if let TargetStatus::Failed { source, .. } = &target.status {
                     Some(source as &(dyn Error + 'static))
@@ -1012,7 +1088,7 @@ mod tests {
         let debug = format!("{plan:?}");
         let dry_run = dry_run(&plan).to_string();
 
-        assert_eq!(plan.target_count(), 3);
+        assert_eq!(plan.target_count(), 4);
         for private in [
             "private-command-value",
             "private-argument-value",
@@ -1021,10 +1097,11 @@ mod tests {
             assert!(!debug.contains(private));
             assert!(!dry_run.contains(private));
         }
-        assert!(dry_run.contains("Dry run validated 3 targets; no files changed."));
+        assert!(dry_run.contains("Dry run validated 4 targets; no files changed."));
         assert!(dry_run.contains("Claude Desktop: would create"));
         assert!(dry_run.contains("Cursor: would create"));
         assert!(dry_run.contains("Windsurf: would create"));
+        assert!(dry_run.contains("VS Code: would create"));
         assert!(!paths.user_home().join(".cursor/mcp.json").exists());
         assert!(
             !paths
@@ -1032,10 +1109,16 @@ mod tests {
                 .join(".codeium/windsurf/mcp_config.json")
                 .exists()
         );
+        assert!(
+            !paths
+                .application_support()
+                .join("Code/User/mcp.json")
+                .exists()
+        );
 
         let report = apply_sync(&plan, &crate::filesystem::OsFileSystem)
             .expect("the exact planned bytes should apply");
-        assert!(report.to_string().contains("Sync completed for 3 targets."));
+        assert!(report.to_string().contains("Sync completed for 4 targets."));
         assert!(paths.user_home().join(".cursor/mcp.json").is_file());
         assert!(
             paths
@@ -1047,6 +1130,12 @@ mod tests {
             paths
                 .application_support()
                 .join("Claude/claude_desktop_config.json")
+                .is_file()
+        );
+        assert!(
+            paths
+                .application_support()
+                .join("Code/User/mcp.json")
                 .is_file()
         );
 
@@ -1074,11 +1163,15 @@ mod tests {
         let windsurf_path = WindsurfAdapter::for_macos(&paths)
             .configuration_path()
             .to_owned();
+        let vscode_path = VsCodeAdapter::for_macos(&paths)
+            .configuration_path()
+            .to_owned();
         for path in [
             paths.canonical_configuration(),
             &claude_path,
             &cursor_path,
             &windsurf_path,
+            &vscode_path,
         ] {
             fs::create_dir_all(path.parent().expect("a fixture path has a parent"))
                 .expect("fixture directories should be created");
@@ -1091,6 +1184,7 @@ mod tests {
         fs::write(&claude_path, b"{}\n").expect("Claude fixture should be written");
         fs::write(&cursor_path, b"{}\n").expect("Cursor fixture should be written");
         fs::write(&windsurf_path, b"{}\n").expect("Windsurf fixture should be written");
+        fs::write(&vscode_path, b"{}\n").expect("VS Code fixture should be written");
 
         let plan = plan_sync(&paths, &crate::filesystem::OsFileSystem)
             .expect("the original exact bytes should plan");
@@ -1104,6 +1198,7 @@ mod tests {
         assert!(diagnostic.contains("Claude Desktop: update failed"));
         assert!(diagnostic.contains("Cursor: not attempted after an earlier failure"));
         assert!(diagnostic.contains("Windsurf: not attempted after an earlier failure"));
+        assert!(diagnostic.contains("VS Code: not attempted after an earlier failure"));
         assert_eq!(
             fs::read(&claude_path).expect("the concurrent target should remain readable"),
             concurrent
@@ -1116,9 +1211,14 @@ mod tests {
             fs::read(&windsurf_path).expect("the final target should remain readable"),
             b"{}\n"
         );
+        assert_eq!(
+            fs::read(&vscode_path).expect("the fourth target should remain readable"),
+            b"{}\n"
+        );
         assert!(!backup_path(&claude_path).exists());
         assert!(!backup_path(&cursor_path).exists());
         assert!(!backup_path(&windsurf_path).exists());
+        assert!(!backup_path(&vscode_path).exists());
         for private in [
             "private-command-value",
             "private-argument-value",
@@ -1169,7 +1269,7 @@ mod tests {
         }
     }
 
-    fn three_create_plan() -> (tempfile::TempDir, SyncPlan) {
+    fn four_create_plan() -> (tempfile::TempDir, SyncPlan) {
         let fixture = tempfile::tempdir().expect("temporary sync fixture should be created");
         let paths = fixture_paths(fixture.path());
         fs::create_dir_all(
@@ -1189,7 +1289,7 @@ mod tests {
         (fixture, plan)
     }
 
-    fn three_update_plan() -> (tempfile::TempDir, SyncPlan) {
+    fn four_update_plan() -> (tempfile::TempDir, SyncPlan) {
         let fixture = tempfile::tempdir().expect("temporary sync fixture should be created");
         let paths = fixture_paths(fixture.path());
         let claude_path = ClaudeDesktopAdapter::for_macos(&paths)
@@ -1201,11 +1301,15 @@ mod tests {
         let windsurf_path = WindsurfAdapter::for_macos(&paths)
             .configuration_path()
             .to_owned();
+        let vscode_path = VsCodeAdapter::for_macos(&paths)
+            .configuration_path()
+            .to_owned();
         for path in [
             paths.canonical_configuration(),
             &claude_path,
             &cursor_path,
             &windsurf_path,
+            &vscode_path,
         ] {
             fs::create_dir_all(path.parent().expect("a fixture path has a parent"))
                 .expect("fixture directories should be created");
@@ -1218,14 +1322,15 @@ mod tests {
         fs::write(&claude_path, b"{}\n").expect("Claude fixture should be written");
         fs::write(&cursor_path, b"{}\n").expect("Cursor fixture should be written");
         fs::write(&windsurf_path, b"{}\n").expect("Windsurf fixture should be written");
+        fs::write(&vscode_path, b"{}\n").expect("VS Code fixture should be written");
         let plan = plan_sync(&paths, &crate::filesystem::OsFileSystem)
-            .expect("three existing targets should plan updates");
+            .expect("four existing targets should plan updates");
         (fixture, plan)
     }
 
     #[test]
     fn a_forced_second_target_failure_rolls_back_the_first_in_reverse_order() {
-        let (_fixture, plan) = three_create_plan();
+        let (_fixture, plan) = four_create_plan();
         let filesystem = ForcedFailureFileSystem {
             apply_count: std::cell::Cell::new(0),
             rollback_count: std::cell::Cell::new(0),
@@ -1244,6 +1349,7 @@ mod tests {
         assert!(diagnostic.contains("Claude Desktop: rolled back after creation"));
         assert!(diagnostic.contains("Cursor: create failed"));
         assert!(diagnostic.contains("Windsurf: not attempted after an earlier failure"));
+        assert!(diagnostic.contains("VS Code: not attempted after an earlier failure"));
         for private in [
             "private-command-value",
             "private-argument-value",
@@ -1255,7 +1361,7 @@ mod tests {
 
     #[test]
     fn a_forced_third_target_failure_rolls_back_both_prior_targets_in_reverse_order() {
-        let (_fixture, plan) = three_create_plan();
+        let (_fixture, plan) = four_create_plan();
         let filesystem = ForcedFailureFileSystem {
             apply_count: std::cell::Cell::new(0),
             rollback_count: std::cell::Cell::new(0),
@@ -1274,11 +1380,36 @@ mod tests {
         assert!(diagnostic.contains("Claude Desktop: rolled back after creation"));
         assert!(diagnostic.contains("Cursor: rolled back after creation"));
         assert!(diagnostic.contains("Windsurf: create failed"));
+        assert!(diagnostic.contains("VS Code: not attempted after an earlier failure"));
+    }
+
+    #[test]
+    fn a_forced_fourth_target_failure_rolls_back_all_prior_targets_in_reverse_order() {
+        let (_fixture, plan) = four_create_plan();
+        let filesystem = ForcedFailureFileSystem {
+            apply_count: std::cell::Cell::new(0),
+            rollback_count: std::cell::Cell::new(0),
+            rollback_receipts: std::cell::RefCell::new(Vec::new()),
+            fail_at: 3,
+            fail_rollback: false,
+        };
+
+        let error = apply_sync(&plan, &filesystem)
+            .expect_err("the injected fourth target failure should abort apply");
+        let diagnostic = error.to_string();
+
+        assert_eq!(filesystem.apply_count.get(), 4);
+        assert_eq!(filesystem.rollback_count.get(), 3);
+        assert_eq!(*filesystem.rollback_receipts.borrow(), [2, 1, 0]);
+        assert!(diagnostic.contains("Claude Desktop: rolled back after creation"));
+        assert!(diagnostic.contains("Cursor: rolled back after creation"));
+        assert!(diagnostic.contains("Windsurf: rolled back after creation"));
+        assert!(diagnostic.contains("VS Code: create failed"));
     }
 
     #[test]
     fn rollback_failure_is_non_successful_and_explicit_per_target() {
-        let (_fixture, plan) = three_create_plan();
+        let (_fixture, plan) = four_create_plan();
         let filesystem = ForcedFailureFileSystem {
             apply_count: std::cell::Cell::new(0),
             rollback_count: std::cell::Cell::new(0),
@@ -1298,7 +1429,7 @@ mod tests {
 
     #[test]
     fn rollback_failure_after_update_reports_the_actionable_recovery_backup() {
-        let (_fixture, plan) = three_update_plan();
+        let (_fixture, plan) = four_update_plan();
         let expected_backup = backup_path(&plan.targets[0].path);
         let filesystem = ForcedFailureFileSystem {
             apply_count: std::cell::Cell::new(0),

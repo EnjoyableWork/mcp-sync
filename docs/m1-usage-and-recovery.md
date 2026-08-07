@@ -1,12 +1,13 @@
 # Source-checkout usage and recovery guide
 
 This guide describes the currently implemented source-checkout behavior of
-`mcp-sync`: the completed M1 foundation plus the global Windsurf adapter added
-by `MCP-014`. It is the operational companion to the
+`mcp-sync`: the completed M1 foundation plus the global Windsurf and native VS
+Code adapters added by `MCP-014` and `MCP-015`. It is the operational companion
+to the
 [north-star README](../README.md), not a replacement for that product
 specification. Use it when building from source on macOS and reconciling the
-three implemented global targets: Claude Desktop, Cursor, and Windsurf's
-legacy Cascade configuration.
+four implemented global targets: Claude Desktop, Cursor, Windsurf's legacy
+Cascade configuration, and VS Code's native default user profile.
 
 ## Current supported journey
 
@@ -14,15 +15,15 @@ legacy Cascade configuration.
 | --- | --- |
 | Platform | macOS |
 | Canonical format | Strict JSON schema version `1` for local STDIO servers |
-| Client targets | Global Claude Desktop, global Cursor, and global Windsurf legacy Cascade configuration |
+| Client targets | Global Claude Desktop, global Cursor, global Windsurf legacy Cascade configuration, and native VS Code default user profile |
 | Commands | `init`, `add`, `list`, `sync --dry-run`, and `sync` |
 | Safety | Structural redaction, plan-first validation, atomic replacement, recoverable backups, no-op detection, and reverse-order transaction rollback |
 | Installation | Build and run from a source checkout |
 
 `init`, `sync --dry-run`, and `sync` are configuration operations. They never
-start a configured MCP server. Health testing, VS Code and Codex adapters,
-additional platforms, packaged installation, explicit prune behavior, and a
-built-in restore command remain later work tracked in
+start a configured MCP server. Health testing, the Codex adapter, additional
+platforms, packaged installation, explicit prune behavior, and a built-in
+restore command remain later work tracked in
 [PROJECT.md](../PROJECT.md).
 
 ## Build and verify the checkout
@@ -47,12 +48,27 @@ named `mcp-sync` once a verified distribution channel exists.
 | Claude Desktop global target | `$HOME/Library/Application Support/Claude/claude_desktop_config.json` |
 | Cursor global target | `$HOME/.cursor/mcp.json` |
 | Windsurf global legacy Cascade target | `$HOME/.codeium/windsurf/mcp_config.json` |
+| VS Code native default user-profile target | `$HOME/Library/Application Support/Code/User/mcp.json` |
 
 Project-level `.cursor/mcp.json` files are outside the ownership boundary and
 remain untouched. `mcp-sync` also preserves unknown top-level data and fields
 outside `command`, `args`, and `env` in compatible local server entries.
 Commandless Cursor and Windsurf entries remain unmanaged, including native
-remote URLs, headers, authentication options, and tool settings.
+remote URLs, headers, authentication options, and tool settings. VS Code root
+`servers` entries are managed only when they are compatible local STDIO
+definitions with a string `command`, string-array `args`, and string-valued
+`env`. Remote transports, opaque entries, and otherwise valid local entries
+with number or null environment values remain unmanaged; root `inputs`,
+`sandbox`, and unknown fields are preserved.
+
+The VS Code boundary is exactly the native default user-profile file above. It
+does not discover or mutate workspace `.vscode/mcp.json` or `.mcp.json`, named
+profiles under `Code/User/profiles`, remote profiles, VS Code Insiders,
+portable installations, Cline or Roo Code extension stores, Cline's shared
+settings, or Agent Host/Copilot CLI configuration. The native user-profile
+contract follows the [VS Code MCP configuration
+reference](https://code.visualstudio.com/docs/agents/reference/mcp-configuration);
+it is not a claim that extension-owned formats are interchangeable.
 
 [Current vendor documentation](https://docs.windsurf.com/windsurf/cascade/mcp)
 identifies Windsurf's `mcp_config.json` as the legacy Cascade agent
@@ -66,9 +82,10 @@ contents into terminal output, bug reports, or chat.
 
 ## Safe first import
 
-Quit Claude Desktop, Cursor, and Windsurf before a first import so their native
-files stay stable while they are read. `init` reads all three global targets
-and creates the canonical file only when it does not already exist:
+Quit Claude Desktop, Cursor, Windsurf, and VS Code before a first import so
+their native files stay stable while they are read. `init` reads all four
+global targets and creates the canonical file only when it does not already
+exist:
 
 ```bash
 ./target/debug/mcp-sync init
@@ -81,15 +98,15 @@ The operation has these outcomes:
 - Conflicting definitions stop the operation without creating canonical state.
   The diagnostic names the server, clients, and differing field categories,
   but not commands, arguments, or environment values.
-- Named commandless Cursor and Windsurf entries are preserved in their native
-  files and reported as skipped because canonical schema v1 cannot represent
-  them.
-- A local definition that collides with a commandless entry is an error.
+- Named unmanaged Cursor, Windsurf, and VS Code entries are preserved in their
+  native files and reported as skipped because canonical schema v1 cannot
+  represent them.
+- A local definition that collides with an unmanaged entry is an error.
 - An existing canonical path is never overwritten. Move it aside only after
   deciding which copy is authoritative; do not delete it merely to make
   `init` succeed.
-- All three client files and project-level Cursor files are read-only during
-  `init`.
+- All four native client files are read-only during `init`; excluded project,
+  profile, extension-owned, and alternate-product files are never accessed.
 
 After a successful import, inspect the redacted catalog:
 
@@ -132,21 +149,22 @@ Always review the complete plan before applying it:
 ./target/debug/mcp-sync sync --dry-run
 ```
 
-Dry-run validates the canonical file and all three native documents, renders and
-reparses every proposed output, and reports every target without changing a
-file or creating a backup. The plan can contain:
+Dry-run validates the canonical file and all four native documents, renders
+and reparses every proposed output, and reports every target without changing
+a file or creating a backup. The plan can contain:
 
 - `add` for a canonical server missing from a target;
 - `update` for a compatible local entry whose owned fields differ;
 - `no-op` for an exact normalized match;
 - `drift` for a target-only entry that will be preserved; and
-- unmanaged Cursor and Windsurf names that remain structurally untouched.
+- unmanaged Cursor, Windsurf, and VS Code names that remain structurally
+  untouched.
 
 The report exposes names, counts, environment key names, and changed-field
 categories only. It never prints process values.
 
-After the plan is understood, quit Claude Desktop, Cursor, and Windsurf and
-apply it:
+After the plan is understood, quit Claude Desktop, Cursor, Windsurf, and VS
+Code and apply it:
 
 ```bash
 ./target/debug/mcp-sync sync
@@ -155,8 +173,9 @@ apply it:
 Apply consumes the already validated plan; it does not recalculate a different
 desired state. Existing changed targets receive exact `.bak` files before
 same-directory atomic replacement. Missing changed targets are created without
-a prior-file backup. Target-only entries, unowned native fields, commandless
-Cursor and Windsurf entries, and project-level Cursor files remain untouched.
+a prior-file backup. Target-only entries, unowned native fields, unmanaged
+Cursor, Windsurf, and VS Code entries, and excluded project/profile/extension
+files remain untouched.
 
 Reopen the clients only after `sync` finishes. Then repeat both checks:
 
@@ -165,7 +184,7 @@ Reopen the clients only after `sync` finishes. Then repeat both checks:
 ./target/debug/mcp-sync sync
 ```
 
-A settled configuration reports all three targets unchanged. Neither command
+A settled configuration reports all four targets unchanged. Neither command
 rewrites native bytes or replaces existing backups for a no-op.
 
 ## Backup and transaction behavior
@@ -178,15 +197,16 @@ The current implementation uses one adjacent backup slot per existing file:
 | Claude Desktop changed by `sync` | `$HOME/Library/Application Support/Claude/claude_desktop_config.json.bak` |
 | Cursor changed by `sync` | `$HOME/.cursor/mcp.json.bak` |
 | Windsurf changed by `sync` | `$HOME/.codeium/windsurf/mcp_config.json.bak` |
+| VS Code changed by `sync` | `$HOME/Library/Application Support/Code/User/mcp.json.bak` |
 
 Each changed write replaces the regular `.bak` with the bytes observed
 immediately before that write. A no-op leaves the backup untouched. If a longer
 history is important, copy the current file and its backup to a separate,
 access-controlled location before making another change.
 
-`sync` is one three-target transaction. Claude Desktop is applied first,
-Cursor second, and Windsurf third. If a later target fails, earlier changes
-are rolled back in reverse order:
+`sync` is one four-target transaction. Claude Desktop is applied first, Cursor
+second, Windsurf third, and VS Code fourth. If a later target fails, earlier
+changes are rolled back in reverse order:
 
 - an updated file and any backup that existed before the transaction are
   restored exactly;
@@ -290,6 +310,12 @@ For Windsurf, replace the `target=` line with:
 target="$HOME/.codeium/windsurf/mcp_config.json"
 ```
 
+For VS Code's native default user profile, replace the `target=` line with:
+
+```zsh
+target="$HOME/Library/Application Support/Code/User/mcp.json"
+```
+
 For the default canonical path, replace the `target=` line with:
 
 ```zsh
@@ -315,10 +341,10 @@ promise:
 
 - The current implementation is verified on macOS only and runs from a Rust
   source checkout.
-- Only global Claude Desktop, global Cursor, and Windsurf's global legacy
-  Cascade JSON are managed. The Windsurf boundary has fixture and built-binary
-  evidence but no current-client smoke claim. VS Code, Codex, Linux, and
-  Windows remain later main-story work.
+- Only global Claude Desktop, global Cursor, Windsurf's global legacy Cascade
+  JSON, and VS Code's native default user-profile JSON are managed. Windsurf
+  and VS Code have fixture and built-binary evidence but no current-client
+  smoke claim. Codex, Linux, and Windows remain later main-story work.
 - Canonical schema v1 represents local STDIO definitions with `command`,
   ordered `args`, and literal `env` only. Remote transports, OAuth, working
   directories, and secret references are not canonical capabilities yet.
