@@ -232,7 +232,7 @@ fn plan_cursor(
         .unmanaged_server_names()
         .into_iter()
         .map(str::to_owned)
-        .collect();
+        .collect::<Vec<_>>();
     let reconciliation = reconcile(document.canonical_config(), desired);
     let rendered = document
         .render_plan(&reconciliation)
@@ -246,12 +246,13 @@ fn plan_cursor(
         .into_iter()
         .map(str::to_owned)
         .collect::<Vec<_>>();
-    if !rendered_config_matches_plan(
+    if !rendered_cursor_matches_plan(
         document.canonical_config(),
         desired,
         verified.canonical_config(),
-    ) || verified_unmanaged != unmanaged_entries
-    {
+        &unmanaged_entries,
+        &verified_unmanaged,
+    ) {
         return Err(SyncError::InconsistentRenderedPlan {
             target: Target::Cursor,
         });
@@ -266,6 +267,17 @@ fn plan_cursor(
         changed,
         unmanaged_entries,
     )
+}
+
+fn rendered_cursor_matches_plan(
+    current: &CanonicalConfig,
+    desired: &CanonicalConfig,
+    rendered: &CanonicalConfig,
+    expected_unmanaged: &[String],
+    rendered_unmanaged: &[String],
+) -> bool {
+    rendered_config_matches_plan(current, desired, rendered)
+        && rendered_unmanaged == expected_unmanaged
 }
 
 fn rendered_config_matches_plan(
@@ -782,7 +794,9 @@ impl Error for SyncError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::CanonicalServer;
     use crate::paths::Environment;
+    use std::collections::BTreeMap;
     use std::ffi::OsString;
     use std::fs;
     use std::path::Path;
@@ -812,6 +826,92 @@ mod tests {
   }
 }
 "#
+    }
+
+    fn canonical(entries: &[(&str, &str)]) -> CanonicalConfig {
+        CanonicalConfig::new(
+            entries
+                .iter()
+                .map(|(name, command)| {
+                    (
+                        (*name).to_owned(),
+                        CanonicalServer::new(*command, Vec::new(), BTreeMap::new()),
+                    )
+                })
+                .collect(),
+        )
+        .expect("the synthetic canonical config should be valid")
+    }
+
+    #[test]
+    fn rendered_plan_verification_requires_the_exact_desired_union_and_drift_values() {
+        let current = canonical(&[("local", "local-private-command"), ("managed", "old")]);
+        let desired = canonical(&[("managed", "new-private-command")]);
+        let valid = canonical(&[
+            ("local", "local-private-command"),
+            ("managed", "new-private-command"),
+        ]);
+        assert!(rendered_config_matches_plan(&current, &desired, &valid));
+
+        let wrong_desired = canonical(&[
+            ("local", "local-private-command"),
+            ("managed", "wrong-private-command"),
+        ]);
+        assert!(
+            !rendered_config_matches_plan(&current, &desired, &wrong_desired),
+            "matching server count must not hide an incorrect desired definition"
+        );
+
+        let lost_drift = canonical(&[
+            ("managed", "new-private-command"),
+            ("rogue", "rogue-private-command"),
+        ]);
+        assert!(
+            !rendered_config_matches_plan(&current, &desired, &lost_drift),
+            "an unrelated server must not substitute for preserved target-only drift"
+        );
+
+        let missing = canonical(&[("managed", "new-private-command")]);
+        assert!(
+            !rendered_config_matches_plan(&current, &desired, &missing),
+            "rendered output must contain the complete server union"
+        );
+    }
+
+    #[test]
+    fn cursor_render_verification_requires_canonical_and_unmanaged_preservation() {
+        let current = canonical(&[("managed", "old-private-command")]);
+        let desired = canonical(&[("managed", "new-private-command")]);
+        let rendered = desired.clone();
+        let expected_unmanaged = vec!["remote-only".to_owned()];
+
+        assert!(rendered_cursor_matches_plan(
+            &current,
+            &desired,
+            &rendered,
+            &expected_unmanaged,
+            &expected_unmanaged,
+        ));
+        assert!(
+            !rendered_cursor_matches_plan(
+                &current,
+                &desired,
+                &rendered,
+                &expected_unmanaged,
+                &["different-remote".to_owned()],
+            ),
+            "canonical equality must not hide an unmanaged-name change"
+        );
+        assert!(
+            !rendered_cursor_matches_plan(
+                &current,
+                &desired,
+                &current,
+                &expected_unmanaged,
+                &expected_unmanaged,
+            ),
+            "unmanaged equality must not hide an incorrect managed definition"
+        );
     }
 
     #[test]
@@ -982,6 +1082,31 @@ mod tests {
         (fixture, plan)
     }
 
+    fn two_update_plan() -> (tempfile::TempDir, SyncPlan) {
+        let fixture = tempfile::tempdir().expect("temporary sync fixture should be created");
+        let paths = fixture_paths(fixture.path());
+        let claude_path = ClaudeDesktopAdapter::for_macos(&paths)
+            .configuration_path()
+            .to_owned();
+        let cursor_path = CursorAdapter::for_macos(&paths)
+            .configuration_path()
+            .to_owned();
+        for path in [paths.canonical_configuration(), &claude_path, &cursor_path] {
+            fs::create_dir_all(path.parent().expect("a fixture path has a parent"))
+                .expect("fixture directories should be created");
+        }
+        fs::write(
+            paths.canonical_configuration(),
+            canonical_with_private_values(),
+        )
+        .expect("canonical fixture should be written");
+        fs::write(&claude_path, b"{}\n").expect("Claude fixture should be written");
+        fs::write(&cursor_path, b"{}\n").expect("Cursor fixture should be written");
+        let plan = plan_sync(&paths, &crate::filesystem::OsFileSystem)
+            .expect("two existing targets should plan updates");
+        (fixture, plan)
+    }
+
     #[test]
     fn a_forced_second_target_failure_rolls_back_the_first_in_reverse_order() {
         let (_fixture, plan) = two_create_plan();
@@ -1025,5 +1150,44 @@ mod tests {
         assert_eq!(filesystem.rollback_count.get(), 1);
         assert!(diagnostic.contains("Claude Desktop: ROLLBACK FAILED after creation"));
         assert!(diagnostic.contains("Cursor: create failed"));
+    }
+
+    #[test]
+    fn rollback_failure_after_update_reports_the_actionable_recovery_backup() {
+        let (_fixture, plan) = two_update_plan();
+        let expected_backup = backup_path(&plan.targets[0].path);
+        let filesystem = ForcedFailureFileSystem {
+            apply_count: std::cell::Cell::new(0),
+            rollback_count: std::cell::Cell::new(0),
+            fail_rollback: true,
+        };
+
+        let error = apply_sync(&plan, &filesystem)
+            .expect_err("a failed update rollback must keep the transaction unsuccessful");
+        let SyncError::ApplyTransaction { targets } = &error else {
+            panic!("apply failure should retain per-target outcomes");
+        };
+        assert!(matches!(
+            &targets[0].status,
+            TargetStatus::RollbackFailed {
+                mutation: MutationKind::Update,
+                backup: Some(backup),
+                ..
+            } if backup == &expected_backup
+        ));
+        let diagnostic = error.to_string();
+        assert!(
+            diagnostic.contains("Claude Desktop: ROLLBACK FAILED after update")
+                && diagnostic.contains("inspect the target and recovery backup at")
+                && diagnostic.contains(&expected_backup.to_string_lossy().to_string()),
+            "an update rollback failure should name its recovery backup"
+        );
+        for private in [
+            "private-command-value",
+            "private-argument-value",
+            "private-environment-value",
+        ] {
+            assert!(!diagnostic.contains(private));
+        }
     }
 }

@@ -528,7 +528,10 @@ mod tests {
         assert_eq!(filesystem.reads.get(), 1);
         assert!(filesystem.replacements.borrow().is_empty());
         assert!(!report.to_string().contains("private"));
-        assert_eq!(filesystem.current, current);
+        assert!(
+            filesystem.current == current,
+            "a no-op should preserve exact canonical bytes"
+        );
     }
 
     #[test]
@@ -555,7 +558,10 @@ mod tests {
         for private_value in ["private-command", "private-argument", "private-value"] {
             assert!(!diagnostic.contains(private_value));
         }
-        assert_eq!(filesystem.current, current);
+        assert!(
+            filesystem.current == current,
+            "a rejected replacement should preserve exact canonical bytes"
+        );
         assert_eq!(filesystem.replacements.borrow().len(), 1);
     }
 
@@ -589,7 +595,10 @@ mod tests {
         assert_eq!(report.outcome, UpsertOutcome::Updated);
         let replacements = filesystem.replacements.borrow();
         assert_eq!(replacements.len(), 1);
-        assert_eq!(replacements[0].0, current);
+        assert!(
+            replacements[0].0 == current,
+            "the writer should receive exact original canonical bytes"
+        );
         let desired = CanonicalConfig::parse_json(
             std::str::from_utf8(&replacements[0].1).expect("desired bytes should be UTF-8"),
         )
@@ -602,8 +611,11 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["alpha", "zeta"]
         );
-        assert_eq!(desired.servers()["zeta"].command(), "zeta-command");
-        assert_eq!(desired.servers()["alpha"].command(), "new-command");
+        assert!(
+            desired.servers()["zeta"].command() == "zeta-command"
+                && desired.servers()["alpha"].command() == "new-command",
+            "the update should preserve one definition and replace the requested one"
+        );
     }
 
     #[test]

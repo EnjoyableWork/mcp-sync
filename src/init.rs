@@ -481,7 +481,10 @@ mod tests {
             .expect("the merged map should be valid")
             .to_canonical_json()
             .expect("the merged map should serialize");
-        assert_eq!(forward_json, reverse_json);
+        assert!(
+            forward_json == reverse_json,
+            "discovery order should not change canonical bytes"
+        );
         assert_eq!(reverse.skipped_cursor_entries, ["remote-only"]);
         assert!(forward_json.find("alpha").unwrap() < forward_json.find("shared").unwrap());
         assert!(forward_json.find("shared").unwrap() < forward_json.find("zeta").unwrap());

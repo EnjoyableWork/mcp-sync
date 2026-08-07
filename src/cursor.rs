@@ -783,8 +783,14 @@ mod tests {
             .expect("the same fixture plan should render deterministically");
 
         assert!(first.changed());
-        assert_eq!(first.bytes(), second.bytes());
-        assert_eq!(first.bytes(), MERGED_FIXTURE);
+        assert!(
+            first.bytes() == second.bytes(),
+            "the same plan should render deterministic bytes"
+        );
+        assert!(
+            first.bytes() == MERGED_FIXTURE,
+            "rendered bytes should match the reviewed merged fixture"
+        );
 
         let merged = CursorDocument::parse(first.bytes())
             .expect("rendered Cursor fixture should parse again");
@@ -841,15 +847,20 @@ mod tests {
             .render_plan(&reconcile(document.canonical_config(), &desired_config()))
             .expect("global Cursor plan should render in memory");
 
-        assert_eq!(rendered.bytes(), MERGED_FIXTURE);
-        assert_eq!(
-            fs::read(global_path).expect("global fixture should remain readable"),
-            CURRENT_FIXTURE
+        assert!(
+            rendered.bytes() == MERGED_FIXTURE,
+            "global rendering should match the reviewed merged fixture"
+        );
+        assert!(
+            fs::read(global_path).expect("global fixture should remain readable")
+                == CURRENT_FIXTURE,
+            "in-memory rendering should preserve the global file"
         );
         for project_path in project_paths {
-            assert_eq!(
-                fs::read(project_path).expect("project fixture should remain readable"),
-                PROJECT_FIXTURE
+            assert!(
+                fs::read(project_path).expect("project fixture should remain readable")
+                    == PROJECT_FIXTURE,
+                "global rendering should preserve project files"
             );
         }
     }
@@ -871,7 +882,10 @@ mod tests {
         assert!(!plan.requires_mutation());
         assert!(plan.has_drift());
         assert!(!rendered.changed());
-        assert_eq!(rendered.bytes(), CURRENT_FIXTURE);
+        assert!(
+            rendered.bytes() == CURRENT_FIXTURE,
+            "non-mutating work should preserve exact native bytes"
+        );
     }
 
     #[test]
@@ -919,7 +933,10 @@ mod tests {
         assert!(document.canonical_config().servers().is_empty());
         assert_eq!(document.preserved_root_fields(), ["futureSetting"]);
         assert!(!rendered.changed());
-        assert_eq!(rendered.bytes(), bytes);
+        assert!(
+            rendered.bytes() == bytes,
+            "an empty plan should preserve exact native bytes"
+        );
     }
 
     #[test]
@@ -972,7 +989,10 @@ mod tests {
             ["headers", "url"]
         );
         assert!(!rendered.changed());
-        assert_eq!(rendered.bytes(), bytes);
+        assert!(
+            rendered.bytes() == bytes,
+            "unmanaged-only rendering should preserve exact native bytes"
+        );
     }
 
     #[test]
@@ -1158,6 +1178,9 @@ mod tests {
 
         assert!(debug.contains("byte_count"));
         assert!(!debug.contains("fixture-cursor-added-secret"));
-        assert_eq!(rendered.into_bytes(), MERGED_FIXTURE);
+        assert!(
+            rendered.into_bytes() == MERGED_FIXTURE,
+            "consumed rendered bytes should match the reviewed fixture"
+        );
     }
 }

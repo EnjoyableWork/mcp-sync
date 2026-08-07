@@ -74,10 +74,12 @@ detection, recoverable backups, atomic replacement, per-target outcomes, and
 reverse-order rollback after a later failure. It preserves target-only and
 unowned native data, reports commandless Cursor entries without exposing their
 values, and never touches a project-level Cursor file. No implemented command
-starts configured server processes. Controlled current-client verification,
-other client adapters, and process behavior remain later-ticket scope. Use the
-existing Clap command tree as CLI behavior grows; do not introduce a second
-parser.
+starts configured server processes. A combined built-binary synthetic-home
+suite proves the complete M1 command flow, deterministic import, redaction,
+idempotence, native preservation, non-zero failures, and transaction rollback.
+Controlled current-client verification, other client adapters, and process
+behavior remain later-ticket scope. Use the existing Clap command tree as CLI
+behavior grows; do not introduce a second parser.
 
 “Extensible” currently means:
 
