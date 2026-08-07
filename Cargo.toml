@@ -1,0 +1,15 @@
+[package]
+name = "enjoyable-mcp-sync"
+version = "0.1.0"
+edition = "2024"
+description = "Synchronize local Model Context Protocol server configurations"
+license = "MIT"
+repository = "https://github.com/EnjoyableWork/mcp-sync"
+readme = "README.md"
+
+[[bin]]
+name = "mcp-sync"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.6.6", features = ["derive"] }

@@ -148,6 +148,14 @@ while preserving unrelated Codex settings.
 
 ## 🤝 Contributing
 
+To build and verify `mcp-sync` from a source checkout:
+
+```bash
+cargo build --locked
+cargo run --locked -- --help
+cargo test --all-targets --locked
+```
+
 Contributions are welcome! Feel free to submit a pull request:
 
 1. Fork the repository.

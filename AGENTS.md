@@ -50,6 +50,12 @@ cohesive internal modules. A Cargo workspace, separately published library,
 dynamic plug-in system, daemon, GUI, or remote service requires a current
 consumer and an accepted decision in `PROJECT.md`.
 
+The implemented `MCP-002` slice is one Rust 2024 binary crate with a package
+named `enjoyable-mcp-sync`, an installed binary named `mcp-sync`, and only
+help/version behavior. Use the existing Clap command tree as CLI behavior grows;
+do not introduce a second parser. Configuration, client, sync, filesystem, and
+process behavior remain later-ticket scope.
+
 “Extensible” currently means:
 
 - one client-independent canonical model;
@@ -185,9 +191,10 @@ integrity and redaction as product requirements.
   dependency requirements intentional and use stable releases unless an
   accepted ticket requires otherwise.
 - The product and installed binary are `mcp-sync`, but the crates.io package
-  name `mcp-sync` belongs to an unrelated project. Verify the working package
-  name `enjoyable-mcp-sync` during `MCP-002`; never publish or document
-  `cargo install mcp-sync` for this repository.
+  name `mcp-sync` belongs to an unrelated project. `MCP-002` verified the
+  distinct package name `enjoyable-mcp-sync`; recheck availability immediately
+  before publication and never publish or document `cargo install mcp-sync`
+  for this repository.
 - Do not add an npm package, Node.js wrapper, or JavaScript distribution path
   without a superseding accepted decision. Target GitHub Releases, the
   organization Homebrew tap, WinGet, and the distinctly named Cargo package.
@@ -215,17 +222,16 @@ Do not call live MCP servers or depend on installed desktop clients in the
 default test suite. A bug involving data loss, redaction, conflict handling, or
 rollback requires a regression test.
 
-Once the Rust scaffold exists, the normal substantive-change handoff checks
-are:
+The normal substantive-change handoff checks are:
 
 1. `cargo fmt --all -- --check`
-2. `cargo clippy --workspace --all-targets --all-features -- -D warnings`
-3. `cargo test --workspace --all-targets --all-features`
+2. `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`
+3. `cargo test --workspace --all-targets --all-features --locked`
 4. Any configured dependency, license, schema, or release checks affected by
    the change
 
-For documentation-only work before Cargo tooling exists, run `git diff --check`
-and inspect headings, tables, relative links, code fences, and claims.
+For documentation-only work, also run `git diff --check` and inspect headings,
+tables, relative links, code fences, and claims.
 
 ## Documentation
 
