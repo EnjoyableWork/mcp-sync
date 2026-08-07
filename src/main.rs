@@ -1,5 +1,11 @@
 use clap::Parser;
 
+#[allow(
+    dead_code,
+    reason = "MCP-004 establishes the canonical boundary before later use cases consume it"
+)]
+mod config;
+
 /// Synchronize local Model Context Protocol server configurations.
 #[derive(Debug, Parser)]
 #[command(name = "mcp-sync", version)]
