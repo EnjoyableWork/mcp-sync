@@ -55,12 +55,15 @@ The implemented foundation is one Rust 2024 binary crate with a package named
 help/version CLI behavior. It also contains the strict canonical JSON v1 model,
 an injected macOS configuration-path resolver, a replaceable read-only
 filesystem boundary, and a pure deterministic reconciliation engine with
-structurally redacted plans. A fixture-backed global Claude Desktop macOS
-adapter now discovers and parses native JSON through that read-only boundary,
-then renders plan-driven updates in memory while preserving unowned fields. Use
-the existing Clap command tree as CLI behavior grows; do not introduce a second
-parser. Cursor and other client adapters, application use cases, filesystem
-mutation, and process behavior remain later-ticket scope.
+structurally redacted plans. Fixture-backed global Claude Desktop and Cursor
+macOS adapters now discover and parse native JSON through the read-only
+boundary, then render plan-driven updates in memory while preserving unowned
+fields. The Cursor adapter manages only `~/.cursor/mcp.json`, preserves
+commandless remote entries as unmanaged native data, and cannot resolve
+project-level `.cursor/mcp.json` files. Use the existing Clap command tree as
+CLI behavior grows; do not introduce a second parser. Application use cases,
+filesystem mutation, other client adapters, and process behavior remain
+later-ticket scope.
 
 “Extensible” currently means:
 
@@ -164,6 +167,9 @@ integrity and redaction as product requirements.
 - Preserve fields outside the adapter’s documented ownership boundary.
   Unknown top-level keys and target-specific data must not disappear as a side
   effect of sync.
+- Manage only the global Cursor file at `~/.cursor/mcp.json`. Never discover or
+  mutate a project-level `.cursor/mcp.json`; preserve commandless remote entries
+  structurally, and reject a local canonical addition that collides with one.
 - Treat Codex as one TOML target shared by the ChatGPT desktop app, Codex CLI,
   and IDE extension. Preserve non-MCP settings and unsupported MCP fields
   structurally; never round-trip `~/.codex/config.toml` through a lossy JSON

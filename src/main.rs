@@ -12,6 +12,11 @@ mod claude_desktop;
 mod config;
 #[allow(
     dead_code,
+    reason = "MCP-008 establishes the Cursor adapter before application use cases consume it"
+)]
+mod cursor;
+#[allow(
+    dead_code,
     reason = "MCP-005 establishes the filesystem boundary before later use cases consume it"
 )]
 mod filesystem;
