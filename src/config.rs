@@ -25,10 +25,11 @@ impl CanonicalConfig {
     }
 
     pub fn parse_json(document: &str) -> Result<Self, ConfigError> {
-        let UniqueJsonValue(value) =
-            serde_json::from_str(document).map_err(|error| ConfigError::InvalidJson {
+        let value = parse_unique_json_value(document.as_bytes()).map_err(|error| {
+            ConfigError::InvalidJson {
                 message: error.to_string(),
-            })?;
+            }
+        })?;
 
         Self::from_json_value(value)
     }
@@ -546,6 +547,15 @@ impl TextViolation {
 }
 
 struct UniqueJsonValue(Value);
+
+/// Rejects duplicate keys before using `Value`'s arbitrary-precision decoder.
+///
+/// The validation pass deliberately discards its value: `serde_json::Value`
+/// owns the feature-aware number representation used by the returned tree.
+pub(crate) fn parse_unique_json_value(document: &[u8]) -> Result<Value, serde_json::Error> {
+    let _: UniqueJsonValue = serde_json::from_slice(document)?;
+    serde_json::from_slice(document)
+}
 
 impl<'de> Deserialize<'de> for UniqueJsonValue {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
