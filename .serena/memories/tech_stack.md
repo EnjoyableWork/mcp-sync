@@ -1,7 +1,8 @@
 # Tech stack
 - Rust 2024 is the implementation language. `rust-toolchain.toml` follows the
-  stable toolchain; `MCP-002` passed on Rust/Cargo 1.94.1, and a minimum
-  supported version remains deferred until `MCP-003` CI evidence exists.
+  stable toolchain with rustfmt and Clippy, and `MCP-003` verifies it in CI. A
+  minimum supported version remains unspecified until a lower-bound CI policy
+  is deliberately adopted; current-stable evidence is not an MSRV claim.
 - The single package is `enjoyable-mcp-sync` and installs one `mcp-sync` binary.
   A live crates.io query found that distinct name unclaimed on 2026-08-06; it
   must be rechecked before publication because the unrelated `mcp-sync` package
