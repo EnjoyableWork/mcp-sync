@@ -5,6 +5,16 @@ use clap::Parser;
     reason = "MCP-004 establishes the canonical boundary before later use cases consume it"
 )]
 mod config;
+#[allow(
+    dead_code,
+    reason = "MCP-005 establishes the filesystem boundary before later use cases consume it"
+)]
+mod filesystem;
+#[allow(
+    dead_code,
+    reason = "MCP-005 establishes macOS paths before later adapters consume them"
+)]
+mod paths;
 
 /// Synchronize local Model Context Protocol server configurations.
 #[derive(Debug, Parser)]
