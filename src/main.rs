@@ -4,37 +4,14 @@ use std::fmt;
 use std::process::ExitCode;
 
 mod catalog;
-#[allow(
-    dead_code,
-    reason = "the adapter's render boundary is consumed by later sync use cases"
-)]
 mod claude_desktop;
-#[allow(
-    dead_code,
-    reason = "MCP-004 establishes the canonical boundary before later use cases consume it"
-)]
 mod config;
-#[allow(
-    dead_code,
-    reason = "the adapter's render boundary is consumed by later sync use cases"
-)]
 mod cursor;
-#[allow(
-    dead_code,
-    reason = "context accessors support focused boundary tests and later apply use cases"
-)]
 mod filesystem;
 mod init;
-#[allow(
-    dead_code,
-    reason = "MCP-005 establishes macOS paths before later adapters consume them"
-)]
 mod paths;
-#[allow(
-    dead_code,
-    reason = "MCP-006 establishes pure reconciliation before application use cases consume it"
-)]
 mod reconciliation;
+mod sync;
 
 /// Synchronize local Model Context Protocol server configurations.
 #[derive(Parser)]
@@ -52,6 +29,8 @@ enum Command {
     Add(AddCommand),
     /// List canonical servers without exposing commands, arguments, or values.
     List,
+    /// Reconcile canonical servers into every supported target.
+    Sync(SyncCommand),
 }
 
 #[derive(Args)]
@@ -77,6 +56,13 @@ struct AddCommand {
     environment: Vec<String>,
 }
 
+#[derive(Args)]
+struct SyncCommand {
+    /// Validate and report the exact plan without changing any files.
+    #[arg(long)]
+    dry_run: bool,
+}
+
 fn run(command: Command) -> Result<CommandReport, ApplicationError> {
     let paths = paths::MacOsConfigurationPaths::resolve(&paths::ProcessEnvironment)
         .map_err(ApplicationError::ResolvePaths)?;
@@ -100,6 +86,17 @@ fn run(command: Command) -> Result<CommandReport, ApplicationError> {
         Command::List => catalog::list_servers(&paths, &filesystem::OsFileSystem)
             .map(CommandReport::List)
             .map_err(ApplicationError::Catalog),
+        Command::Sync(command) => {
+            let plan = sync::plan_sync(&paths, &filesystem::OsFileSystem)
+                .map_err(ApplicationError::Sync)?;
+            if command.dry_run {
+                Ok(CommandReport::Sync(sync::dry_run(&plan)))
+            } else {
+                sync::apply_sync(&plan, &filesystem::OsFileSystem)
+                    .map(CommandReport::Sync)
+                    .map_err(ApplicationError::Sync)
+            }
+        }
     }
 }
 
@@ -107,6 +104,7 @@ enum CommandReport {
     Init(init::InitReport),
     Add(catalog::AddReport),
     List(catalog::ListReport),
+    Sync(sync::SyncReport),
 }
 
 impl fmt::Display for CommandReport {
@@ -115,6 +113,7 @@ impl fmt::Display for CommandReport {
             Self::Init(report) => report.fmt(formatter),
             Self::Add(report) => report.fmt(formatter),
             Self::List(report) => report.fmt(formatter),
+            Self::Sync(report) => report.fmt(formatter),
         }
     }
 }
@@ -137,6 +136,7 @@ enum ApplicationError {
     ResolvePaths(paths::PathResolutionError),
     Init(init::InitError),
     Catalog(catalog::CatalogError),
+    Sync(sync::SyncError),
 }
 
 impl fmt::Display for ApplicationError {
@@ -145,6 +145,7 @@ impl fmt::Display for ApplicationError {
             Self::ResolvePaths(error) => error.fmt(formatter),
             Self::Init(error) => error.fmt(formatter),
             Self::Catalog(error) => error.fmt(formatter),
+            Self::Sync(error) => error.fmt(formatter),
         }
     }
 }
@@ -155,6 +156,7 @@ impl Error for ApplicationError {
             Self::ResolvePaths(error) => Some(error),
             Self::Init(error) => Some(error),
             Self::Catalog(error) => Some(error),
+            Self::Sync(error) => Some(error),
         }
     }
 }

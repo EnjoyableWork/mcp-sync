@@ -23,6 +23,7 @@ fn help_describes_the_installed_binary() {
     assert!(stdout.contains("init"));
     assert!(stdout.contains("add"));
     assert!(stdout.contains("list"));
+    assert!(stdout.contains("sync"));
     assert!(stdout.contains("--version"));
 }
 

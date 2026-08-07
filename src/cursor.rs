@@ -61,6 +61,7 @@ pub enum CursorDiscovery {
 }
 
 impl CursorDiscovery {
+    #[cfg(test)]
     pub fn document(&self) -> Option<&CursorDocument> {
         match self {
             Self::Missing => None,
@@ -127,6 +128,11 @@ impl CursorDocument {
         &self.canonical_config
     }
 
+    /// Exact bytes observed during discovery for guarded sync application.
+    pub fn original_bytes(&self) -> &[u8] {
+        &self.original_bytes
+    }
+
     /// Names of native entries not representable by canonical JSON v1.
     ///
     /// Cursor currently places remote HTTP/SSE definitions in the same
@@ -148,6 +154,7 @@ impl CursorDocument {
             .collect()
     }
 
+    #[cfg(test)]
     pub fn preserved_server_fields(&self, server_name: &str) -> Option<Vec<&str>> {
         let fields = self
             .root
@@ -304,6 +311,7 @@ impl RenderedCursorDocument {
         Self { bytes, changed }
     }
 
+    #[cfg(test)]
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }

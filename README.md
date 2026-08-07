@@ -99,6 +99,10 @@ cargo install enjoyable-mcp-sync
 
 Download a prebuilt archive for macOS, Linux, or Windows from the
 [latest GitHub release](https://github.com/EnjoyableWork/mcp-sync/releases/latest).
+Stable releases provide separate ARM64 and x64 archives for each operating
+system. macOS binaries are signed and notarized, Windows binaries are
+Authenticode-signed, and every immutable release includes SHA-256 checksums,
+SPDX SBOMs, and verifiable build provenance.
 
 ## 📖 Quickstart & Usage
 
@@ -147,11 +151,23 @@ mcp-sync test postgres
 
 ### 5. Sync configuration across all clients
 
-Push the updated master server definitions to all detected local IDEs and AI applications:
+Preview one validated, structurally redacted plan without changing any files:
+
+```bash
+mcp-sync sync --dry-run
+```
+
+Then push the same planned server definitions to all detected local IDEs and
+AI applications:
 
 ```bash
 mcp-sync sync
 ```
+
+Targets that are already semantically current are not rewritten. Existing
+files receive recoverable `.bak` copies before atomic replacement, and if a
+later target fails, earlier target changes are rolled back and reported per
+target.
 
 ## 💻 Supported Clients
 

@@ -50,6 +50,7 @@ impl MacOsConfigurationPaths {
         &self.user_home
     }
 
+    #[cfg(test)]
     pub fn configuration_home(&self) -> &Path {
         &self.configuration_home
     }
