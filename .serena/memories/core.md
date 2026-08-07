@@ -1,7 +1,8 @@
 # Project map
-- Repository is currently a pre-MVP, documentation-only project: `README.md`,
-  `PROJECT.md`, `AGENTS.md`, and MIT `LICENSE`; no Rust implementation, Cargo
-  manifest, or test configuration exists yet.
+- Repository is pre-MVP with the completed `MCP-002` walking skeleton: one Rust
+  binary crate, locked dependencies, and CLI help/version smoke tests. No
+  configuration, client adapter, sync, filesystem, or health-check behavior
+  exists yet; `MCP-003` is the only ready main-story ticket.
 - Product name is lowercase `mcp-sync`.
 - `AGENTS.md` is the repository guidance authority. `PROJECT.md` is the
   canonical living delivery tracker, ticket board, decision log, and risk
