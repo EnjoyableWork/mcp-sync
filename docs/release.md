@@ -46,12 +46,23 @@ Before a stable tag exists, verify all of the following:
 - The current `main` commit has green CI and a green six-target
   `Release preflight` run.
 
+GitHub's immutable-release setting endpoint requires repository administration
+read access that the standard Actions `GITHUB_TOKEN` does not provide. Keep
+that credential boundary outside Actions: run
+`scripts/verify-release-repository-controls.sh <exact-current-main-commit>` on
+the controlled operator host immediately before each protected approval. The
+script requires the exact current `main` commit, enabled release immutability,
+the public stable-tag ruleset, and both protected environment policies without
+reading secret values.
+
 The manual `Publish funded signed immutable release` workflow uses the
-`release` environment and checks the immutable-release setting and ruleset
-again before building. A named ruleset bypass actor creates the annotated tag
-manually only after preflight, then dispatches `.github/workflows/release.yml`
-on that tag with `confirm_funded_signing=true`; the workflow token does not
-receive tag-bypass authority, and an ordinary tag push cannot invoke signing.
+`release` environment, requires a successful protected authorization for the
+exact commit, and rechecks the public ruleset before building. A named ruleset
+bypass actor creates the annotated tag manually only after preflight, then
+dispatches `.github/workflows/release.yml` on that tag with both
+`confirm_funded_signing=true` and `confirm_repository_controls=true`; the
+workflow token does not receive repository-administration or tag-bypass
+authority, and an ordinary tag push cannot invoke signing.
 
 ## Protected signing inputs
 
@@ -110,15 +121,21 @@ signing certificate plus a timestamp certificate before ZIP creation.
 5. Verify all protected signing input names exist without displaying their
    values. Confirm Apple and Microsoft identity validation is active rather
    than merely requested.
-6. As the named ruleset bypass actor, create one annotated `v{version}` tag at the
-   exact current `main` commit and push only that tag. Never move or reuse it.
-7. Explicitly dispatch `.github/workflows/release.yml` on ref `v{version}` with
-   `confirm_funded_signing=true`, then approve the `release` environment after
-   confirming the displayed tag and commit. The workflow builds natively,
+6. Run `scripts/verify-release-repository-controls.sh` for the exact current
+   `main` commit, dispatch `.github/workflows/release-authorize.yml` from that
+   commit with `confirm_repository_controls=true`, and approve its
+   `release-control` deployment only while that check remains current.
+7. As the named ruleset bypass actor, create one annotated `v{version}` tag at
+   the authorized commit and push only that tag. Never move or reuse it.
+8. Rerun the repository-control verifier for the tagged commit. Explicitly
+   dispatch `.github/workflows/release.yml` on ref `v{version}` with
+   `confirm_funded_signing=true` and `confirm_repository_controls=true`, then
+   approve the `release` environment after confirming the displayed tag and
+   commit. The workflow builds natively,
    signs, notarizes, packages, exercises installed restore, generates and
    verifies SBOMs and attestations, assembles the exact draft, verifies
    downloaded bytes, and only then publishes it.
-8. Require the release API to report `immutable: true`; verify the release
+9. Require the release API to report `immutable: true`; verify the release
    attestation and all 13 downloaded assets before publishing any downstream
    channel.
 

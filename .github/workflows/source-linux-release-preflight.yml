@@ -27,6 +27,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify the public stable-tag ruleset without credentials
+        run: scripts/verify-public-stable-tag-ruleset.sh "$GITHUB_REPOSITORY"
+
       - name: Read the stable package version
         id: version
         run: |
