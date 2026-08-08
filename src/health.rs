@@ -1299,6 +1299,7 @@ $initialize = [Console]::In.ReadLine()
 if ($null -eq $initialize) { exit 72 }
 [IO.File]::WriteAllText($env:REQUEST_PATH, $initialize)
 [Console]::Out.WriteLine('{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"fixture","version":"1.0"}}}')
+[Console]::Out.Flush()
 $initialized = [Console]::In.ReadLine()
 if ($null -eq $initialized) { exit 73 }
 [IO.File]::WriteAllText($env:NOTIFICATION_PATH, $initialized)
@@ -1391,6 +1392,7 @@ while :; do :; done
             r#"
 [IO.File]::WriteAllText($env:PID_PATH, [string]$PID)
 [Console]::Out.WriteLine('not-json-' + $env:PRIVATE_VALUE)
+[Console]::Out.Flush()
 while ($true) { Start-Sleep -Milliseconds 10 }
 "#,
             BTreeMap::from([
@@ -1438,6 +1440,7 @@ while :; do :; done
 $initialize = [Console]::In.ReadLine()
 if ($null -eq $initialize) { exit 80 }
 [Console]::Out.WriteLine('{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{},"serverInfo":{"name":"fixture","version":"1.0"}}}')
+[Console]::Out.Flush()
 $initialized = [Console]::In.ReadLine()
 if ($null -eq $initialized) { exit 81 }
 while ($true) { Start-Sleep -Milliseconds 10 }

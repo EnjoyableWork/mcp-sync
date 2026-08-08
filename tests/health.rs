@@ -178,6 +178,7 @@ $initialize = [Console]::In.ReadLine()
 if ($null -eq $initialize) { exit 42 }
 [IO.File]::WriteAllText($env:REQUEST_PATH, $initialize)
 [Console]::Out.WriteLine('{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"synthetic-health-server","version":"1.0"}}}')
+[Console]::Out.Flush()
 $initialized = [Console]::In.ReadLine()
 if ($null -eq $initialized) { exit 43 }
 [IO.File]::WriteAllText($env:NOTIFICATION_PATH, $initialized)
@@ -332,6 +333,7 @@ fn built_binary_rejects_malformed_stdout_and_reaps_the_child_without_echoing_it(
 $initialize = [Console]::In.ReadLine()
 if ($null -eq $initialize) { exit 60 }
 [Console]::Out.WriteLine('not-json-' + $env:PRIVATE_STDOUT)
+[Console]::Out.Flush()
 while ($true) { Start-Sleep -Milliseconds 10 }
 "#
     } else {
@@ -386,6 +388,7 @@ if ($null -eq $initialize) { exit 70 }
 [Console]::Error.WriteLine($env:PRIVATE_STDERR)
 $response = '{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"' + $env:PRIVATE_RESPONSE + '","data":{"token":"' + $env:PRIVATE_RESPONSE + '"}}}'
 [Console]::Out.WriteLine($response)
+[Console]::Out.Flush()
 while ($true) { Start-Sleep -Milliseconds 10 }
 "#
     } else {
