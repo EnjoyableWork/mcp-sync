@@ -87,16 +87,23 @@ must still:
 
 1. sign in to crates.io through the intended publisher account, verify its
    email address, recheck that `enjoyable-mcp-sync` remains available, create a
-   scope-minimized first-publication token, and store it only in the protected
-   publication mechanism;
+   short-lived first-publication token with only the `publish-new` endpoint
+   scope and exact crate-name pattern `enjoyable-mcp-sync`, and store it only
+   in Cargo's credential store on the controlled publisher host. crates.io
+   evaluates crate patterns when the token is used, so the exact future crate
+   may be scoped before it exists. Do not add `publish-update`, ownership,
+   yank, or trusted-publisher administration to this one-use credential;
 2. ensure public repository `EnjoyableWork/homebrew-tap` exists and give the
-   release identity only the write access needed for `Formula/mcp-sync.rb`; and
+   release identity only the write access needed for `Formula/mcp-sync.rb`.
+   Store its repository-scoped write deploy key as
+   `HOMEBREW_TAP_DEPLOY_KEY` in the protected `release` environment; and
 3. dispatch `.github/workflows/release-authorize.yml` from the exact current
    `main` commit, review its evidence, then deliberately create and push the
    one annotated `v0.1.0` tag it authorizes.
 
 Never place a token value in a command argument, ticket, tracked file, or
-workflow log.
+workflow log. Revoke every first-publication token after the published registry
+bytes are verified.
 
 ## GitHub Release publication
 
@@ -151,6 +158,16 @@ pins its SHA-256. Copy that file byte-for-byte to
 `EnjoyableWork/homebrew-tap/Formula/mcp-sync.rb`; do not regenerate or hand-edit
 it after the release is immutable. It declares Rust only as a build dependency
 and installs through Homebrew's locked standard Cargo arguments.
+
+After the exact crates.io package is public and byte-equal to the immutable
+release asset, dispatch
+`.github/workflows/market-release-publish-homebrew.yml` from tag `v0.1.0` with
+version `0.1.0`. The protected job rechecks the immutable release, every
+attestation, and the exact crates.io bytes before using the tap-scoped deploy
+key. It creates only `Formula/mcp-sync.rb`, refuses to replace different
+published bytes, and accepts an already-identical formula as a no-op. It has no
+write permission to `EnjoyableWork/mcp-sync` and does not publish Cargo,
+WinGet, or a binary.
 
 Require Homebrew style, strict online audit, formula test, explicit
 `--build-from-source` installation, and the installed restore journey on native

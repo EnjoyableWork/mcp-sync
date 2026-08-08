@@ -311,6 +311,53 @@ fn market_channel_verifier_is_read_only_and_covers_every_represented_install() {
 }
 
 #[test]
+fn market_homebrew_publisher_uses_only_the_tap_scoped_release_secret() {
+    let workflow = repository_file(".github/workflows/market-release-publish-homebrew.yml");
+
+    for required_contract in [
+        "workflow_dispatch:",
+        "refs/tags/v$RELEASE_VERSION",
+        "environment:\n      name: release",
+        ".immutable == true",
+        "scripts/verify-published-market-release.sh",
+        "gh release verify",
+        "gh attestation verify",
+        ".github/workflows/market-release.yml",
+        "enjoyable-mcp-sync/$RELEASE_VERSION/download",
+        "secrets.HOMEBREW_TAP_DEPLOY_KEY",
+        "git@github.com:EnjoyableWork/homebrew-tap.git",
+        "Formula/mcp-sync.rb",
+        "StrictHostKeyChecking=yes",
+        "SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU",
+        "git -C \"$tap_checkout\" push origin HEAD:refs/heads/main",
+        "refusing to replace a different published mcp-sync formula",
+    ] {
+        assert!(
+            workflow.contains(required_contract),
+            "Homebrew publisher should enforce {required_contract}"
+        );
+    }
+    assert_eq!(workflow.matches("secrets.").count(), 1);
+    for forbidden_contract in [
+        "contents: write",
+        "cargo publish",
+        "winget",
+        "Developer ID Application",
+        "notarytool",
+        "Azure/",
+        "--force",
+        "--clobber",
+        "rm -rf",
+    ] {
+        assert!(
+            !workflow.contains(forbidden_contract),
+            "Homebrew publisher must not contain {forbidden_contract}"
+        );
+    }
+    assert_actions_are_commit_pinned(&workflow);
+}
+
+#[test]
 fn market_generator_and_verifiers_enforce_source_builds_and_linux_only_assets() {
     let generator = repository_file("scripts/generate-market-release-channels.sh");
     let asset_verifier = repository_file("scripts/verify-market-release-assets.sh");
@@ -424,6 +471,9 @@ fn package_and_public_docs_keep_the_accepted_release_identities() {
     }
     assert!(runbook.contains("v0.1.0"));
     assert!(runbook.contains("no project-issued macOS or Windows binary"));
+    assert!(runbook.contains("only the `publish-new` endpoint"));
+    assert!(runbook.contains("exact crate-name pattern `enjoyable-mcp-sync`"));
+    assert!(runbook.contains("Revoke every first-publication token"));
     assert!(signed_runbook.contains("com.enjoyablework.mcp-sync"));
     assert!(signed_runbook.contains("confirm_funded_signing"));
     assert!(release_notes.contains("# mcp-sync v0.1.0"));

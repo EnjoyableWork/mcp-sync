@@ -1,0 +1,197 @@
+name: Publish zero-cost Homebrew formula
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Market version without the v prefix
+        required: true
+        default: 0.1.0
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: market-release-publish-homebrew-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish the exact attested formula to the organization tap
+    if: github.repository == 'EnjoyableWork/mcp-sync'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: release
+      url: https://github.com/EnjoyableWork/homebrew-tap/blob/main/Formula/mcp-sync.rb
+    permissions:
+      attestations: read
+      contents: read
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+
+    steps:
+      - name: Check out the immutable market tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: v${{ inputs.version }}
+
+      - name: Require the immutable release and exact crates.io package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$RELEASE_VERSION" != 0.1.0 ]] ||
+            [[ "$GITHUB_REF" != "refs/tags/v$RELEASE_VERSION" ]]; then
+            echo "Homebrew publication accepts only a dispatch from the v0.1.0 tag" >&2
+            exit 1
+          fi
+          if [[ "$(git cat-file -t "v$RELEASE_VERSION")" != tag ]]; then
+            echo "Homebrew publication requires the annotated market tag" >&2
+            exit 1
+          fi
+          package_version="$(
+            cargo metadata --locked --no-deps --format-version 1 \
+              | jq -r '.packages[] | select(.name == "enjoyable-mcp-sync") | .version'
+          )"
+          test "$package_version" = "$RELEASE_VERSION"
+
+          release_json="$RUNNER_TEMP/mcp-sync-market-release.json"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$RELEASE_VERSION" \
+            -H 'X-GitHub-Api-Version: 2026-03-10' >"$release_json"
+          jq -e \
+            --arg tag "v$RELEASE_VERSION" \
+            '.tag_name == $tag and .draft == false and .prerelease == false and .immutable == true' \
+            "$release_json" >/dev/null
+
+          release_assets="$RUNNER_TEMP/mcp-sync-market-assets"
+          mkdir -p "$release_assets"
+          gh release download "v$RELEASE_VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir "$release_assets"
+          scripts/verify-published-market-release.sh "$release_assets" "$RELEASE_VERSION"
+          gh release verify "v$RELEASE_VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --format json >/dev/null
+
+          release_commit="$(git rev-parse "v$RELEASE_VERSION^{commit}")"
+          test "$release_commit" = "$GITHUB_SHA"
+          for release_asset in "$release_assets"/*; do
+            gh attestation verify "$release_asset" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/market-release.yml" \
+              --source-ref "refs/tags/v$RELEASE_VERSION" \
+              --source-digest "$release_commit" \
+              --format json >/dev/null
+          done
+
+          registry_response="$RUNNER_TEMP/enjoyable-mcp-sync-crates.json"
+          curl --fail --silent --show-error --location --retry 5 \
+            --output "$registry_response" \
+            --header 'User-Agent: mcp-sync-homebrew-publisher/0.1 (+https://github.com/EnjoyableWork/mcp-sync)' \
+            'https://crates.io/api/v1/crates/enjoyable-mcp-sync'
+          jq -e \
+            --arg version "$RELEASE_VERSION" \
+            '.crate.repository == "https://github.com/EnjoyableWork/mcp-sync" and
+             any(.versions[]; .num == $version and .yanked == false)' \
+            "$registry_response" >/dev/null
+
+          registry_package="$RUNNER_TEMP/enjoyable-mcp-sync-$RELEASE_VERSION.crate"
+          curl --fail --silent --show-error --location --retry 5 \
+            --output "$registry_package" \
+            "https://crates.io/api/v1/crates/enjoyable-mcp-sync/$RELEASE_VERSION/download"
+          cmp --silent \
+            "$release_assets/enjoyable-mcp-sync-$RELEASE_VERSION.crate" \
+            "$registry_package"
+
+      - name: Publish the release formula with the tap-scoped deploy key
+        env:
+          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$HOMEBREW_TAP_DEPLOY_KEY" ]]; then
+            echo "the protected Homebrew tap deploy key is unavailable" >&2
+            exit 1
+          fi
+
+          deploy_key="$RUNNER_TEMP/mcp-sync-homebrew-deploy-key"
+          known_hosts="$RUNNER_TEMP/mcp-sync-homebrew-known-hosts"
+          tap_checkout="$RUNNER_TEMP/homebrew-tap"
+          cleanup_homebrew_credentials() {
+            rm -f -- "$deploy_key" "$known_hosts"
+          }
+          trap cleanup_homebrew_credentials EXIT
+
+          umask 077
+          printf '%s\n' "$HOMEBREW_TAP_DEPLOY_KEY" >"$deploy_key"
+          printf '%s\n' \
+            'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
+            >"$known_hosts"
+          chmod 0600 "$deploy_key" "$known_hosts"
+          ssh-keygen -y -f "$deploy_key" >/dev/null
+          test "$(ssh-keygen -lf "$known_hosts" -E sha256 | awk '{ print $2 }')" = \
+            'SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU'
+
+          export GIT_SSH_COMMAND="ssh -i \"$deploy_key\" -o IdentitiesOnly=yes -o UserKnownHostsFile=\"$known_hosts\" -o StrictHostKeyChecking=yes"
+          test ! -e "$tap_checkout"
+          git clone \
+            --branch main \
+            --single-branch \
+            git@github.com:EnjoyableWork/homebrew-tap.git \
+            "$tap_checkout"
+          test "$(git -C "$tap_checkout" symbolic-ref --short HEAD)" = main
+          test "$(git -C "$tap_checkout" remote get-url origin)" = \
+            git@github.com:EnjoyableWork/homebrew-tap.git
+
+          release_formula="$RUNNER_TEMP/mcp-sync-market-assets/mcp-sync.rb"
+          tap_formula="$tap_checkout/Formula/mcp-sync.rb"
+          if [[ -e "$tap_formula" ]]; then
+            if cmp --silent "$release_formula" "$tap_formula"; then
+              echo "the exact release formula is already public" >>"$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "refusing to replace a different published mcp-sync formula" >&2
+            exit 1
+          fi
+
+          mkdir -p "$tap_checkout/Formula"
+          install -m 0644 "$release_formula" "$tap_formula"
+          git -C "$tap_checkout" add -- Formula/mcp-sync.rb
+          test "$(git -C "$tap_checkout" diff --cached --name-only)" = Formula/mcp-sync.rb
+          git -C "$tap_checkout" config user.name 'github-actions[bot]'
+          git -C "$tap_checkout" config user.email \
+            '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C "$tap_checkout" commit \
+            -m "chore(homebrew): publish mcp-sync $RELEASE_VERSION"
+          git -C "$tap_checkout" push origin HEAD:refs/heads/main
+
+          tap_commit="$(git -C "$tap_checkout" rev-parse HEAD)"
+          {
+            echo '## Homebrew formula publication'
+            echo
+            echo "- Version: \`$RELEASE_VERSION\`"
+            echo "- Tap commit: \`$tap_commit\`"
+            echo '- Source: exact attested formula from the immutable GitHub Release'
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Verify the exact public tap formula
+        run: |
+          set -euo pipefail
+          published_formula="$RUNNER_TEMP/mcp-sync-published-formula.rb"
+          for _ in {1..12}; do
+            if curl --fail --silent --show-error --location \
+              --output "$published_formula" \
+              'https://raw.githubusercontent.com/EnjoyableWork/homebrew-tap/main/Formula/mcp-sync.rb' &&
+              cmp --silent \
+                "$RUNNER_TEMP/mcp-sync-market-assets/mcp-sync.rb" \
+                "$published_formula"; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "the public tap does not expose the exact release formula" >&2
+          exit 1
