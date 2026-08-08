@@ -136,9 +136,10 @@ when it protects a critical invariant.
 Read `PROJECT.md` before material planning or implementation work.
 
 - The repository owner explicitly requires one canonical Goal-mode objective
-  per main-story ticket. Before beginning a main-story ticket in a runtime that
-  supports goals, read the current thread goal and reconcile it exactly with
-  the objective in PROJECT's main-story goal catalog. Set it when none is
+  per main-story ticket and per classified `SIDE-NNN` ticket. Before beginning
+  either kind of ticket in a runtime that supports goals, read the current
+  thread goal and reconcile it exactly with the objective in PROJECT's
+  applicable main-story or side-quest goal catalog. Set it when none is
   unfinished; edit a mismatched objective for the same eligible ticket when
   supported. If a goal for another unfinished ticket exists or the runtime
   prevents replacement, stop and report the mismatch instead of silently
@@ -146,9 +147,14 @@ Read `PROJECT.md` before material planning or implementation work.
 - A goal does not make a ticket eligible and cannot override this file,
   `PROJECT.md`, dependencies, open decisions, or evidence gates. Move a ticket
   to `In progress` only after the goal matches. Mark the goal complete only
-  after the ticket is `Done` with evidence; do not activate the successor until
-  intentionally starting it. Agents without Goal mode use the catalog
-  objective directly as their task contract.
+  after the ticket is `Done` with evidence. For a main-story ticket, do not
+  activate the successor until intentionally starting it; completing a side
+  quest does not activate another side quest. Agents without Goal mode use the
+  catalog objective directly as their task contract.
+- One thread may carry only one unfinished goal. If the work-in-progress limit
+  permits a main-story ticket and an independent side quest to run
+  concurrently, use separate threads and never replace either active goal with
+  the other ticket's objective.
 - Do not assign a goal token budget unless the user explicitly supplies one.
 - Associate each material change with a ticket ID. Create a ticket in the
   tracker first when no existing ticket covers the outcome.
