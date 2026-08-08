@@ -214,8 +214,8 @@ their own configuration stores.
           ▼                                       ▼
 ┌───────────────────┐               ┌──────────────────────────┐
 │  Master Config    │               │ Client Targets           │
-│  ~/.config/       │               │ • Claude Desktop JSON    │
-│  mcp-sync/        │               │ • Cursor / Windsurf JSON │
+│  Platform config  │               │ • Claude Desktop JSON    │
+│  root / mcp-sync/ │               │ • Cursor / Windsurf JSON │
 │  config.json      │               │ • VS Code JSON           │
 │                   │               │ • Codex TOML              │
 └───────────────────┘               └──────────────────────────┘
@@ -232,13 +232,22 @@ cargo run --locked -- --help
 cargo deny --all-features --locked check
 ```
 
-`./scripts/check.sh` is the canonical local quality gate. It runs deterministic
-formatting, Clippy, unit, and integration checks with the committed lockfile.
-Every command receives disposable `HOME`, XDG, macOS application-support,
-Linux user-data, and Windows-style user configuration roots, and the CLI
-integration harness clears inherited process state before supplying its own
-synthetic home. The dependency-policy command requires the CI-pinned
-`cargo-deny` 0.20.2 release; install that exact version with
+On Windows PowerShell, run the native companion gate:
+
+```powershell
+cargo build --locked
+cargo run --locked -- --help
+.\scripts\check.ps1
+cargo deny --all-features --locked check
+```
+
+`./scripts/check.sh` and `.\scripts\check.ps1` are the platform-native local
+quality gates. They run deterministic formatting, Clippy, unit, and integration
+checks with the committed lockfile. Every command receives disposable `HOME`,
+XDG, macOS application-support, Linux user-data, and Windows user configuration
+roots, and the CLI integration harness clears inherited process state before
+supplying its own synthetic home. The dependency-policy command requires the
+CI-pinned `cargo-deny` 0.20.2 release; install that exact version with
 `cargo install --locked cargo-deny --version 0.20.2`. Its committed policy checks
 security advisories, licenses, duplicate or banned dependencies, and dependency
 sources.

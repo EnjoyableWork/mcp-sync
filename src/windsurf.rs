@@ -17,7 +17,7 @@ const COMMAND_FIELD: &str = "command";
 const ARGUMENTS_FIELD: &str = "args";
 const ENVIRONMENT_FIELD: &str = "env";
 
-/// The documented Windsurf global Cascade target on macOS and Linux.
+/// The documented Windsurf global Cascade target on macOS, Linux, and Windows.
 ///
 /// Discovery resolves exactly `~/.codeium/windsurf/mcp_config.json` through
 /// the injected home path. Current vendor documentation distinguishes this
@@ -644,7 +644,12 @@ mod tests {
 
     impl Environment for FixtureEnvironment {
         fn value(&self, name: &'static str) -> Option<OsString> {
-            (name == "HOME").then(|| self.home.clone().into_os_string())
+            match name {
+                "HOME" | "USERPROFILE" => Some(self.home.clone().into_os_string()),
+                "LOCALAPPDATA" => Some(self.home.join("AppData/Local").into_os_string()),
+                "APPDATA" => Some(self.home.join("AppData/Roaming").into_os_string()),
+                _ => None,
+            }
         }
     }
 
@@ -702,6 +707,17 @@ mod tests {
     #[test]
     fn linux_discovery_path_matches_the_documented_global_contract() {
         let (root, adapter) = adapter_fixture_for(Platform::Linux);
+
+        assert_eq!(
+            adapter.configuration_path(),
+            root.path().join("user/.codeium/windsurf/mcp_config.json")
+        );
+        assert!(adapter.configuration_path().starts_with(root.path()));
+    }
+
+    #[test]
+    fn windows_discovery_path_matches_the_documented_global_contract() {
+        let (root, adapter) = adapter_fixture_for(Platform::Windows);
 
         assert_eq!(
             adapter.configuration_path(),

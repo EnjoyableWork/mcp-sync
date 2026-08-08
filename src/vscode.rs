@@ -19,7 +19,8 @@ const COMMAND_FIELD: &str = "command";
 const ARGUMENTS_FIELD: &str = "args";
 const ENVIRONMENT_FIELD: &str = "env";
 
-/// The native VS Code default user-profile MCP target on macOS and Linux.
+/// The native VS Code default user-profile MCP target on macOS, Linux, and
+/// Windows.
 ///
 /// Discovery resolves exactly
 /// the platform user-data root through the injected paths. It intentionally
@@ -697,7 +698,12 @@ mod tests {
 
     impl Environment for FixtureEnvironment {
         fn value(&self, name: &'static str) -> Option<OsString> {
-            (name == "HOME").then(|| self.home.clone().into_os_string())
+            match name {
+                "HOME" | "USERPROFILE" => Some(self.home.clone().into_os_string()),
+                "LOCALAPPDATA" => Some(self.home.join("AppData/Local").into_os_string()),
+                "APPDATA" => Some(self.home.join("AppData/Roaming").into_os_string()),
+                _ => None,
+            }
         }
     }
 
@@ -780,6 +786,29 @@ mod tests {
             home.join(".config/Code/User/profiles/profile/mcp.json"),
             home.join(".config/Code - Insiders/User/mcp.json"),
             home.join(".config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"),
+            home.join(".cline/data/settings/cline_mcp_settings.json"),
+            home.join(".copilot/mcp-config.json"),
+        ] {
+            assert_ne!(adapter.configuration_path(), excluded);
+        }
+    }
+
+    #[test]
+    fn windows_discovery_path_is_only_the_native_default_user_profile_contract() {
+        let (root, adapter) = adapter_fixture_for(Platform::Windows);
+        let home = root.path().join("user");
+
+        assert_eq!(
+            adapter.configuration_path(),
+            home.join("AppData/Roaming/Code/User/mcp.json")
+        );
+        assert!(adapter.configuration_path().starts_with(root.path()));
+        for excluded in [
+            home.join("workspace/.vscode/mcp.json"),
+            home.join("workspace/.mcp.json"),
+            home.join("AppData/Roaming/Code/User/profiles/profile/mcp.json"),
+            home.join("AppData/Roaming/Code - Insiders/User/mcp.json"),
+            home.join("AppData/Roaming/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"),
             home.join(".cline/data/settings/cline_mcp_settings.json"),
             home.join(".copilot/mcp-config.json"),
         ] {

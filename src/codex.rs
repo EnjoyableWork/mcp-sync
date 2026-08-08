@@ -18,7 +18,7 @@ const ARGUMENTS_FIELD: &str = "args";
 const ENVIRONMENT_FIELD: &str = "env";
 const URL_FIELD: &str = "url";
 
-/// The global Codex-host MCP target on macOS and Linux.
+/// The global Codex-host MCP target on macOS, Linux, and Windows.
 ///
 /// Discovery resolves exactly `~/.codex/config.toml` through the injected
 /// user home. The ChatGPT desktop app, Codex CLI, and Codex IDE extension
@@ -643,7 +643,12 @@ mod tests {
 
     impl Environment for FixtureEnvironment {
         fn value(&self, name: &'static str) -> Option<OsString> {
-            (name == "HOME").then(|| self.home.clone().into_os_string())
+            match name {
+                "HOME" | "USERPROFILE" => Some(self.home.clone().into_os_string()),
+                "LOCALAPPDATA" => Some(self.home.join("AppData/Local").into_os_string()),
+                "APPDATA" => Some(self.home.join("AppData/Roaming").into_os_string()),
+                _ => None,
+            }
         }
     }
 
@@ -724,6 +729,27 @@ mod tests {
             home.join(".codex/review.config.toml"),
             home.join(".codex/auth.json"),
             PathBuf::from("/etc/codex/config.toml"),
+        ] {
+            assert_ne!(adapter.configuration_path(), excluded);
+        }
+    }
+
+    #[test]
+    fn windows_discovery_path_is_only_the_global_user_contract() {
+        let (root, adapter) = adapter_fixture_for(Platform::Windows);
+        let home = root.path().join("user");
+
+        assert_eq!(
+            adapter.configuration_path(),
+            home.join(".codex/config.toml")
+        );
+        assert!(adapter.configuration_path().starts_with(root.path()));
+        for excluded in [
+            home.join("workspace/.codex/config.toml"),
+            home.join("workspace/nested/.codex/config.toml"),
+            home.join(".codex/review.config.toml"),
+            home.join(".codex/auth.json"),
+            PathBuf::from("C:/ProgramData/codex/config.toml"),
         ] {
             assert_ne!(adapter.configuration_path(), excluded);
         }

@@ -7,13 +7,13 @@ lightweight enough to use before a hosted tracker is justified.
 | Control | Current state |
 | --- | --- |
 | Document state | Active |
-| Product state | The source-checkout macOS and GNU/Linux implementation reconciles global Claude Desktop, Cursor, Windsurf legacy Cascade, native VS Code default user-profile, and global Codex host configuration, and exposes one bounded named-server STDIO initialize health boundary; deterministic fixtures and native x64/ARM64 GNU/Linux CI prove the five-target configuration behavior without weakening its safety boundaries; Claude Desktop and Cursor retain macOS current-client sync smoke evidence, no Linux target has a current-client smoke claim, and the repository remains pre-release |
+| Product state | The source-checkout macOS, GNU/Linux, and Windows implementation reconciles global Claude Desktop, Cursor, Windsurf legacy Cascade, native VS Code default user-profile, and global Codex host configuration, and exposes one bounded named-server STDIO initialize health boundary. Deterministic fixtures and native x64/ARM64 GNU/Linux CI prove the five-target configuration behavior without weakening its safety boundaries; Windows path, replacement, rollback, portable-binary, and PowerShell health behavior is implemented under `MCP-019` and awaits native MSVC x64/ARM64 evidence. Claude Desktop and Cursor retain macOS current-client sync smoke evidence, no Linux or Windows target has a current-client smoke claim, and the repository remains pre-release |
 | Current milestone | M2 — City, in progress |
-| Overall status | `MCP-018` is `Done`; only `MCP-019` is `Ready`, every later main-story ticket remains `Proposed`, and `SIDE-001` through `SIDE-005` are proposed but inactive |
-| Current focus | Keep `MCP-019` as the sole ready successor; do not begin Windows work until its exact goal is intentionally activated and its owner is clear |
+| Overall status | `MCP-018` is `Done`; `MCP-019` is the sole `In progress` main-story ticket, every later main-story ticket remains `Proposed`, and `SIDE-001` through `SIDE-005` are proposed but inactive |
+| Current focus | Complete `MCP-019` with deterministic Windows paths, unchanged recovery guarantees, portable built-binary coverage, and native MSVC x64/ARM64 CI evidence |
 | Milestone target | Unscheduled; set after an owner and delivery capacity are known |
 | Last reviewed | 2026-08-08 |
-| Next review trigger | Start, completion, or blocking of `MCP-019`; intentional activation of a side quest; or any change to the supported-client or repository-protection boundary |
+| Next review trigger | Completion or blocking of `MCP-019`; intentional activation of a side quest; or any change to the supported-client or repository-protection boundary |
 
 ## Document roles
 
@@ -350,7 +350,7 @@ discarding the core architecture.
 | Dimension | M1 boundary |
 | --- | --- |
 | Runtime | One compiled Rust command-line binary |
-| Initial platform | macOS — accepted for M1; Linux followed in `MCP-018`, and Windows remains sequenced in `MCP-019` |
+| Initial platform | macOS — accepted for M1; Linux followed in `MCP-018`, and Windows is being delivered in `MCP-019` |
 | Initial clients | Current stable Claude Desktop and Cursor — accepted; two clients are the minimum proof of sync |
 | Managed client scope | Global user configuration only: `~/Library/Application Support/Claude/claude_desktop_config.json` and `~/.cursor/mcp.json`; project-level `.cursor/mcp.json` remains untouched |
 | Canonical format | Versioned JSON at the documented `mcp-sync` config location |
@@ -879,13 +879,13 @@ gate for the M1 clients belongs to `MCP-012` under `DEC-025`:
 journeys to GNU/Linux without changing any adapter ownership or filesystem
 safety rule:
 
-- Runtime path selection recognizes only macOS and Linux. Linux resolves a
+- Runtime path selection recognizes macOS, Linux, and Windows. Linux resolves a
   non-empty absolute `XDG_CONFIG_HOME`, or `$HOME/.config` otherwise, for the
   canonical file and Electron-style user data. Claude Desktop uses
   `<config-home>/Claude/claude_desktop_config.json`, VS Code uses
   `<config-home>/Code/User/mcp.json`, and Cursor, Windsurf, and Codex retain
-  their documented home-relative paths. Windows remains an explicit
-  unsupported-platform error until `MCP-019`.
+  their documented home-relative paths. The Windows mapping is defined
+  separately under `MCP-019` and does not alter these Linux paths.
 - Five adapter path fixtures and three platform-root fixtures prove the exact
   Linux defaults, XDG relocation, and exclusion boundaries without reaching a
   real home. The shared built-binary harness makes `XDG_CONFIG_HOME` distinct
@@ -905,6 +905,41 @@ safety rule:
   prove both native jobs plus dependency policy under both event paths. This is
   GNU libc source-checkout behavior evidence, not release packaging,
   Alpine/musl support, or a Linux current-client smoke claim.
+
+### Implemented Windows platform boundary
+
+`MCP-019` extends the same source-checkout configuration, recovery, and bounded
+health journeys to native Windows MSVC without changing adapter ownership or
+starting restore UX:
+
+- Runtime path selection requires injected, non-empty, absolute,
+  traversal-free `%USERPROFILE%`, `%LOCALAPPDATA%`, and `%APPDATA%` values.
+  Canonical state uses `%LOCALAPPDATA%\mcp-sync\config.json`; Claude Desktop and
+  VS Code use their documented roaming paths; Cursor, Windsurf, and Codex keep
+  their documented profile-relative paths. `HOME` and XDG variables neither
+  substitute for nor override those Windows roots.
+- The same `tempfile`-owned synchronized same-directory publication boundary
+  performs no-clobber creation and the operating system's maintained
+  replace-existing equivalent. Existing generic filesystem and five-target
+  failure tests exercise exact backups, stale-byte refusal, interrupted-write
+  compensation, rollback of created and replaced targets, restoration of a
+  pre-existing backup, concurrent-edit refusal, and temporary cleanup on the
+  native platform.
+- Thirteen resolver tests, exact Windows path fixtures in all five adapters, and
+  the platform-aware synthetic-home harness keep every read and write beneath
+  disposable `%LOCALAPPDATA%`, `%APPDATA%`, and `%USERPROFILE%` roots. A
+  Windows-only copied-executable journey runs `init`, guarded canonical `add`,
+  five-target `sync`, and repeat dry-run away from the checkout while checking
+  exact backups and target placement. Native PowerShell fixtures also exercise
+  bounded health success, timeout, malformed output, redaction, and direct-child
+  cleanup rather than compiling those operating-system tests out.
+- The [CI quality matrix](.github/workflows/ci.yml) uses `windows-2025` x64 and
+  public-preview `windows-11-arm` ARM64 runners, asserts the exact MSVC Rust
+  host triple, and runs [`scripts/check.ps1`](scripts/check.ps1) through a
+  disposable Windows profile. The platform claim remains gated until both
+  native jobs pass on the pull request; this is source-checkout behavior, not
+  signed packaging, WinGet publication, or a Windows current-client smoke
+  claim.
 
 ### Proven synthetic M1 journey and failure matrix
 
@@ -1000,13 +1035,13 @@ its finished-product story:
 | --- | --- |
 | Canonical JSON v1 | Matches the implemented strict local-STDIO schema and deterministic serialization contract |
 | `init`, complete-definition `add`, and redacted `list` | Match the delivered CLI, validation, import, no-clobber, and structural-output behavior |
-| `sync --dry-run`, `sync`, backups, rollback, and no-ops | Match the delivered five-target macOS and Linux plan/apply transaction; Claude Desktop and Cursor additionally retain macOS current-client verification |
+| `sync --dry-run`, `sync`, backups, rollback, and no-ops | Match the delivered five-target macOS and Linux plan/apply transaction and the Windows implementation pending native CI; Claude Desktop and Cursor additionally retain macOS current-client verification |
 | `mcp-sync test` and STDIO health testing | Matches the explicit named-server five-second initialize boundary, structural protocol validation and redaction, and guaranteed direct-child cleanup; `init` and `sync` remain configuration-only |
 | Windsurf | Delivered for the documented global legacy Cascade JSON contract with fixture and built-binary evidence; no Devin Local or current-client smoke claim |
 | VS Code | Delivered for the native default user-profile `mcp.json` `servers` contract with fixture and built-binary evidence; project/profile/remote/Insiders/portable/extension-owned/Agent Host surfaces remain excluded, and there is no current-client smoke claim |
 | Codex | Delivered for global `~/.codex/config.toml` with TOML-native fixture and built-binary evidence; project layers, remote/OAuth entries, credential stores, and unsupported fields remain outside ownership, and there is no current-client smoke claim |
 | Linux | Implemented for all five global targets with deterministic path and built-binary behavior coverage plus a successful native x64/ARM64 whole-suite CI run; there is no Linux current-client smoke claim |
-| Windows | North-star matrix only; sequenced through `MCP-019` |
+| Windows | Implemented for all five global targets with deterministic path, replacement, rollback, copied-binary, and PowerShell health fixtures; native MSVC x64/ARM64 PR evidence remains the `MCP-019` completion gate, and there is no current-client smoke claim |
 | Explicit restore and backup retention | North-star UX only; sequenced to `MCP-020`, while the M1 guide records safe manual recovery and current one-slot behavior |
 | GitHub Releases, Homebrew, WinGet, and Cargo | North-star distribution only; verification and publication remain gated by `MCP-021` |
 | Source-checkout contributor commands | Match the stable-toolchain locked build, quality script, and dependency-policy checks |
@@ -1028,7 +1063,7 @@ promise.
 | D-05 | Two-client import and conflict reporting | M1 | Codex | 2026-08-07 | Done | [Initialization use case](src/init.rs), [CLI command](src/main.rs), [global Claude Desktop adapter](src/claude_desktop.rs), [global Cursor adapter](src/cursor.rs), [create-only filesystem boundary](src/filesystem.rs), and [built-binary journeys](tests/init.rs) |
 | D-06 | Redacted plan and safe multi-target apply | M1 | Codex | 2026-08-07 | Done | [Plan-once sync use case and focused transaction tests](src/sync.rs), [reversible exact-byte filesystem boundary and recovery tests](src/filesystem.rs), [seven isolated built-binary sync journeys](tests/sync.rs), [wired CLI](src/main.rs), and [public sync contract](README.md) |
 | D-07 | Complete M1 CLI journey and user guide | M1 | Codex | 2026-08-07 | Done | The combined [golden built-binary journey and failure matrix](tests/golden.rs), command-specific journeys, audited [README contract](README.md), refreshed [controlled current-stable two-client smoke](#controlled-current-client-evidence), and tested [M1 usage and recovery guide](docs/m1-usage-and-recovery.md) complete the M1 journey |
-| D-08 | Five-client, cross-platform support matrix | M2 | Codex | Unscheduled | In progress | All five global macOS and Linux targets pass deterministic fixture and built-binary import/sync coverage: four JSON adapters plus the TOML-native Codex adapter. Successful native x64/ARM64 whole-suite [push](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240607296) and [pull-request](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240608728) CI runs complete `MCP-018`; no Linux current-client smoke claim is made. Windsurf, native default-profile VS Code, and Codex have no current-client smoke claim on either implemented platform; Windows and the accepted six-target release matrix remain sequenced |
+| D-08 | Five-client, cross-platform support matrix | M2 | Codex | Unscheduled | In progress | All five global macOS and Linux targets pass deterministic fixture and built-binary import/sync coverage: four JSON adapters plus the TOML-native Codex adapter. Successful native x64/ARM64 whole-suite [push](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240607296) and [pull-request](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240608728) CI runs complete `MCP-018`; no Linux current-client smoke claim is made. `MCP-019` is adding the corresponding Windows path, replacement, rollback, portable-binary, and native MSVC evidence without a current-client smoke claim. Windsurf, native default-profile VS Code, and Codex have no current-client smoke claim on any implemented platform; the accepted six-target release matrix remains sequenced |
 | D-09 | Bounded STDIO health testing | M2 | Codex | 2026-08-07 | Done | [Bounded initialize use case, replaceable process boundary, structural protocol parser, and 11 focused tests](src/health.rs), [five synthetic-home built-binary success and failure journeys](tests/health.rs), [Clap wiring](src/main.rs), and [source-checkout health contract](docs/m1-usage-and-recovery.md) |
 | D-10 | Accessible release channels and recovery runbook | M2 | Unassigned | Unscheduled | Proposed | Six signed or platform-appropriate binaries, protected `v*` tags and release environment, immutable GitHub Release, SHA-256 manifest, SPDX SBOMs, attestations, Homebrew, WinGet, Cargo, per-target install smoke tests, and restore exercise |
 
@@ -1062,7 +1097,7 @@ predecessor, so only the first incomplete row can become `Ready`.
 | MCP-016 | Add the Codex adapter for the shared ChatGPT desktop, Codex CLI, and IDE host configuration | M2 | P1 | Codex | Done | `MCP-015` | [Global-only TOML discovery, structural parsing/rendering, and 18 focused tests](src/codex.rs), [exact current/desired/merged plus project-isolation fixtures](tests/fixtures/codex), [five-client initialization and exclusion journeys](tests/init.rs), and [five-target plan/apply, preflight, collision, exact backup/no-op, and reverse-rollback journeys](tests/sync.rs) extend the [combined golden flow](tests/golden.rs) while preserving comments, formatting, unrelated settings, unowned local fields, remote/OAuth/mixed/opaque entries, project layers, alternate files, and credential stores without JSON conversion. The explicit `toml_edit` parse/display dependency is recorded in [Cargo.toml](Cargo.toml) and [Cargo.lock](Cargo.lock), and the [source-checkout recovery guide](docs/m1-usage-and-recovery.md) includes a tested fail-closed TOML restore procedure. Stable-toolchain locked build, synthetic-home format, warning-free Clippy, all 205 tests, `cargo deny`, dependency review, fixture, redaction, README-alignment, recovery, and documentation checks pass; the global-only boundary and absence of a current-client smoke claim are explicit |
 | MCP-017 | Add bounded MCP STDIO initialize health testing | M2 | P1 | Codex | Done | `MCP-016` | [Bounded initialize orchestration, replaceable operating-system process boundary, duplicate-safe protocol validation, typed redacted failures, and 11 focused tests](src/health.rs), [five built-binary handshake, timeout, malformed-output, server-error, spawn-failure, redaction, and direct-child reap journeys](tests/health.rs), [single-command Clap wiring](src/main.rs), [public contract](README.md), [operational contract](docs/m1-usage-and-recovery.md), and `DEC-029`. The response is bounded to five seconds and 1 MiB, shutdown to 500 milliseconds before forced reap, and only canonical environment plus a fallback `PATH` reaches the child. Static process-boundary inspection confirms only `test` can spawn; the existing built-binary `init` and `sync` sentinels remain green. Stable-toolchain locked build, synthetic-home format, warning-free Clippy, all 221 tests, `cargo deny`, help, protocol, process cleanup, redaction, README-alignment, and documentation checks pass; no stateless `2026-07-28`, remote transport, later operation, current-server smoke, or platform-expansion claim is made |
 | MCP-018 | Add Linux path and behavior support | M2 | P1 | Codex | Done | `MCP-017` | The [platform-neutral resolver and eight path tests](src/paths.rs), exact Linux path fixtures in all five target adapters, distinct-XDG [built-binary harness](tests/support/mod.rs), request-sequenced [bounded-response regression](src/health.rs), and [native x64/ARM64 CI matrix](.github/workflows/ci.yml) prove the complete source-checkout configuration and bounded-health behavior on GNU/Linux. Both the [push](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240607296) and [pull-request](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240608728) event paths pass exact-host x64 and ARM64 jobs with all 228 tests, formatting, warning-free Clippy, and dependency policy. The focused regression also passed 100 consecutive local runs. Local macOS and native ARM64 gates, portable JSON/TOML recovery exercises, redaction, documentation, and diff checks pass. Windows, musl/Alpine, release packaging, and Linux current-client smoke remain explicitly unclaimed |
-| MCP-019 | Add Windows path and replacement behavior support | M2 | P1 | Unassigned | Ready | `MCP-018` | Native Windows MSVC x64 and ARM64 CI, path, backup, replacement, rollback, and portable-package tests pass |
+| MCP-019 | Add Windows path and replacement behavior support | M2 | P1 | Codex | In progress | `MCP-018` | Native Windows MSVC x64 and ARM64 CI, path, backup, replacement, rollback, and portable-package tests pass |
 | MCP-020 | Add explicit restore and backup-retention UX | M2 | P1 | Unassigned | Proposed | `MCP-019` | Restore journey and retention rules documented and tested |
 | MCP-021 | Publish accessible, provenance-linked release channels | M2 | P1 | Unassigned | Proposed | `MCP-020` | `DEC-024` and `DEC-031` pass in full: an active `v*` tag ruleset and protected least-privilege release environment secure publication; all six artifacts build and smoke-test natively; macOS and Windows trust checks pass; the immutable release contains checksums, per-target SPDX SBOMs, and attestations; and the exact same `v0.1.0` installs through GitHub Releases, Homebrew, WinGet, and Cargo under the accepted identifiers |
 
@@ -1186,15 +1221,15 @@ is active, ready, or a dependency of the M2 main story.
 
 ### Immediate focus
 
-1. `MCP-018` is complete with deterministic five-client Linux path and
-   built-binary coverage plus successful native GNU/Linux x64 and ARM64 CI on
-   both push and pull-request event paths.
-2. Only `MCP-019` is `Ready`. Assign an owner and reconcile its exact
-   goal-catalog objective before moving it to `In progress`; keep `MCP-020` and
-   every later ticket `Proposed`.
-3. Preserve every configuration, process, protocol, redaction, backup, and
-   rollback invariant when Windows work is intentionally started; do not begin
-   it as part of `MCP-018` completion.
+1. Complete `MCP-019` as the sole main-story work in progress under its exact
+   active goal; keep `MCP-020` and every later ticket `Proposed`.
+2. Resolve canonical configuration through `%LOCALAPPDATA%`, client roaming
+   data through `%APPDATA%`, and documented home-relative client files through
+   `%USERPROFILE%`, with all three inputs injected, absolute, and
+   traversal-free.
+3. Prove unchanged no-clobber, exact-backup, guarded replacement, and
+   reverse-order rollback behavior with the complete suite on native Windows
+   MSVC x64 and ARM64 runners plus a copied-binary portable journey.
 4. Keep `SIDE-001` through `SIDE-005` proposed and non-gating until one is
    intentionally assigned. If a side-quest outcome becomes necessary for a
    release or safety gate, promote it or fold it into the owning main-story
@@ -1236,6 +1271,7 @@ is active, ready, or a dependency of the M2 main story.
 | DEC-030 | Resolve Linux user data through XDG and require native x64/ARM64 whole-suite CI | Accepted | 2026-08-07 | Linux uses a non-empty absolute `XDG_CONFIG_HOME`, falling back to `$HOME/.config`, for canonical configuration plus Claude Desktop and VS Code user data; Cursor, Windsurf, and Codex keep their documented home-relative paths. The platform-neutral resolver and existing adapters preserve all ownership and mutation rules. [GitHub's standard hosted-runner contract](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job) supplies native `ubuntu-24.04` x64 and `ubuntu-24.04-arm` ARM64 runners, and each must assert its Rust host and pass the complete synthetic-home quality script. This proves GNU libc source-checkout behavior only: it does not add musl/Alpine, Windows, packaging, or a Linux current-client smoke claim. |
 | DEC-031 | Protect stable release tags and publication credentials as part of `MCP-021` | Accepted | 2026-08-08 | Release immutability begins only after publication, so `MCP-021` must first activate a `v*` tag ruleset that restricts creation to the authorized release path and prevents update or deletion outside an explicit emergency bypass. Publication uses a protected release environment with tag deployment restrictions and least-privilege credentials, preferring OIDC or trusted publishing where supported. This is release-gating main-story scope rather than a side quest; an interactive administration PAT is never stored or reused as a release credential. |
 | DEC-032 | Give every classified side quest a canonical Goal-mode objective | Accepted | 2026-08-08 | A side-quest objective provides the same persistent scope and evidence contract as a main-story objective without changing eligibility, independence, priority, or the one-side-quest WIP cap. One thread still carries only one unfinished goal, so concurrent main-story and side-quest work uses separate threads; completing a side quest activates no successor. |
+| DEC-033 | Resolve Windows user paths through standard profile variables and require native MSVC x64/ARM64 evidence | Accepted | 2026-08-08 | Windows requires non-empty absolute, traversal-free `%USERPROFILE%`, `%LOCALAPPDATA%`, and `%APPDATA%`: home-relative Cursor, Windsurf, and Codex files remain beneath the profile; the machine-specific canonical configuration lives beneath local application data; and Claude Desktop plus VS Code use roaming application data according to their documented Windows contracts. The existing `tempfile` same-directory persistence boundary remains the maintained atomic-replacement-equivalent instead of introducing an unreviewed platform primitive, but native tests must prove overwrite, exact backup, compensation, and reverse-order rollback on both `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`. [GitHub's hosted-runner contract](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) supplies `windows-2025` x64 and public-preview `windows-11-arm` ARM64 runners; preview availability is therefore an explicit CI dependency, not a release-support claim. |
 
 ### Open decisions
 

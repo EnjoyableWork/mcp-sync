@@ -64,3 +64,45 @@ jobs:
 
       - name: Run quality gates through a synthetic home
         run: ./scripts/check.sh
+
+  windows-quality:
+    name: Windows ${{ matrix.architecture }} — format, Clippy, and test
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x64
+            runner: windows-2025
+            rust_host: x86_64-pc-windows-msvc
+          - architecture: ARM64
+            runner: windows-11-arm
+            rust_host: aarch64-pc-windows-msvc
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Select the repository Rust toolchain
+        shell: pwsh
+        run: |
+          rustup show active-toolchain
+          rustc --version --verbose
+          cargo --version
+
+      - name: Verify the native Windows MSVC Rust host
+        shell: pwsh
+        env:
+          EXPECTED_RUST_HOST: ${{ matrix.rust_host }}
+        run: |
+          $actualRustHost = (rustc --version --verbose | Select-String '^host: ').Line.Substring(6)
+          if ($actualRustHost -ne $env:EXPECTED_RUST_HOST) {
+            throw "Expected Rust host $env:EXPECTED_RUST_HOST but found $actualRustHost"
+          }
+
+      - name: Run quality gates through a synthetic Windows home
+        shell: pwsh
+        run: ./scripts/check.ps1

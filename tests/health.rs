@@ -46,13 +46,14 @@ fn write_server(
     name: &str,
     script: &Path,
     environment: BTreeMap<String, String>,
-) {
+) -> String {
+    let (command, arguments) = server_launch(script);
     let mut servers = serde_json::Map::new();
     servers.insert(
         name.to_owned(),
         json!({
-            "command": "/bin/sh",
-            "args": [script.to_string_lossy()],
+            "command": command,
+            "args": arguments,
             "env": environment,
         }),
     );
@@ -61,10 +62,42 @@ fn write_server(
         .expect("synthetic canonical configuration should serialize");
     bytes.push(b'\n');
     home.write_file(&home.canonical_configuration(), bytes);
+    command
 }
 
 fn script_path(home: &SyntheticHome, name: &str) -> PathBuf {
-    home.root().join(name)
+    let extension = if cfg!(windows) { "ps1" } else { "sh" };
+    home.root().join(format!("{name}.{extension}"))
+}
+
+#[cfg(unix)]
+fn server_launch(script: &Path) -> (String, Vec<String>) {
+    (
+        "/bin/sh".to_owned(),
+        vec![script.to_string_lossy().into_owned()],
+    )
+}
+
+#[cfg(windows)]
+fn powershell_path() -> PathBuf {
+    PathBuf::from(std::env::var_os("SystemRoot").expect("Windows should define SystemRoot"))
+        .join("System32/WindowsPowerShell/v1.0/powershell.exe")
+}
+
+#[cfg(windows)]
+fn server_launch(script: &Path) -> (String, Vec<String>) {
+    (
+        powershell_path().to_string_lossy().into_owned(),
+        vec![
+            "-NoLogo".to_owned(),
+            "-NoProfile".to_owned(),
+            "-NonInteractive".to_owned(),
+            "-ExecutionPolicy".to_owned(),
+            "Bypass".to_owned(),
+            "-File".to_owned(),
+            script.to_string_lossy().into_owned(),
+        ],
+    )
 }
 
 fn assert_output_omits(output: &str, private_values: &[&str]) {
@@ -88,17 +121,52 @@ fn process_exists(pid: &str) -> bool {
         .is_ok_and(|status| status.success())
 }
 
-#[cfg(unix)]
+#[cfg(windows)]
+fn process_exists(pid: &str) -> bool {
+    let pid = pid
+        .trim()
+        .parse::<u32>()
+        .expect("the Windows child should publish a numeric process identifier");
+    Command::new(powershell_path())
+        .args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            &format!(
+                "if (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{ exit 0 }} else {{ exit 1 }}"
+            ),
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
 #[test]
 fn built_binary_completes_initialize_and_initialized_with_redacted_output() {
     let home = SyntheticHome::new();
-    let script = script_path(&home, "healthy-server.sh");
+    let script = script_path(&home, "healthy-server");
     let request_path = home.root().join("initialize-request.json");
     let notification_path = home.root().join("initialized-notification.json");
     let exit_marker = home.root().join("server-exited");
     let private_environment = "synthetic-health-private-value";
-    home.write_file(
-        &script,
+    let script_contents = if cfg!(windows) {
+        r#"
+if (Test-Path Env:HOME) { exit 40 }
+if ($env:PRIVATE_ENVIRONMENT -ne "synthetic-health-private-value") { exit 41 }
+$initialize = [Console]::In.ReadLine()
+if ($null -eq $initialize) { exit 42 }
+[IO.File]::WriteAllText($env:REQUEST_PATH, $initialize)
+[Console]::Out.WriteLine('{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"synthetic-health-server","version":"1.0"}}}')
+$initialized = [Console]::In.ReadLine()
+if ($null -eq $initialized) { exit 43 }
+[IO.File]::WriteAllText($env:NOTIFICATION_PATH, $initialized)
+[IO.File]::WriteAllText($env:EXIT_MARKER, 'exited')
+exit 0
+"#
+    } else {
         r#"
 if [ "${HOME+x}" = x ]; then exit 40; fi
 if [ "$PRIVATE_ENVIRONMENT" != "synthetic-health-private-value" ]; then exit 41; fi
@@ -109,9 +177,10 @@ IFS= read -r initialized || exit 43
 printf '%s' "$initialized" > "$NOTIFICATION_PATH"
 printf 'exited' > "$EXIT_MARKER"
 exit 0
-"#,
-    );
-    write_server(
+"#
+    };
+    home.write_file(&script, script_contents);
+    let process_command = write_server(
         &home,
         "healthy",
         &script,
@@ -145,7 +214,7 @@ exit 0
     let script_text = script.to_string_lossy();
     assert_output_omits(
         &output_text,
-        &["/bin/sh", script_text.as_ref(), private_environment],
+        &[&process_command, script_text.as_ref(), private_environment],
     );
     assert_eq!(
         fs::read_to_string(exit_marker).expect("healthy child should exit"),
@@ -172,23 +241,29 @@ exit 0
     assert!(notification.get("id").is_none());
 }
 
-#[cfg(unix)]
 #[test]
 fn built_binary_timeout_is_bounded_and_reaps_the_silent_child() {
     let home = SyntheticHome::new();
-    let script = script_path(&home, "silent-server.sh");
+    let script = script_path(&home, "silent-server");
     let pid_path = home.root().join("silent-server.pid");
     let private_argument = "synthetic-timeout-private-argument";
     let private_environment = "synthetic-timeout-private-environment";
-    home.write_file(
-        &script,
+    let script_contents = if cfg!(windows) {
+        r#"
+[IO.File]::WriteAllText($env:PID_PATH, [string]$PID)
+$initialize = [Console]::In.ReadLine()
+if ($null -eq $initialize) { exit 50 }
+Start-Sleep -Seconds 30
+"#
+    } else {
         r#"
 printf '%s' "$$" > "$PID_PATH"
 IFS= read -r initialize || exit 50
 IFS= read -r never
-"#,
-    );
-    write_server(
+"#
+    };
+    home.write_file(&script, script_contents);
+    let process_command = write_server(
         &home,
         "silent",
         &script,
@@ -215,7 +290,7 @@ IFS= read -r never
     assert_output_omits(
         &error,
         &[
-            "/bin/sh",
+            &process_command,
             script_text.as_ref(),
             private_argument,
             private_environment,
@@ -225,23 +300,30 @@ IFS= read -r never
     assert!(!process_exists(&pid), "the timed-out child must be reaped");
 }
 
-#[cfg(unix)]
 #[test]
 fn built_binary_rejects_malformed_stdout_and_reaps_the_child_without_echoing_it() {
     let home = SyntheticHome::new();
-    let script = script_path(&home, "malformed-server.sh");
+    let script = script_path(&home, "malformed-server");
     let pid_path = home.root().join("malformed-server.pid");
     let private_stdout = "synthetic-malformed-private-output";
-    home.write_file(
-        &script,
+    let script_contents = if cfg!(windows) {
+        r#"
+[IO.File]::WriteAllText($env:PID_PATH, [string]$PID)
+$initialize = [Console]::In.ReadLine()
+if ($null -eq $initialize) { exit 60 }
+[Console]::Out.WriteLine('not-json-' + $env:PRIVATE_STDOUT)
+while ($true) { Start-Sleep -Milliseconds 10 }
+"#
+    } else {
         r#"
 printf '%s' "$$" > "$PID_PATH"
 IFS= read -r initialize || exit 60
 printf 'not-json-%s\n' "$PRIVATE_STDOUT"
 while :; do :; done
-"#,
-    );
-    write_server(
+"#
+    };
+    home.write_file(&script, script_contents);
+    let process_command = write_server(
         &home,
         "malformed",
         &script,
@@ -262,28 +344,39 @@ while :; do :; done
         "error: health test for server \"malformed\" failed: the process returned an invalid initialize response: stdout was not one duplicate-free JSON-RPC message\n"
     );
     let script_text = script.to_string_lossy();
-    assert_output_omits(&error, &["/bin/sh", script_text.as_ref(), private_stdout]);
+    assert_output_omits(
+        &error,
+        &[&process_command, script_text.as_ref(), private_stdout],
+    );
     let pid = fs::read_to_string(pid_path).expect("malformed child should publish its pid");
     assert!(!process_exists(&pid), "the malformed child must be reaped");
 }
 
-#[cfg(unix)]
 #[test]
 fn built_binary_redacts_json_rpc_error_message_data_and_stderr() {
     let home = SyntheticHome::new();
-    let script = script_path(&home, "rejecting-server.sh");
+    let script = script_path(&home, "rejecting-server");
     let private_response = "synthetic-rejection-private-response";
     let private_stderr = "synthetic-rejection-private-stderr";
-    home.write_file(
-        &script,
+    let script_contents = if cfg!(windows) {
+        r#"
+$initialize = [Console]::In.ReadLine()
+if ($null -eq $initialize) { exit 70 }
+[Console]::Error.WriteLine($env:PRIVATE_STDERR)
+$response = '{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"' + $env:PRIVATE_RESPONSE + '","data":{"token":"' + $env:PRIVATE_RESPONSE + '"}}}'
+[Console]::Out.WriteLine($response)
+while ($true) { Start-Sleep -Milliseconds 10 }
+"#
+    } else {
         r#"
 IFS= read -r initialize || exit 70
 printf '%s\n' "$PRIVATE_STDERR" >&2
 printf '{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"%s","data":{"token":"%s"}}}\n' "$PRIVATE_RESPONSE" "$PRIVATE_RESPONSE"
 while :; do :; done
-"#,
-    );
-    write_server(
+"#
+    };
+    home.write_file(&script, script_contents);
+    let process_command = write_server(
         &home,
         "rejecting",
         &script,
@@ -304,7 +397,7 @@ while :; do :; done
     assert_output_omits(
         &error,
         &[
-            "/bin/sh",
+            &process_command,
             script_text.as_ref(),
             private_response,
             private_stderr,

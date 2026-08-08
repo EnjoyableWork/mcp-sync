@@ -16,7 +16,8 @@ const COMMAND_FIELD: &str = "command";
 const ARGUMENTS_FIELD: &str = "args";
 const ENVIRONMENT_FIELD: &str = "env";
 
-/// The current Cursor global user configuration target on macOS and Linux.
+/// The current Cursor global user configuration target on macOS, Linux, and
+/// Windows.
 ///
 /// Discovery resolves exactly `~/.cursor/mcp.json` through the injected home
 /// path. It has no project-root input and therefore cannot discover a
@@ -635,7 +636,12 @@ mod tests {
 
     impl Environment for FixtureEnvironment {
         fn value(&self, name: &'static str) -> Option<OsString> {
-            (name == "HOME").then(|| self.home.clone().into_os_string())
+            match name {
+                "HOME" | "USERPROFILE" => Some(self.home.clone().into_os_string()),
+                "LOCALAPPDATA" => Some(self.home.join("AppData/Local").into_os_string()),
+                "APPDATA" => Some(self.home.join("AppData/Roaming").into_os_string()),
+                _ => None,
+            }
         }
     }
 
@@ -697,6 +703,21 @@ mod tests {
     #[test]
     fn linux_discovery_path_matches_only_the_current_global_contract() {
         let (root, adapter) = adapter_fixture_for(Platform::Linux);
+
+        assert_eq!(
+            adapter.configuration_path(),
+            root.path().join("user/.cursor/mcp.json")
+        );
+        assert!(adapter.configuration_path().starts_with(root.path()));
+        assert_ne!(
+            adapter.configuration_path(),
+            root.path().join("user/project/.cursor/mcp.json")
+        );
+    }
+
+    #[test]
+    fn windows_discovery_path_matches_only_the_current_global_contract() {
+        let (root, adapter) = adapter_fixture_for(Platform::Windows);
 
         assert_eq!(
             adapter.configuration_path(),
