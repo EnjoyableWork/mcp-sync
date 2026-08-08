@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "servers": {
+    "added": {
+      "command": "/synthetic/bin/added",
+      "args": ["--added"],
+      "env": {
+        "ADDED_TOKEN": "fixture-codex-added-secret"
+      }
+    },
+    "unchanged": {
+      "command": "/synthetic/bin/unchanged",
+      "args": ["--serve"],
+      "env": {
+        "UNCHANGED_TOKEN": "fixture-codex-unchanged-secret"
+      }
+    },
+    "updated": {
+      "command": "/synthetic/bin/new",
+      "args": ["--new", "literal value"],
+      "env": {
+        "NEW_TOKEN": "fixture-codex-new-secret",
+        "SHARED_TOKEN": "fixture-codex-shared-new"
+      }
+    }
+  }
+}

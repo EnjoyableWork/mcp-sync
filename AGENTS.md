@@ -54,46 +54,52 @@ consumer and an accepted decision in `PROJECT.md`.
 The implemented foundation is one Rust 2024 binary crate with a package named
 `enjoyable-mcp-sync` and an installed binary named `mcp-sync`. The CLI now
 supports help, version, create-only `init`, complete-definition canonical
-`add`, structurally redacted `list`, and four-target `sync --dry-run` / `sync`
+`add`, structurally redacted `list`, and five-target `sync --dry-run` / `sync`
 journeys. It also contains the strict canonical JSON v1 model, an injected
 macOS configuration-path resolver, a replaceable filesystem boundary with
 read, no-clobber creation, guarded replacement, and reversible transaction
 ports, and a pure deterministic reconciliation engine with structurally
 redacted plans. Fixture-backed global Claude Desktop, Cursor, Windsurf, and VS
-Code macOS adapters discover and parse native JSON, then render plan-driven
+Code macOS adapters discover and parse native JSON, while the global Codex
+adapter performs TOML-native structural edits; all five render plan-driven
 updates in memory while preserving unowned fields. The Windsurf adapter manages
 the documented legacy Cascade file at `~/.codeium/windsurf/mcp_config.json`; it
 does not claim Devin Local agent configuration. The VS Code adapter manages
 only the native default user-profile file at
 `~/Library/Application Support/Code/User/mcp.json`; it does not claim
 workspace, named-profile, remote, Insiders, portable, Cline, Roo Code, or Agent
-Host/Copilot CLI configuration. `init` deterministically imports compatible
-local definitions, reports structural conflicts without writing, skips named
-unmanaged Cursor, Windsurf, and VS Code entries that canonical v1 cannot
+Host/Copilot CLI configuration. The Codex adapter manages only global
+`~/.codex/config.toml` for the host configuration shared by the ChatGPT desktop
+app, Codex CLI, and IDE extension. It owns only `command`, `args`, and `env` in
+unambiguous local STDIO entries, preserves every other TOML setting and entry,
+never discovers trusted-project layers or OAuth credential stores, and makes no
+current-client smoke claim. `init` deterministically imports compatible local
+definitions, reports structural conflicts without writing, skips named
+unmanaged Cursor, Windsurf, VS Code, and Codex entries that canonical v1 cannot
 represent, and creates only a previously missing canonical file through a
 same-directory temporary file. `add` validates one complete definition before
 reading canonical state, performs a deterministic add/update, skips semantic
 no-ops, and backs up then atomically replaces only the canonical regular file;
 `list` exposes names, counts, and escaped environment key names but no process
 values. `sync --dry-run` validates and structurally reports one fully rendered
-four-target plan without mutation; `sync` applies those exact bytes with no-op
+five-target plan without mutation; `sync` applies those exact bytes with no-op
 detection, recoverable backups, atomic replacement, per-target outcomes, and
 reverse-order rollback after a later failure. It preserves target-only and
 unowned native data, reports unmanaged native entries without exposing their
-values, and never touches project-level Cursor or VS Code files. No implemented
-command starts configured server processes. A combined built-binary
+values, and never touches project-level Cursor, VS Code, or Codex files. No
+implemented command starts configured server processes. A combined built-binary
 synthetic-home suite proves the complete configuration flow, deterministic
-four-client import, redaction, idempotence, native preservation, non-zero
-failures, and four-target transaction rollback.
+five-client import, redaction, idempotence, native preservation, non-zero
+failures, and five-target transaction rollback.
 Controlled current-stable Cursor and Claude Desktop smokes both accept the
 rendered global definitions and complete MCP initialization; the Claude journey
 uses a no-clobber backup and verified exact restore around its temporary native
 file. The source-checkout usage and recovery guide documents the current workflow,
 redaction boundary, one-slot backups, transaction recovery, guarded manual
 restoration, and current limitations without turning the README into a progress
-report. Windsurf and VS Code support are fixture- and built-binary-verified
-against their documented native contracts; neither has a current-client smoke
-claim. Codex, other platforms, health/process behavior, restore UX, and
+report. Windsurf, VS Code, and Codex support are fixture- and built-binary-
+verified against their documented native contracts; none has a current-client
+smoke claim. Other platforms, health/process behavior, restore UX, and
 distribution remain later-ticket scope. Use the existing Clap command tree as
 CLI behavior grows; do not introduce a second parser.
 
@@ -219,9 +225,15 @@ integrity and redaction as product requirements.
   field structurally, and reject a local canonical addition that collides with
   any unmanaged entry.
 - Treat Codex as one TOML target shared by the ChatGPT desktop app, Codex CLI,
-  and IDE extension. Preserve non-MCP settings and unsupported MCP fields
-  structurally; never round-trip `~/.codex/config.toml` through a lossy JSON
-  representation.
+  and IDE extension. Manage only global `~/.codex/config.toml`; never discover
+  or mutate trusted-project `.codex/config.toml` layers through this adapter,
+  and do not claim that a global sync overrides their higher-precedence values.
+  In `mcp_servers`, own only `command`, `args`, and `env` for unambiguous local
+  STDIO entries. Preserve comments, non-MCP settings, unowned local fields,
+  remote HTTP/OAuth entries, authentication and header settings, and unknown or
+  mixed transports structurally; reject a canonical local addition that
+  collides with any unmanaged entry. Never access Codex OAuth credential stores
+  or round-trip the TOML document through a lossy JSON representation.
 - The initial sync behavior must not silently delete target-only servers.
   Report drift; any future prune behavior must be explicit, planned, backed up,
   and covered by recovery tests.

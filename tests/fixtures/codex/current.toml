@@ -1,0 +1,34 @@
+# Synthetic global Codex configuration. This comment must survive.
+model = "synthetic-model" # unrelated inline comment
+mcp_oauth_callback_port = 5555 # OAuth callback setting is unmanaged
+future_root = { enabled = true, note = "fixture-codex-root-private" }
+
+[mcp_servers]
+target-only = { command = "/synthetic/bin/target-only", args = ["--local"], env = { LOCAL_TOKEN = "fixture-codex-local-secret" }, cwd = "/synthetic/target-only" }
+remote-only = { url = "https://codex.example.invalid/mcp", auth = "oauth", bearer_token_env_var = "CODEX_REMOTE_TOKEN", http_headers = { "X-Fixture" = "fixture-codex-remote-secret" } }
+mixed-transport = { command = "/synthetic/bin/mixed", url = "https://codex.example.invalid/mixed", args = ["--mixed"], env = { MIXED_TOKEN = "fixture-codex-mixed-secret" } }
+opaque = { enabled = false, future_transport = "fixture-codex-future-private" }
+
+[mcp_servers.unchanged]
+command = "/synthetic/bin/unchanged"
+args = ["--serve"]
+cwd = "/synthetic/unchanged" # unowned local field
+startup_timeout_sec = 20
+
+[mcp_servers.unchanged.env]
+UNCHANGED_TOKEN = "fixture-codex-unchanged-secret"
+
+[mcp_servers.updated]
+command = '/synthetic/bin/old' # managed-field comment survives replacement
+args = ["--old"] # managed array comment survives replacement
+cwd = "/synthetic/updated"
+enabled = false
+env_vars = ["PASSTHROUGH"]
+
+[mcp_servers.updated.env]
+OLD_TOKEN = "fixture-codex-old-secret" # removed with its owned key
+SHARED_TOKEN = "fixture-codex-shared-old" # retained-key comment survives
+
+[plugins."fixture@test".mcp_servers.hosted]
+enabled = true
+default_tools_approval_mode = "prompt"

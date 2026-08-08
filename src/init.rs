@@ -1,6 +1,7 @@
 use crate::claude_desktop::{
     ClaudeDesktopAdapter, ClaudeDesktopAdapterError, ClaudeDesktopDiscovery,
 };
+use crate::codex::{CodexAdapter, CodexAdapterError, CodexDiscovery};
 use crate::config::{CanonicalConfig, CanonicalServer, ConfigError};
 use crate::cursor::{CursorAdapter, CursorAdapterError, CursorDiscovery};
 use crate::filesystem::{FileCreator, FileIoError, FileSystem};
@@ -46,8 +47,11 @@ pub fn initialize(
     let vscode = VsCodeAdapter::for_macos(paths)
         .discover(filesystem)
         .map_err(|source| InitError::DiscoverVsCode { source })?;
+    let codex = CodexAdapter::for_macos(paths)
+        .discover(filesystem)
+        .map_err(|source| InitError::DiscoverCodex { source })?;
 
-    let mut imports = Vec::with_capacity(4);
+    let mut imports = Vec::with_capacity(5);
     let mut unmanaged_entries = BTreeMap::<Client, BTreeSet<String>>::new();
     if let ClaudeDesktopDiscovery::Found(document) = claude {
         imports.push(ClientImport::new(
@@ -95,6 +99,20 @@ pub fn initialize(
         );
         imports.push(ClientImport::new(
             Client::VsCode,
+            document.canonical_config().clone(),
+        ));
+    }
+    if let CodexDiscovery::Found(document) = codex {
+        unmanaged_entries.insert(
+            Client::Codex,
+            document
+                .unmanaged_server_names()
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+        );
+        imports.push(ClientImport::new(
+            Client::Codex,
             document.canonical_config().clone(),
         ));
     }
@@ -180,6 +198,7 @@ pub enum InitError {
     DiscoverCursor { source: CursorAdapterError },
     DiscoverWindsurf { source: WindsurfAdapterError },
     DiscoverVsCode { source: VsCodeAdapterError },
+    DiscoverCodex { source: CodexAdapterError },
     Conflicts { source: ImportConflicts },
     BuildCanonical { source: ConfigError },
     SerializeCanonical { source: ConfigError },
@@ -214,6 +233,10 @@ impl fmt::Display for InitError {
                 formatter,
                 "cannot import VS Code configuration: {source}; fix the file or its permissions, then rerun `mcp-sync init`"
             ),
+            Self::DiscoverCodex { source } => write!(
+                formatter,
+                "cannot import Codex configuration: {source}; fix the file or its permissions, then rerun `mcp-sync init`"
+            ),
             Self::Conflicts { source } => source.fmt(formatter),
             Self::BuildCanonical { source } => {
                 write!(
@@ -243,6 +266,7 @@ impl Error for InitError {
             Self::DiscoverCursor { source } => Some(source),
             Self::DiscoverWindsurf { source } => Some(source),
             Self::DiscoverVsCode { source } => Some(source),
+            Self::DiscoverCodex { source } => Some(source),
             Self::Conflicts { source } => Some(source),
             Self::BuildCanonical { source } | Self::SerializeCanonical { source } => Some(source),
         }
@@ -255,6 +279,7 @@ enum Client {
     Cursor,
     Windsurf,
     VsCode,
+    Codex,
 }
 
 impl fmt::Display for Client {
@@ -264,6 +289,7 @@ impl fmt::Display for Client {
             Self::Cursor => formatter.write_str("Cursor"),
             Self::Windsurf => formatter.write_str("Windsurf"),
             Self::VsCode => formatter.write_str("VS Code"),
+            Self::Codex => formatter.write_str("Codex"),
         }
     }
 }
@@ -540,7 +566,7 @@ mod tests {
             Client::Cursor,
             config(vec![
                 ("alpha", server("alpha-command", "--alpha", "alpha-value")),
-                ("shared", shared),
+                ("shared", shared.clone()),
             ]),
         );
         let windsurf = ClientImport::new(
@@ -557,6 +583,16 @@ mod tests {
                 server("delta-command", "--delta", "delta-value"),
             )]),
         );
+        let codex = ClientImport::new(
+            Client::Codex,
+            config(vec![
+                (
+                    "epsilon",
+                    server("epsilon-command", "--epsilon", "epsilon-value"),
+                ),
+                ("shared", shared),
+            ]),
+        );
         let unmanaged_entries = BTreeMap::from([
             (Client::Cursor, BTreeSet::from(["remote-only".to_owned()])),
             (
@@ -567,6 +603,10 @@ mod tests {
                 Client::VsCode,
                 BTreeSet::from(["vscode-native-env".to_owned(), "vscode-remote".to_owned()]),
             ),
+            (
+                Client::Codex,
+                BTreeSet::from(["codex-mixed".to_owned(), "codex-remote".to_owned()]),
+            ),
         ]);
 
         let forward = normalize_imports(
@@ -575,12 +615,16 @@ mod tests {
                 cursor.clone(),
                 windsurf.clone(),
                 vscode.clone(),
+                codex.clone(),
             ],
             unmanaged_entries.clone(),
         )
         .expect("compatible imports should normalize");
-        let reverse = normalize_imports(vec![vscode, windsurf, cursor, claude], unmanaged_entries)
-            .expect("discovery order should not affect normalization");
+        let reverse = normalize_imports(
+            vec![codex, vscode, windsurf, cursor, claude],
+            unmanaged_entries,
+        )
+        .expect("discovery order should not affect normalization");
 
         let forward_json = CanonicalConfig::new(forward.servers)
             .expect("the merged map should be valid")
@@ -608,6 +652,10 @@ mod tests {
                 SkippedClientEntries {
                     client: Client::VsCode,
                     names: vec!["vscode-native-env".to_owned(), "vscode-remote".to_owned(),],
+                },
+                SkippedClientEntries {
+                    client: Client::Codex,
+                    names: vec!["codex-mixed".to_owned(), "codex-remote".to_owned()],
                 },
             ]
         );
@@ -728,6 +776,10 @@ mod tests {
                     client: Client::VsCode,
                     names: vec!["vscode-native-env".to_owned()],
                 },
+                SkippedClientEntries {
+                    client: Client::Codex,
+                    names: vec!["codex-remote".to_owned()],
+                },
             ],
         };
 
@@ -737,7 +789,7 @@ mod tests {
         );
         assert_eq!(
             single.to_string(),
-            "Initialized canonical configuration with 1 server from 1 client configuration.\nSkipped 1 unsupported Cursor entry: \"remote-only\".\nSkipped 1 unsupported Windsurf entry: \"windsurf-remote\".\nSkipped 1 unsupported VS Code entry: \"vscode-native-env\"."
+            "Initialized canonical configuration with 1 server from 1 client configuration.\nSkipped 1 unsupported Cursor entry: \"remote-only\".\nSkipped 1 unsupported Windsurf entry: \"windsurf-remote\".\nSkipped 1 unsupported VS Code entry: \"vscode-native-env\".\nSkipped 1 unsupported Codex entry: \"codex-remote\"."
         );
     }
 
