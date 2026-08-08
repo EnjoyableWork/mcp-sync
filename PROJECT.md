@@ -9,11 +9,11 @@ lightweight enough to use before a hosted tracker is justified.
 | Document state | Active |
 | Product state | The source-checkout macOS and GNU/Linux implementation reconciles global Claude Desktop, Cursor, Windsurf legacy Cascade, native VS Code default user-profile, and global Codex host configuration, and exposes one bounded named-server STDIO initialize health boundary; deterministic fixtures and native x64/ARM64 GNU/Linux CI prove the five-target configuration behavior without weakening its safety boundaries; Claude Desktop and Cursor retain macOS current-client sync smoke evidence, no Linux target has a current-client smoke claim, and the repository remains pre-release |
 | Current milestone | M2 — City, in progress |
-| Overall status | `MCP-018` is `Done`; only `MCP-019` is `Ready`, and every later main-story ticket remains `Proposed` |
+| Overall status | `MCP-018` is `Done`; only `MCP-019` is `Ready`, every later main-story ticket remains `Proposed`, and `SIDE-001` through `SIDE-005` are proposed but inactive |
 | Current focus | Keep `MCP-019` as the sole ready successor; do not begin Windows work until its exact goal is intentionally activated and its owner is clear |
 | Milestone target | Unscheduled; set after an owner and delivery capacity are known |
 | Last reviewed | 2026-08-08 |
-| Next review trigger | Start, completion, or blocking of `MCP-019`, or any change to the supported-client boundary |
+| Next review trigger | Start, completion, or blocking of `MCP-019`; intentional activation of a side quest; or any change to the supported-client or repository-protection boundary |
 
 ## Document roles
 
@@ -99,7 +99,9 @@ Side quests use `SIDE-NNN` IDs and obey all of these rules:
 - if it becomes necessary, promote it into the main sequence through an
   accepted decision before continuing dependent work.
 
-There are no active side quests. The deferred M3 and M4 items are expansion
+There are no active side quests. `SIDE-001` through `SIDE-005` are proposed
+repository-hardening work and remain non-gating unless an accepted decision
+promotes one into the main story. The deferred M3 and M4 items are expansion
 candidates, not executable work. Before one starts, classify it as the next
 ordered main-story arc or as a genuinely independent `SIDE-NNN` ticket.
 
@@ -112,14 +114,17 @@ defines scope and order, and [AGENTS.md](AGENTS.md) defines durable engineering
 constraints. A goal cannot waive a dependency, acceptance criterion, safety
 rule, open decision, or required evidence.
 
-Every main-story ticket has one exact canonical objective in the
-[main-story goal catalog](#main-story-goal-catalog). To set one manually, paste
+Every main-story ticket and every classified side quest has one exact canonical
+objective in the [main-story goal catalog](#main-story-goal-catalog) or
+[side-quest goal catalog](#side-quest-goal-catalog). To set one manually, paste
 the objective after [`/goal`](https://learn.chatgpt.com/docs/developer-commands.md?surface=cli).
 Goal-capable agents are explicitly authorized and required to reconcile the
-active thread goal before beginning main-story work:
+active thread goal before beginning either kind of ticket:
 
-1. Identify the earliest incomplete main-story ticket. It must already be
-   `Ready`; a goal never makes an otherwise ineligible ticket ready.
+1. Identify the ticket being started. A main-story ticket must be the earliest
+   incomplete main-story ticket; a side quest must satisfy every independence
+   rule and the work-in-progress limit. Either ticket must already be `Ready`;
+   a goal never makes an otherwise ineligible ticket ready.
 2. Read the thread's current goal when the runtime supports it and compare the
    objective with the catalog after trimming only surrounding whitespace.
 3. If there is no unfinished goal, set the catalog objective. If the active
@@ -133,11 +138,14 @@ active thread goal before beginning main-story work:
    ceiling.
 5. Only after the goal matches may the ticket receive an owner and move to
    `In progress`. Use an implementation plan for tactical steps inside the goal;
-   the plan may not broaden the objective.
+   the plan may not broaden the objective. One thread may carry only one
+   unfinished goal, so concurrent main-story and side-quest work requires
+   separate threads rather than replacing either active goal.
 6. Mark the goal complete only after the ticket-done gate passes, durable
-   evidence is recorded here, the ticket is `Done`, and only its immediate
-   successor is made `Ready`. Do not activate the successor until work on it is
-   intentionally started.
+   evidence is recorded here, and the ticket is `Done`. For a main-story
+   ticket, only its immediate successor becomes `Ready`, and that successor is
+   not activated until work intentionally starts. A completed side quest has no
+   automatic successor and cannot activate another side quest.
 
 An agent without Goal mode follows the same catalog objective as its task
 contract and continues normally. Goal state remains runtime/thread state rather
@@ -280,6 +288,14 @@ Stable release trust is mandatory rather than best-effort:
   explicit [artifact attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations)
   retain build-workflow provenance. A correction after publication requires a
   new version rather than replacement assets or a moved tag.
+- Before creating a stable tag, activate a `v*` tag ruleset that limits
+  creation to the authorized release path and prevents update or deletion
+  outside an explicit emergency bypass. Publish through a protected release
+  environment with tag deployment restrictions and least-privilege
+  credentials, preferring OIDC or trusted publishing over long-lived tokens
+  wherever a destination supports it. An interactive repository-administration
+  credential is not a release credential and must not be stored in the
+  repository or its workflows.
 
 The public identities are fixed independently of the legal subject displayed
 by a platform signing certificate:
@@ -1014,7 +1030,7 @@ promise.
 | D-07 | Complete M1 CLI journey and user guide | M1 | Codex | 2026-08-07 | Done | The combined [golden built-binary journey and failure matrix](tests/golden.rs), command-specific journeys, audited [README contract](README.md), refreshed [controlled current-stable two-client smoke](#controlled-current-client-evidence), and tested [M1 usage and recovery guide](docs/m1-usage-and-recovery.md) complete the M1 journey |
 | D-08 | Five-client, cross-platform support matrix | M2 | Codex | Unscheduled | In progress | All five global macOS and Linux targets pass deterministic fixture and built-binary import/sync coverage: four JSON adapters plus the TOML-native Codex adapter. Successful native x64/ARM64 whole-suite [push](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240607296) and [pull-request](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240608728) CI runs complete `MCP-018`; no Linux current-client smoke claim is made. Windsurf, native default-profile VS Code, and Codex have no current-client smoke claim on either implemented platform; Windows and the accepted six-target release matrix remain sequenced |
 | D-09 | Bounded STDIO health testing | M2 | Codex | 2026-08-07 | Done | [Bounded initialize use case, replaceable process boundary, structural protocol parser, and 11 focused tests](src/health.rs), [five synthetic-home built-binary success and failure journeys](tests/health.rs), [Clap wiring](src/main.rs), and [source-checkout health contract](docs/m1-usage-and-recovery.md) |
-| D-10 | Accessible release channels and recovery runbook | M2 | Unassigned | Unscheduled | Proposed | Six signed or platform-appropriate binaries, immutable GitHub Release, SHA-256 manifest, SPDX SBOMs, attestations, Homebrew, WinGet, Cargo, per-target install smoke tests, and restore exercise |
+| D-10 | Accessible release channels and recovery runbook | M2 | Unassigned | Unscheduled | Proposed | Six signed or platform-appropriate binaries, protected `v*` tags and release environment, immutable GitHub Release, SHA-256 manifest, SPDX SBOMs, attestations, Homebrew, WinGet, Cargo, per-target install smoke tests, and restore exercise |
 
 ## Ticket board
 
@@ -1048,7 +1064,7 @@ predecessor, so only the first incomplete row can become `Ready`.
 | MCP-018 | Add Linux path and behavior support | M2 | P1 | Codex | Done | `MCP-017` | The [platform-neutral resolver and eight path tests](src/paths.rs), exact Linux path fixtures in all five target adapters, distinct-XDG [built-binary harness](tests/support/mod.rs), request-sequenced [bounded-response regression](src/health.rs), and [native x64/ARM64 CI matrix](.github/workflows/ci.yml) prove the complete source-checkout configuration and bounded-health behavior on GNU/Linux. Both the [push](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240607296) and [pull-request](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240608728) event paths pass exact-host x64 and ARM64 jobs with all 228 tests, formatting, warning-free Clippy, and dependency policy. The focused regression also passed 100 consecutive local runs. Local macOS and native ARM64 gates, portable JSON/TOML recovery exercises, redaction, documentation, and diff checks pass. Windows, musl/Alpine, release packaging, and Linux current-client smoke remain explicitly unclaimed |
 | MCP-019 | Add Windows path and replacement behavior support | M2 | P1 | Unassigned | Ready | `MCP-018` | Native Windows MSVC x64 and ARM64 CI, path, backup, replacement, rollback, and portable-package tests pass |
 | MCP-020 | Add explicit restore and backup-retention UX | M2 | P1 | Unassigned | Proposed | `MCP-019` | Restore journey and retention rules documented and tested |
-| MCP-021 | Publish accessible, provenance-linked release channels | M2 | P1 | Unassigned | Proposed | `MCP-020` | `DEC-024` passes in full: all six artifacts build and smoke-test natively, macOS and Windows trust checks pass, the immutable release contains checksums, per-target SPDX SBOMs, and attestations, and the exact same `v0.1.0` installs through GitHub Releases, Homebrew, WinGet, and Cargo under the accepted identifiers |
+| MCP-021 | Publish accessible, provenance-linked release channels | M2 | P1 | Unassigned | Proposed | `MCP-020` | `DEC-024` and `DEC-031` pass in full: an active `v*` tag ruleset and protected least-privilege release environment secure publication; all six artifacts build and smoke-test natively; macOS and Windows trust checks pass; the immutable release contains checksums, per-target SPDX SBOMs, and attestations; and the exact same `v0.1.0` installs through GitHub Releases, Homebrew, WinGet, and Cargo under the accepted identifiers |
 
 ### Testing tool introduction plan
 
@@ -1119,7 +1135,23 @@ ticket eligible.
 | MCP-018 | Complete MCP-018: add Linux path and behavior support across the supported clients with deterministic fixtures and Linux CI coverage while preserving all existing safety and reconciliation behavior. Follow AGENTS.md and PROJECT.md, preserve unrelated worktree changes, and do not begin Windows work. Finish only when MCP-018's platform evidence and the ticket-done gate pass, durable evidence is recorded, MCP-018 is Done, and only MCP-019 is Ready. |
 | MCP-019 | Complete MCP-019: add Windows path, backup, atomic-replacement-equivalent, rollback, and supported-client behavior with Windows CI and platform fixtures. Follow AGENTS.md and PROJECT.md, preserve unrelated worktree changes, and do not weaken recovery guarantees or begin restore UX. Finish only when MCP-019's platform and failure evidence plus the ticket-done gate pass, durable evidence is recorded, MCP-019 is Done, and only MCP-020 is Ready. |
 | MCP-020 | Complete MCP-020: add explicit restore and backup-retention user experience with documented retention rules and a tested recovery journey across supported platforms. Follow AGENTS.md and PROJECT.md, preserve unrelated worktree changes, and do not publish release channels early. Finish only when MCP-020's recovery evidence and the ticket-done gate pass, durable evidence is recorded, MCP-020 is Done, and only MCP-021 is Ready. |
-| MCP-021 | Complete MCP-021: publish accessible, provenance-linked GitHub Release, Homebrew, WinGet, and Cargo channels that all install the same tagged mcp-sync version and pass supported-platform smoke journeys. Follow AGENTS.md and PROJECT.md, preserve unrelated worktree changes, and do not activate deferred expansion work. Finish only when MCP-021's release evidence, the M2 release gate, and the ticket-done gate pass, durable evidence is recorded, and MCP-021 is Done. |
+| MCP-021 | Complete MCP-021: publish accessible, provenance-linked GitHub Release, Homebrew, WinGet, and Cargo channels that all install the same protected tagged mcp-sync version and pass supported-platform smoke journeys through the accepted tag ruleset, release environment, signing, and provenance controls. Follow AGENTS.md and PROJECT.md, preserve unrelated worktree changes, and do not activate deferred expansion work. Finish only when MCP-021's release evidence, the M2 release gate, and the ticket-done gate pass, durable evidence is recorded, and MCP-021 is Done. |
+
+### Side-quest goal catalog
+
+These are the exact objectives for Goal mode. Paste the applicable objective
+after `/goal`; do not include the Markdown table delimiters. Every objective
+remains dormant while its ticket is `Proposed` or unassigned. A goal does not
+make a side quest independent, ready, or exempt from the one-side-quest WIP
+cap, and completing one never activates another.
+
+| Ticket | Canonical goal objective |
+| --- | --- |
+| SIDE-001 | Complete SIDE-001: protect the default branch with a contributor-compatible GitHub ruleset that requires pull requests, strict up-to-date CI checks bound to the expected GitHub Actions app, resolved conversations, and blocks deletion and force pushes while recording minimal bypass, approval-count, merge-method, and signed-commit decisions and proving normal and emergency paths. Follow AGENTS.md and PROJECT.md, preserve unrelated worktree changes, keep the work independent of M2, and do not change release-tag controls owned by MCP-021. Finish only when SIDE-001's acceptance evidence and the ticket-done gate pass, durable evidence is recorded, SIDE-001 is Done, and no other side quest is implicitly activated. |
+| SIDE-002 | Complete SIDE-002: publish a GitHub-recognized contribution and community-health contract with contributor setup and checks, inbound MIT licensing, an explicit no-CLA and separate DCO decision, redaction and support boundaries, safe security-report routing, structured issue forms, and a pull-request template, adding CODEOWNERS only when an independent reviewer exists. Follow AGENTS.md and PROJECT.md, preserve unrelated worktree changes, keep the work independent of M2, and do not change repository security settings owned by SIDE-003. Finish only when SIDE-002's acceptance evidence and the ticket-done gate pass, durable evidence is recorded, SIDE-002 is Done, and no other side quest is implicitly activated. |
+| SIDE-003 | Complete SIDE-003: establish the public vulnerability-disclosure and GitHub code-security baseline with a supported-version SECURITY.md, private reporting, and the available dependency-graph, Dependabot, CodeQL, secret-scanning, and push-protection controls, proving a clean baseline or recording a precise platform limitation without exposing alert or secret details. Follow AGENTS.md and PROJECT.md, preserve unrelated worktree changes, keep the work independent of M2, and do not change dependency-update workflow scope owned by SIDE-004. Finish only when SIDE-003's acceptance evidence and the ticket-done gate pass, durable evidence is recorded, SIDE-003 is Done, and no other side quest is implicitly activated. |
+| SIDE-004 | Complete SIDE-004: automate weekly grouped Cargo and GitHub Actions dependency updates, pin every action to a reviewed full commit SHA, narrow allowed-action and SHA-pinning policy as far as required CI permits, and preserve read-only tokens, fork safety, stable check contexts, and green dependency policy. Follow AGENTS.md and PROJECT.md, preserve unrelated worktree changes, keep the work independent of M2, and do not add release automation or change the branch ruleset owned by SIDE-001. Finish only when SIDE-004's acceptance evidence and the ticket-done gate pass, durable evidence is recorded, SIDE-004 is Done, and no other side quest is implicitly activated. |
+| SIDE-005 | Complete SIDE-005: establish organization access, credential, and ownership-recovery policy with either two trusted owners or an explicitly accepted and tested single-owner recovery plan, least-privilege teams, deliberate repository-creation policy, strong authentication and private recovery practices, and short-lived scope-minimized automation credentials. Follow AGENTS.md and PROJECT.md, preserve unrelated worktree changes, obtain explicit approval before organization-wide access or policy changes, never remove access or expose identities, tokens, or recovery material, keep the work independent of M2, and finish only when SIDE-005's acceptance evidence and the ticket-done gate pass, durable evidence is recorded, SIDE-005 is Done, and no other side quest is implicitly activated. |
 
 ### Expansion candidates
 
@@ -1138,8 +1170,19 @@ as a `SIDE-NNN` ticket instead.
 
 ### Side-quest board
 
-No side quests are active. The first optional ticket will be `SIDE-001` and
-must satisfy the side-quest rules before it is marked `Ready`.
+The following baseline was read through GitHub's API on 2026-08-08. It records
+settings and counts, not credential values, organization-member identities, or
+recovery material. All five tickets have dormant objectives in the
+[side-quest goal catalog](#side-quest-goal-catalog) and remain `Proposed`; none
+is active, ready, or a dependency of the M2 main story.
+
+| ID | Outcome | Priority | Owner | Status | Audited baseline and done when |
+| --- | --- | --- | --- | --- | --- |
+| SIDE-001 | Protect the default branch and define a contributor-compatible merge policy | P2 | Unassigned | Proposed | `main` has no repository ruleset or legacy branch protection. Merge, squash, and rebase are enabled; auto-merge is disabled; merged branches are deleted. The current stable CI contexts are `Dependency policy`, `Linux x64 — format, Clippy, and test`, and `Linux ARM64 — format, Clippy, and test`, all from GitHub Actions. Done when an active default-branch ruleset requires pull requests, binds those strict/up-to-date checks to their expected app, requires resolved conversations, blocks deletion and force pushes, has an explicit minimal bypass policy, and proves both normal merge and emergency paths. Record the approval count, allowed merge methods, and signed-commit choice deliberately; do not require signed commits until the external-contributor and GitHub merge path has been tested end to end. |
+| SIDE-002 | Publish a complete public contribution and community-health contract | P2 | Unassigned | Proposed | GitHub recognizes `README.md` and the MIT `LICENSE`, but reports 37% community-profile health and no recognized code of conduct, contributing guide, issue template, or pull-request template. Done when `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, a pull-request template, and structured bug/feature issue forms define setup, checks, inbound MIT licensing, the default no-CLA stance and any separate DCO sign-off policy, redaction expectations, support boundaries, and safe security-report routing; GitHub recognizes them; cryptographic commit signing is not confused with contribution sign-off; and `CODEOWNERS` is added only when an independent reviewer actually exists. |
+| SIDE-003 | Establish the public vulnerability-disclosure and GitHub code-security baseline | P2 | Unassigned | Proposed | Dependabot alerts are enabled, but private vulnerability reporting, Dependabot security updates, secret scanning, and push protection are disabled; CodeQL default setup reports `not-configured` for Rust and Actions; and the dependency-graph SBOM endpoint is unavailable. Done when `SECURITY.md` names supported versions and a private reporting path, private vulnerability reporting is enabled, the available Dependabot, dependency-graph, CodeQL, secret-scanning, and push-protection controls are enabled and pass a baseline run, and any plan or platform limitation is recorded without exposing alert or secret details. |
+| SIDE-004 | Automate dependency maintenance and harden the CI action supply chain | P2 | Unassigned | Proposed | No `.github/dependabot.yml` exists. Actions are allowed without repository SHA-pinning enforcement; `actions/checkout@v6` uses a mutable tag while `cargo-deny-action` uses a full commit SHA. The workflow already grants only `contents: read`, prevents checkout credential persistence, and cannot approve pull requests through `GITHUB_TOKEN`. Done when weekly grouped Cargo and GitHub Actions updates are configured, every action is pinned to a reviewed full SHA with an update hint, the repository's allowed-action and SHA-pinning policy is narrowed as far as the required actions permit, fork pull requests receive no write token or secrets, and CI plus dependency policy remain green. |
+| SIDE-005 | Establish organization access, credential, and ownership-recovery policy | P2 | Unassigned | Proposed | The organization requires two-factor authentication and defaults repository access to read, but currently has one owner, no repository teams, and permits members to create repositories. Done when there are at least two trusted owners or an explicitly accepted and tested single-owner recovery plan, administrative and maintainer access uses least-privilege teams, repository-creation policy is deliberate, passkey/2FA and recovery practices are documented privately, automation uses short-lived and scope-minimized credentials where possible, and evidence records no identities, tokens, or recovery secrets. |
 
 ### Immediate focus
 
@@ -1152,6 +1195,10 @@ must satisfy the side-quest rules before it is marked `Ready`.
 3. Preserve every configuration, process, protocol, redaction, backup, and
    rollback invariant when Windows work is intentionally started; do not begin
    it as part of `MCP-018` completion.
+4. Keep `SIDE-001` through `SIDE-005` proposed and non-gating until one is
+   intentionally assigned. If a side-quest outcome becomes necessary for a
+   release or safety gate, promote it or fold it into the owning main-story
+   ticket rather than creating a hidden dependency.
 
 ## Decision log
 
@@ -1187,11 +1234,15 @@ must satisfy the side-quest rules before it is marked `Ready`.
 | DEC-028 | Manage only canonical-compatible local STDIO entries in Codex's global user configuration | Accepted | 2026-08-07 | [Codex configuration precedence](https://developers.openai.com/codex/config-basic/#configuration-precedence) makes trusted project `.codex/config.toml` files higher-precedence layers, while the [Codex MCP contract](https://developers.openai.com/codex/mcp/) places local STDIO and remote HTTP/OAuth servers in the same `mcp_servers` map shared by the ChatGPT desktop app, Codex CLI, and IDE extension. `MCP-016` therefore resolves only global `~/.codex/config.toml`, owns only `command`, `args`, and `env` in unambiguous local STDIO entries, and uses a TOML-native structural edit that preserves comments, unrelated settings, and all unowned local fields. Project layers remain undiscovered and untouched; `url`-based remote entries, authentication, headers, OAuth settings, unknown or mixed transports, and credential stores remain unmanaged and structurally preserved; a canonical local definition that collides with any unmanaged name fails before mutation. A successful global sync does not claim to override a higher-precedence project definition, perform OAuth login, or prove current-client behavior. |
 | DEC-029 | Implement one explicit final-session MCP initialize compatibility boundary | Accepted | 2026-08-07 | `mcp-sync test <name>` is the only command that executes a configured server. It sends the final session-based `2025-11-25` initialize shape, accepts the four final handshake revisions through `2024-11-05`, bounds one newline-delimited response to five seconds and 1 MiB, validates JSON-RPC and required result structure before sending `notifications/initialized`, and allows 500 milliseconds for stdin-driven shutdown before force termination and reaping. The child receives canonical environment entries plus inherited `PATH` only when canonical state omits it; stderr and raw response/error data remain undisclosed. The current stateless `2026-07-28` protocol is a materially different boundary and is not claimed by this initialize-specific ticket. |
 | DEC-030 | Resolve Linux user data through XDG and require native x64/ARM64 whole-suite CI | Accepted | 2026-08-07 | Linux uses a non-empty absolute `XDG_CONFIG_HOME`, falling back to `$HOME/.config`, for canonical configuration plus Claude Desktop and VS Code user data; Cursor, Windsurf, and Codex keep their documented home-relative paths. The platform-neutral resolver and existing adapters preserve all ownership and mutation rules. [GitHub's standard hosted-runner contract](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job) supplies native `ubuntu-24.04` x64 and `ubuntu-24.04-arm` ARM64 runners, and each must assert its Rust host and pass the complete synthetic-home quality script. This proves GNU libc source-checkout behavior only: it does not add musl/Alpine, Windows, packaging, or a Linux current-client smoke claim. |
+| DEC-031 | Protect stable release tags and publication credentials as part of `MCP-021` | Accepted | 2026-08-08 | Release immutability begins only after publication, so `MCP-021` must first activate a `v*` tag ruleset that restricts creation to the authorized release path and prevents update or deletion outside an explicit emergency bypass. Publication uses a protected release environment with tag deployment restrictions and least-privilege credentials, preferring OIDC or trusted publishing where supported. This is release-gating main-story scope rather than a side quest; an interactive administration PAT is never stored or reused as a release credential. |
+| DEC-032 | Give every classified side quest a canonical Goal-mode objective | Accepted | 2026-08-08 | A side-quest objective provides the same persistent scope and evidence contract as a main-story objective without changing eligibility, independence, priority, or the one-side-quest WIP cap. One thread still carries only one unfinished goal, so concurrent main-story and side-quest work uses separate threads; completing a side quest activates no successor. |
 
 ### Open decisions
 
 `OPEN-07` is resolved by `DEC-028`. No open decision currently blocks
-`MCP-019`.
+`MCP-019`. The pull-request approval threshold, allowed merge methods, and
+signed-commit enforcement choice remain scoped to `SIDE-001`; organization
+continuity choices remain scoped to `SIDE-005`. Neither blocks `MCP-019`.
 
 ## Risk register
 
@@ -1205,10 +1256,15 @@ must satisfy the side-quest rules before it is marked `Ready`.
 | RISK-06 | Broad client/platform scope delays the first usable proof | High | High | The two-client M1 proof is complete; strict story sequence, WIP limit, and milestone gates constrain M2 to one adapter or capability slice at a time | Any M2 ticket starts before its immediate predecessor is done | Mitigated — enforce M2 sequence |
 | RISK-07 | Premature plug-in or workspace abstractions slow iteration | Medium | Medium | One crate; abstractions require real variation or consumer | New public trait/package has only one hypothetical implementation | Mitigated by guidance |
 | RISK-08 | The tracker becomes stale and stops reflecting delivery truth | Medium | Medium | Same-change updates, evidence links, weekly/completion review triggers, and the completed M1 README/current-state audit | PROJECT contradicts code/release evidence, or README changes the north-star without a decision | Mitigated — monitor each ticket |
-| RISK-09 | A side quest consumes main-story capacity or becomes a hidden prerequisite | Medium | Medium | Separate IDs, strict classification, one-side-quest WIP cap, required promotion | A main ticket or release gate depends on `SIDE-NNN`, or later story work starts early | Mitigated by plan |
+| RISK-09 | A side quest consumes main-story capacity or becomes a hidden prerequisite | Medium | Medium | Separate IDs, strict classification, canonical side-quest goals, one-side-quest WIP cap, separate goal threads for concurrent work, and required promotion | A main ticket or release gate depends on `SIDE-NNN`, an active goal is silently replaced, or later story work starts early | Mitigated by plan |
 | RISK-10 | The product or package is confused with unrelated projects using the `mcp-sync` name | High | High | Verified distinct Cargo package name, publisher-qualified install commands, provenance links, and a required pre-publication registry recheck | The selected name becomes unavailable or users cannot distinguish the publisher | Open — recheck at `MCP-021` |
 | RISK-11 | Codex's shared TOML file loses non-MCP settings or target-only MCP capabilities | Critical | Medium | `DEC-028` fixes a TOML-native, global-only local-STDIO ownership boundary. Exact fixtures and built-binary journeys preserve comments, formatting, unrelated settings, project/alternate-file/credential isolation, unowned local fields, remote HTTP/OAuth/mixed/opaque entries, target-only data, and unmanaged-name collision refusal without a JSON conversion | Any Codex fixture requires lossy conversion, reads OAuth credentials, mutates a project layer, or drops an unowned field | Mitigated — fixture and five-target built-binary proof; monitor Codex contract drift |
 | RISK-12 | Required platform signing authority is unavailable or identity validation delays release | High | Medium | `DEC-024` makes Apple Developer ID plus notarization and Windows Public Trust signing explicit `MCP-021` prerequisites; credentials stay in protected CI environments, and a CA-issued Authenticode certificate is the Windows fallback | `MCP-021` starts without active Apple notarization credentials or validated Windows signing authority | Open — release blocker |
+| RISK-13 | An unprotected default branch permits direct, destructive, or insufficiently reviewed changes | High | Medium | CI has three stable passing check contexts, read-only workflow permissions, deleted merged branches, and verified maintainer commits, but no ruleset or legacy protection currently enforces them | A direct or force push reaches `main`, a branch is deleted, or a merge bypasses expected checks | Open — proposed `SIDE-001` mitigation |
+| RISK-14 | Contributors publicly disclose a vulnerability, credential, or unsafe diagnostic because reporting routes are unclear or unavailable | High | Medium | The repository is public and MIT-licensed, and Dependabot alerts are enabled; no recognized security policy, private reporting, issue-routing contract, secret scanning, or push protection currently exists | A security report appears in a public issue or a pushed secret is accepted | Open — proposed `SIDE-002` and `SIDE-003` mitigations |
+| RISK-15 | Mutable Actions references or unmaintained dependencies compromise or silently weaken CI | High | Medium | CI is least-privilege, checkout credentials are not persisted, `cargo deny` runs, and its action is SHA-pinned. Checkout remains tag-pinned, repository SHA enforcement is off, all actions are allowed, Dependabot security updates are disabled, and no update schedule exists | An action tag moves unexpectedly, an actionable advisory remains unpatched, or dependency updates stop arriving | Open — proposed `SIDE-004` mitigation |
+| RISK-16 | A single organization owner becomes unavailable or an over-broad long-lived credential becomes a recovery dependency | High | Low | Organization-wide two-factor authentication is required and default repository access is read; there is currently one owner and no least-privilege repository team structure | The sole owner loses access, a maintainer cannot recover administration, or one credential becomes necessary for routine automation | Open — proposed `SIDE-005` mitigation |
+| RISK-17 | A release tag or publication credential is changed or misused before immutable release controls take effect | Critical | Low | `DEC-024` already requires signed platform binaries, checksums, SBOMs, attestations, and immutable release publication; `MCP-021` now also owns an active `v*` tag ruleset and protected least-privilege release environment | Release automation can create, move, delete, or publish a stable tag outside the authorized path | Open — `MCP-021` release blocker |
 
 ## Readiness and completion gates
 
@@ -1256,7 +1312,7 @@ Milestone / priority:
 Owner / target:
 Status:
 Immediate predecessor (main story only):
-Canonical goal objective (main story only):
+Canonical goal objective:
 Acceptance evidence:
 Blocker or risk link:
 ```
