@@ -144,6 +144,26 @@ for ARM64 or x64, use the exact release URL and SHA-256 from `SHA256SUMS`, insta
 only the executable, and pass `brew audit`, formula tests, version output, and
 the installed restore smoke on all four native Unix combinations.
 
+Download the complete immutable asset set into one otherwise-empty directory,
+verify it with `scripts/verify-published-release.sh`, and generate both
+downstream definitions from that exact `SHA256SUMS` file:
+
+```bash
+scripts/generate-release-channels.sh \
+  <downloaded-release-assets> \
+  0.1.0 \
+  <new-output-directory>
+```
+
+The generator refuses a pre-existing output directory and writes through a
+temporary sibling. Copy
+`homebrew/Formula/mcp-sync.rb` into the newly created organization tap. Copy
+the generated `winget/manifests/e/EnjoyableWork/mcp-sync/0.1.0` directory into
+the matching path on the submission branch in the personal `winget-pkgs` fork.
+Do not hand-edit URLs, hashes, identifiers, architectures, or versions after
+generation; regenerate from the verified immutable assets if any input is
+wrong.
+
 Generate WinGet ZIP/portable manifests for publisher `EnjoyableWork`, package
 identifier `EnjoyableWork.mcp-sync`, package name `mcp-sync`, and version
 `0.1.0`. Pin the ARM64 and x64 immutable GitHub archive URLs and hashes. Validate
@@ -151,6 +171,17 @@ with the current WinGet tooling, submit through a personal `winget-pkgs` fork,
 wait for the public manifest to merge, and then require native ARM64 and x64
 `winget install --id EnjoyableWork.mcp-sync --version 0.1.0 --exact` plus the
 installed restore smoke.
+
+After Cargo, the tap formula, and the WinGet manifests are public, dispatch
+`.github/workflows/release-channels.yml` with version `0.1.0`. This read-only,
+credential-free workflow first requires the immutable release and all 13
+attestations, an unyanked crates.io record owned by this repository, and exact
+byte equality between freshly generated downstream definitions and their
+published Homebrew and WinGet copies. It then installs and exercises the
+GitHub archive and Cargo package on all six native targets, the Homebrew formula
+on both macOS and both GNU/Linux targets, and the public WinGet package on both
+Windows targets. The macOS and Windows binary-channel jobs recheck native code
+signing and timestamp trust before the installed restore journey.
 
 Record the immutable release, registry records, downstream commits or pull
 requests, and every native smoke run in `PROJECT.md`. MCP-021 and M2 remain open
