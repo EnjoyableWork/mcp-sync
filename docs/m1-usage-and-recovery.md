@@ -3,11 +3,12 @@
 This guide describes the currently implemented source-checkout behavior of
 `mcp-sync`: the completed M1 foundation, the global Windsurf, native VS Code,
 and global Codex adapters added by `MCP-014` through `MCP-016`, and the bounded
-STDIO initialize health boundary added by `MCP-017`, and the Linux path and
-behavior support added by `MCP-018`. It is the operational companion to the
+STDIO initialize health boundary added by `MCP-017`, the Linux path and
+behavior support added by `MCP-018`, and the Windows source-checkout support
+completed by `MCP-019`. It is the operational companion to the
 [north-star README](../README.md), not a replacement for that product
-specification. Use it when building from source on macOS or GNU/Linux and
-reconciling the five implemented global targets: Claude Desktop, Cursor,
+specification. Use it when building from source on macOS, GNU/Linux, or Windows
+and reconciling the five implemented global targets: Claude Desktop, Cursor,
 Windsurf's legacy Cascade configuration, VS Code's native default user profile,
 and the global Codex host configuration shared by the ChatGPT desktop app,
 Codex CLI, and Codex IDE extension.
@@ -16,7 +17,7 @@ Codex CLI, and Codex IDE extension.
 
 | Area | Currently implemented behavior |
 | --- | --- |
-| Platform | macOS and GNU/Linux x64/ARM64 source-checkout behavior |
+| Platform | macOS plus native x64/ARM64 GNU/Linux and Windows MSVC source-checkout behavior |
 | Canonical format | Strict JSON schema version `1` for local STDIO servers |
 | Client targets | Global Claude Desktop, global Cursor, global Windsurf legacy Cascade configuration, native VS Code default user profile, and global Codex host configuration |
 | Commands | `init`, `add`, `list`, `test`, `sync --dry-run`, and `sync` |
@@ -25,12 +26,13 @@ Codex CLI, and Codex IDE extension.
 
 Only `test` starts the one named canonical server. `init`, `sync --dry-run`,
 and `sync` remain configuration operations and never start a configured MCP
-server. Windows, packaged installation, explicit prune behavior, and a built-in
-restore command remain later work tracked in [PROJECT.md](../PROJECT.md).
+server. Packaged installation, explicit prune behavior, and a built-in restore
+command remain later work tracked in [PROJECT.md](../PROJECT.md).
 
 ## Build and verify the checkout
 
-Use the repository-selected stable Rust toolchain and committed lockfile:
+Use the repository-selected stable Rust toolchain and committed lockfile on
+macOS or GNU/Linux:
 
 ```bash
 cargo build --locked
@@ -39,26 +41,41 @@ cargo build --locked
 cargo deny --all-features --locked check
 ```
 
-The examples below use `./target/debug/mcp-sync`. The installed executable is
-named `mcp-sync` once a verified distribution channel exists.
+Use the native PowerShell quality gate on Windows:
+
+```powershell
+cargo build --locked
+.\target\debug\mcp-sync.exe --help
+.\scripts\check.ps1
+cargo deny --all-features --locked check
+```
+
+The examples below use `./target/debug/mcp-sync`; on Windows PowerShell,
+substitute `.\target\debug\mcp-sync.exe`. The installed executable is named
+`mcp-sync` once a verified distribution channel exists.
 
 ## Files managed by platform
 
-The canonical path and three client paths are the same on macOS and Linux:
+Canonical configuration uses a platform-local configuration root:
 
-| Purpose | Path on both platforms |
-| --- | --- |
-| Canonical configuration | `$XDG_CONFIG_HOME/mcp-sync/config.json` when `XDG_CONFIG_HOME` is a non-empty absolute path; otherwise `$HOME/.config/mcp-sync/config.json` |
-| Cursor global target | `$HOME/.cursor/mcp.json` |
-| Windsurf global legacy Cascade target | `$HOME/.codeium/windsurf/mcp_config.json` |
-| Codex global host target | `$HOME/.codex/config.toml` |
+| Purpose | macOS and GNU/Linux | Windows |
+| --- | --- | --- |
+| Canonical configuration | `$XDG_CONFIG_HOME/mcp-sync/config.json` when `XDG_CONFIG_HOME` is a non-empty absolute path; otherwise `$HOME/.config/mcp-sync/config.json` | `%LOCALAPPDATA%\mcp-sync\config.json` |
+
+Three clients retain their documented home-relative paths:
+
+| Purpose | macOS and GNU/Linux | Windows |
+| --- | --- | --- |
+| Cursor global target | `$HOME/.cursor/mcp.json` | `%USERPROFILE%\.cursor\mcp.json` |
+| Windsurf global legacy Cascade target | `$HOME/.codeium/windsurf/mcp_config.json` | `%USERPROFILE%\.codeium\windsurf\mcp_config.json` |
+| Codex global host target | `$HOME/.codex/config.toml` | `%USERPROFILE%\.codex\config.toml` |
 
 Claude Desktop and VS Code use the platform user-data root:
 
-| Purpose | macOS | GNU/Linux |
-| --- | --- | --- |
-| Claude Desktop global target | `$HOME/Library/Application Support/Claude/claude_desktop_config.json` | `$XDG_CONFIG_HOME/Claude/claude_desktop_config.json`, or `$HOME/.config/Claude/claude_desktop_config.json` when XDG is unset or empty |
-| VS Code native default user-profile target | `$HOME/Library/Application Support/Code/User/mcp.json` | `$XDG_CONFIG_HOME/Code/User/mcp.json`, or `$HOME/.config/Code/User/mcp.json` when XDG is unset or empty |
+| Purpose | macOS | GNU/Linux | Windows |
+| --- | --- | --- | --- |
+| Claude Desktop global target | `$HOME/Library/Application Support/Claude/claude_desktop_config.json` | `$XDG_CONFIG_HOME/Claude/claude_desktop_config.json`, or `$HOME/.config/Claude/claude_desktop_config.json` when XDG is unset or empty | `%APPDATA%\Claude\claude_desktop_config.json` |
+| VS Code native default user-profile target | `$HOME/Library/Application Support/Code/User/mcp.json` | `$XDG_CONFIG_HOME/Code/User/mcp.json`, or `$HOME/.config/Code/User/mcp.json` when XDG is unset or empty | `%APPDATA%\Code\User\mcp.json` |
 
 Project-level `.cursor/mcp.json` files are outside the ownership boundary and
 remain untouched. `mcp-sync` also preserves unknown top-level data and fields
@@ -495,15 +512,19 @@ and prune entries from backup absence.
 The following are delivery facts, not changes to the README's intended product
 promise:
 
-- The current implementation is verified on macOS and through the complete
-  [native GNU/Linux x64 and ARM64 pull-request CI gate](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240608728)
-  recorded for `MCP-018`; usage remains from a Rust source checkout.
+- The current implementation is verified on macOS and through complete native
+  x64/ARM64 pull-request CI gates for
+  [GNU/Linux](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240608728)
+  and [Windows MSVC](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31244565101),
+  recorded for `MCP-018` and `MCP-019`, respectively. The Windows gate includes
+  path, replacement, rollback, copied-binary, and PowerShell health behavior.
+  Usage remains from a Rust source checkout.
 - Only global Claude Desktop, global Cursor, Windsurf's global legacy Cascade
   JSON, VS Code's native default user-profile JSON, and global Codex TOML are
   managed. Linux has deterministic path, fixture, and built-binary behavior
-  evidence, but no Linux current-client smoke claim. Windsurf, VS Code, and
-  Codex have no current-client smoke claim on either implemented platform.
-  Windows remains later main-story work.
+  evidence, but no Linux current-client smoke claim. Windows has no
+  current-client smoke claim. Windsurf, VS Code, and Codex have no
+  current-client smoke claim on any implemented platform.
 - Canonical schema v1 represents local STDIO definitions with `command`,
   ordered `args`, and literal `env` only. Remote transports, OAuth, working
   directories, and secret references are not canonical capabilities yet.
@@ -514,7 +535,8 @@ promise:
 - Target-only definitions are drift and are never deleted. There is no prune
   command.
 - Backups use one adjacent slot. There is no retention policy, backup history,
-  or built-in restore workflow yet.
+  built-in restore workflow, or documented guarded Windows manual-restore
+  procedure yet.
 - No GitHub Release, Homebrew, WinGet, or Cargo publication has been verified
   for this repository yet.
 

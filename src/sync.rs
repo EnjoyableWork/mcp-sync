@@ -1569,7 +1569,7 @@ mod tests {
         assert!(
             diagnostic.contains("Claude Desktop: ROLLBACK FAILED after update")
                 && diagnostic.contains("inspect the target and recovery backup at")
-                && diagnostic.contains(&expected_backup.to_string_lossy().to_string()),
+                && diagnostic.contains(&format!("{expected_backup:?}")),
             "an update rollback failure should name its recovery backup"
         );
         for private in [

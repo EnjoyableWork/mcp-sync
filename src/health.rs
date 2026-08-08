@@ -899,13 +899,30 @@ mod tests {
     use std::fs;
     use std::path::Path;
     use std::process::{Command, Stdio};
+    use std::sync::{Mutex, MutexGuard};
     use std::time::{Duration, Instant};
 
+    #[cfg(unix)]
     const SHORT_LIMITS: HealthLimits = HealthLimits {
         response_timeout: Duration::from_millis(200),
         shutdown_timeout: Duration::from_millis(200),
         maximum_response_bytes: 64 * 1024,
     };
+
+    #[cfg(windows)]
+    const SHORT_LIMITS: HealthLimits = HealthLimits {
+        response_timeout: Duration::from_secs(5),
+        shutdown_timeout: Duration::from_secs(1),
+        maximum_response_bytes: 64 * 1024,
+    };
+
+    static PROCESS_FIXTURE_LOCK: Mutex<()> = Mutex::new(());
+
+    fn process_fixture_lock() -> MutexGuard<'static, ()> {
+        PROCESS_FIXTURE_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     struct FixtureEnvironment {
         home: OsString,
@@ -1158,13 +1175,48 @@ mod tests {
         assert!(!format!("{error:?}").contains(private));
     }
 
-    #[cfg(unix)]
-    fn shell_server(script: &str, environment: BTreeMap<String, String>) -> CanonicalServer {
-        CanonicalServer::new(
-            "/bin/sh",
-            vec!["-c".to_owned(), script.to_owned()],
-            environment,
-        )
+    fn shell_server(
+        root: &Path,
+        name: &str,
+        unix_script: &str,
+        windows_script: &str,
+        environment: BTreeMap<String, String>,
+    ) -> CanonicalServer {
+        #[cfg(unix)]
+        {
+            let _ = (root, name, windows_script);
+            CanonicalServer::new(
+                "/bin/sh",
+                vec!["-c".to_owned(), unix_script.to_owned()],
+                environment,
+            )
+        }
+
+        #[cfg(windows)]
+        {
+            let _ = unix_script;
+            let script = root.join(format!("{name}.ps1"));
+            fs::write(&script, windows_script)
+                .expect("the Windows process fixture should be written");
+            let mut environment = environment;
+            environment.insert(
+                "SystemRoot".to_owned(),
+                std::env::var("SystemRoot").expect("Windows should define SystemRoot"),
+            );
+            CanonicalServer::new(
+                powershell_path().to_string_lossy().into_owned(),
+                vec![
+                    "-NoLogo".to_owned(),
+                    "-NoProfile".to_owned(),
+                    "-NonInteractive".to_owned(),
+                    "-ExecutionPolicy".to_owned(),
+                    "Bypass".to_owned(),
+                    "-File".to_owned(),
+                    script.to_string_lossy().into_owned(),
+                ],
+                environment,
+            )
+        }
     }
 
     #[cfg(unix)]
@@ -1179,9 +1231,40 @@ mod tests {
             .is_ok_and(|status| status.success())
     }
 
-    #[cfg(unix)]
+    #[cfg(windows)]
+    fn powershell_path() -> std::path::PathBuf {
+        std::path::PathBuf::from(
+            std::env::var_os("SystemRoot").expect("Windows should define SystemRoot"),
+        )
+        .join("System32/WindowsPowerShell/v1.0/powershell.exe")
+    }
+
+    #[cfg(windows)]
+    fn process_exists(pid: &str) -> bool {
+        let pid = pid
+            .trim()
+            .parse::<u32>()
+            .expect("the Windows child should publish a numeric process identifier");
+        Command::new(powershell_path())
+            .args([
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                &format!(
+                    "if (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{ exit 0 }} else {{ exit 1 }}"
+                ),
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+    }
+
     #[test]
     fn operating_system_boundary_sequences_handshake_and_minimizes_environment() {
+        let _process_fixture = process_fixture_lock();
         let root = tempfile::tempdir().expect("temporary process root should be created");
         let request_path = root.path().join("initialize.json");
         let notification_path = root.path().join("initialized.json");
@@ -1197,6 +1280,8 @@ mod tests {
             ("SYNTHETIC_TOKEN".to_owned(), "private-value".to_owned()),
         ]);
         let server = shell_server(
+            root.path(),
+            "handshake",
             r#"
 if [ "${HOME+x}" = x ]; then exit 70; fi
 if [ "$SYNTHETIC_TOKEN" != "private-value" ]; then exit 71; fi
@@ -1207,11 +1292,31 @@ IFS= read -r initialized || exit 73
 printf '%s' "$initialized" > "$NOTIFICATION_PATH"
 exit 0
 "#,
+            r#"
+if ($null -ne [System.Environment]::GetEnvironmentVariable('HOME', [System.EnvironmentVariableTarget]::Process)) { exit 70 }
+if ($env:SYNTHETIC_TOKEN -ne "private-value") { exit 71 }
+$initialize = [Console]::In.ReadLine()
+if ($null -eq $initialize) { exit 72 }
+[IO.File]::WriteAllText($env:REQUEST_PATH, $initialize)
+$response = '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"fixture","version":"1.0"}}}'
+$responseBytes = [System.Text.Encoding]::UTF8.GetBytes($response + "`n")
+$stdout = [Console]::OpenStandardOutput()
+$stdout.Write($responseBytes, 0, $responseBytes.Length)
+$stdout.Flush()
+$initialized = [Console]::In.ReadLine()
+if ($null -eq $initialized) { exit 73 }
+[IO.File]::WriteAllText($env:NOTIFICATION_PATH, $initialized)
+exit 0
+"#,
             environment,
         );
 
-        let protocol = run_initialize(&server, SHORT_LIMITS)
-            .expect("the operating-system handshake should succeed");
+        let protocol = run_initialize(&server, SHORT_LIMITS).unwrap_or_else(|error| {
+            panic!(
+                "the operating-system handshake should succeed: {error}; initialize request captured: {}",
+                request_path.exists()
+            )
+        });
 
         assert_eq!(protocol, NegotiatedProtocol::V2025_11_25);
         let request: Value = serde_json::from_slice(
@@ -1227,24 +1332,40 @@ exit 0
         assert_eq!(notification["method"], "notifications/initialized");
     }
 
-    #[cfg(unix)]
     #[test]
     fn response_timeout_force_terminates_and_reaps_the_child() {
+        let _process_fixture = process_fixture_lock();
         let root = tempfile::tempdir().expect("temporary process root should be created");
         let pid_path = root.path().join("pid");
         let server = shell_server(
+            root.path(),
+            "silent",
             r#"
 printf '%s' "$$" > "$PID_PATH"
 while :; do :; done
+"#,
+            r#"
+[IO.File]::WriteAllText($env:PID_PATH, [string]$PID)
+while ($true) { Start-Sleep -Milliseconds 10 }
 "#,
             BTreeMap::from([(
                 "PID_PATH".to_owned(),
                 pid_path.to_string_lossy().into_owned(),
             )]),
         );
+        let response_timeout = if cfg!(windows) {
+            Duration::from_secs(2)
+        } else {
+            Duration::from_millis(100)
+        };
+        let elapsed_bound = if cfg!(windows) {
+            Duration::from_secs(4)
+        } else {
+            Duration::from_secs(1)
+        };
         let limits = HealthLimits {
-            response_timeout: Duration::from_millis(100),
-            shutdown_timeout: Duration::from_millis(200),
+            response_timeout,
+            shutdown_timeout: SHORT_LIMITS.shutdown_timeout,
             maximum_response_bytes: 1024,
         };
         let started = Instant::now();
@@ -1252,23 +1373,36 @@ while :; do :; done
         let error = run_initialize(&server, limits)
             .expect_err("a silent process should time out and be terminated");
 
-        assert!(matches!(error, InitializeError::ResponseTimedOut { .. }));
-        assert!(started.elapsed() < Duration::from_secs(1));
+        assert!(
+            matches!(error, InitializeError::ResponseTimedOut { .. }),
+            "unexpected silent-process failure: {error}"
+        );
+        assert!(started.elapsed() < elapsed_bound);
         let pid = fs::read_to_string(pid_path).expect("server should publish its pid");
         assert!(!process_exists(&pid), "the timed-out child must be reaped");
     }
 
-    #[cfg(unix)]
     #[test]
     fn malformed_output_is_redacted_and_force_cleans_the_child() {
+        let _process_fixture = process_fixture_lock();
         let root = tempfile::tempdir().expect("temporary process root should be created");
         let pid_path = root.path().join("pid");
         let private = "synthetic-private-stdout";
         let server = shell_server(
+            root.path(),
+            "malformed",
             r#"
 printf '%s' "$$" > "$PID_PATH"
 printf 'not-json-%s\n' "$PRIVATE_VALUE"
 while :; do :; done
+"#,
+            r#"
+[IO.File]::WriteAllText($env:PID_PATH, [string]$PID)
+$responseBytes = [System.Text.Encoding]::UTF8.GetBytes('not-json-' + $env:PRIVATE_VALUE + "`n")
+$stdout = [Console]::OpenStandardOutput()
+$stdout.Write($responseBytes, 0, $responseBytes.Length)
+$stdout.Flush()
+while ($true) { Start-Sleep -Milliseconds 10 }
 "#,
             BTreeMap::from([
                 (
@@ -1282,22 +1416,27 @@ while :; do :; done
         let error = run_initialize(&server, SHORT_LIMITS)
             .expect_err("malformed protocol output should fail and terminate the child");
 
-        assert!(matches!(
-            error,
-            InitializeError::InvalidResponse(ResponseViolation::MalformedJson)
-        ));
+        assert!(
+            matches!(
+                error,
+                InitializeError::InvalidResponse(ResponseViolation::MalformedJson)
+            ),
+            "unexpected malformed-response failure: {error}"
+        );
         assert!(!error.to_string().contains(private));
         assert!(!format!("{error:?}").contains(private));
         let pid = fs::read_to_string(pid_path).expect("server should publish its pid");
         assert!(!process_exists(&pid), "the malformed child must be reaped");
     }
 
-    #[cfg(unix)]
     #[test]
     fn initialized_process_that_refuses_shutdown_is_force_cleaned_and_fails() {
+        let _process_fixture = process_fixture_lock();
         let root = tempfile::tempdir().expect("temporary process root should be created");
         let pid_path = root.path().join("pid");
         let server = shell_server(
+            root.path(),
+            "shutdown-resistant",
             r#"
 printf '%s' "$$" > "$PID_PATH"
 IFS= read -r initialize || exit 80
@@ -1305,13 +1444,26 @@ printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25",
 IFS= read -r initialized || exit 81
 while :; do :; done
 "#,
+            r#"
+[IO.File]::WriteAllText($env:PID_PATH, [string]$PID)
+$initialize = [Console]::In.ReadLine()
+if ($null -eq $initialize) { exit 80 }
+$response = '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{},"serverInfo":{"name":"fixture","version":"1.0"}}}'
+$responseBytes = [System.Text.Encoding]::UTF8.GetBytes($response + "`n")
+$stdout = [Console]::OpenStandardOutput()
+$stdout.Write($responseBytes, 0, $responseBytes.Length)
+$stdout.Flush()
+$initialized = [Console]::In.ReadLine()
+if ($null -eq $initialized) { exit 81 }
+while ($true) { Start-Sleep -Milliseconds 10 }
+"#,
             BTreeMap::from([(
                 "PID_PATH".to_owned(),
                 pid_path.to_string_lossy().into_owned(),
             )]),
         );
         let limits = HealthLimits {
-            response_timeout: Duration::from_millis(200),
+            response_timeout: SHORT_LIMITS.response_timeout,
             shutdown_timeout: Duration::from_millis(100),
             maximum_response_bytes: 1024,
         };
@@ -1319,7 +1471,10 @@ while :; do :; done
         let error = run_initialize(&server, limits)
             .expect_err("a process that ignores stdin closure should fail bounded shutdown");
 
-        assert!(matches!(error, InitializeError::ShutdownTimedOut { .. }));
+        assert!(
+            matches!(error, InitializeError::ShutdownTimedOut { .. }),
+            "unexpected shutdown-resistant-process failure: {error}"
+        );
         let pid = fs::read_to_string(pid_path).expect("server should publish its pid");
         assert!(
             !process_exists(&pid),
@@ -1327,18 +1482,28 @@ while :; do :; done
         );
     }
 
-    #[cfg(unix)]
     #[test]
     fn oversized_and_undelimited_messages_fail_without_unbounded_reads() {
+        let _process_fixture = process_fixture_lock();
+        let root = tempfile::tempdir().expect("temporary process root should be created");
         // Keep stdin open until the client sends `initialize` so the fixture
         // exercises response framing instead of racing the request write.
         let oversized_payload = "x".repeat(129);
-        let oversized_script =
+        let oversized_unix_script =
             format!("IFS= read -r initialize || exit 90\nprintf '%s\\n' '{oversized_payload}'");
-        let oversized = shell_server(&oversized_script, BTreeMap::<String, String>::new());
+        let oversized_windows_script = format!(
+            "$initialize = [Console]::In.ReadLine(); if ($null -eq $initialize) {{ exit 90 }}; [Console]::Out.WriteLine('{oversized_payload}')"
+        );
+        let oversized = shell_server(
+            root.path(),
+            "oversized",
+            &oversized_unix_script,
+            &oversized_windows_script,
+            BTreeMap::<String, String>::new(),
+        );
         let small_limit = HealthLimits {
-            response_timeout: Duration::from_millis(200),
-            shutdown_timeout: Duration::from_millis(200),
+            response_timeout: SHORT_LIMITS.response_timeout,
+            shutdown_timeout: SHORT_LIMITS.shutdown_timeout,
             maximum_response_bytes: 128,
         };
         let oversized_error = run_initialize(&oversized, small_limit)
@@ -1352,7 +1517,10 @@ while :; do :; done
         );
 
         let undelimited = shell_server(
+            root.path(),
+            "undelimited",
             "IFS= read -r initialize || exit 91\nprintf '%s' '{\"jsonrpc\":\"2.0\"}'",
+            "$initialize = [Console]::In.ReadLine(); if ($null -eq $initialize) { exit 91 }; [Console]::Out.Write('{\"jsonrpc\":\"2.0\"}')",
             BTreeMap::<String, String>::new(),
         );
         assert!(matches!(

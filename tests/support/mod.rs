@@ -74,8 +74,12 @@ impl SyntheticHome {
     }
 
     pub fn command(&self) -> Command {
+        self.command_for(env!("CARGO_BIN_EXE_mcp-sync"))
+    }
+
+    pub fn command_for(&self, executable: impl AsRef<OsStr>) -> Command {
         let coverage_profile = std::env::var_os("LLVM_PROFILE_FILE");
-        let mut command = Command::new(env!("CARGO_BIN_EXE_mcp-sync"));
+        let mut command = Command::new(executable);
         command.env_clear();
 
         for (name, path) in self.user_locations() {
@@ -106,13 +110,17 @@ impl SyntheticHome {
     }
 
     pub fn configuration_home(&self) -> PathBuf {
-        self.root.path().join("xdg-config")
+        match std::env::consts::OS {
+            "windows" => self.user_root.join("AppData/Local"),
+            _ => self.root.path().join("xdg-config"),
+        }
     }
 
     pub fn user_data_home(&self) -> PathBuf {
         match std::env::consts::OS {
             "macos" => self.user_root.join("Library/Application Support"),
             "linux" => self.configuration_home(),
+            "windows" => self.user_root.join("AppData/Roaming"),
             operating_system => {
                 panic!("unsupported integration-test operating system `{operating_system}`")
             }

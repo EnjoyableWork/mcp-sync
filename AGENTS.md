@@ -6,9 +6,10 @@
 reconciling that desired state into the native configuration files used by MCP
 clients.
 
-The repository has completed its source-checkout macOS M1 proof and GNU/Linux
-x64/ARM64 configuration proof, and remains pre-release. The README is a
-deliberate target-state exception: it presents the
+The repository has completed its source-checkout macOS M1 proof plus native
+GNU/Linux and Windows MSVC x64/ARM64 configuration proof; the repository
+remains pre-release. The README is a deliberate target-state
+exception: it presents the
 intended finished product in confident public product language and should not
 be rewritten as a progress report. Everywhere else, do not describe a planned
 command, client adapter, platform, safety property, or distribution channel as
@@ -57,21 +58,24 @@ The implemented foundation is one Rust 2024 binary crate with a package named
 supports help, version, create-only `init`, complete-definition canonical
 `add`, structurally redacted `list`, bounded named-server `test`, and
 five-target `sync --dry-run` / `sync` journeys. It also contains the strict
-canonical JSON v1 model, an injected macOS/GNU/Linux configuration-path
+canonical JSON v1 model, an injected macOS/GNU/Linux/Windows configuration-path
 resolver, a replaceable filesystem boundary with
 read, no-clobber creation, guarded replacement, and reversible transaction
 ports, and a pure deterministic reconciliation engine with structurally
 redacted plans. Fixture-backed global Claude Desktop, Cursor, Windsurf, and VS
-Code adapters discover and parse native JSON on both platforms, while the
+Code adapters discover and parse native JSON on all three platforms, while the
 global Codex adapter performs TOML-native structural edits; all five render
-plan-driven updates in memory while preserving unowned fields. Claude Desktop
-and VS Code use the macOS application-support root or Linux XDG configuration
-root; Cursor, Windsurf, and Codex retain their home-relative paths. The Windsurf
+plan-driven updates in memory while preserving unowned fields. Canonical state
+uses the XDG configuration root on macOS/Linux and `%LOCALAPPDATA%` on Windows.
+Claude Desktop and VS Code use the macOS application-support root, Linux XDG
+configuration root, or Windows roaming application-data root; Cursor,
+Windsurf, and Codex retain their home-relative paths. The Windsurf
 adapter manages the documented legacy Cascade file at
 `~/.codeium/windsurf/mcp_config.json`; it does not claim Devin Local agent
 configuration. The VS Code adapter manages only the native default user-profile
-file at `~/Library/Application Support/Code/User/mcp.json` on macOS or
-`${XDG_CONFIG_HOME:-$HOME/.config}/Code/User/mcp.json` on Linux; it does not
+file at `~/Library/Application Support/Code/User/mcp.json` on macOS,
+`${XDG_CONFIG_HOME:-$HOME/.config}/Code/User/mcp.json` on Linux, or
+`%APPDATA%\Code\User\mcp.json` on Windows; it does not
 claim workspace, named-profile, remote, Insiders, portable, Cline, Roo Code, or
 Agent Host/Copilot CLI configuration. The Codex adapter manages only global
 `~/.codex/config.toml` for the host configuration shared by the ChatGPT desktop
@@ -113,10 +117,13 @@ transaction recovery, guarded manual restoration, and current limitations
 without turning the README into a progress report. All five Linux targets have
 deterministic path, fixture, built-binary behavior, and native x64/ARM64
 whole-suite CI coverage under `MCP-018`; there is no Linux current-client smoke
-claim. Windsurf, VS Code, and Codex have no current-client smoke claim on either
-platform. Windows, restore UX, and distribution remain later-ticket scope. Use
-the existing Clap command tree as CLI behavior grows; do not introduce a second
-parser.
+claim. All five Windows paths, the copied-binary journey, native PowerShell
+health fixtures, and complete native MSVC x64/ARM64 whole-suite CI pass under
+`MCP-019`. There is no Windows current-client smoke claim. Windsurf, VS Code,
+and Codex have no current-client smoke claim on any implemented platform.
+Restore UX and distribution remain later-ticket scope.
+Use the existing Clap command tree as CLI behavior grows; do not introduce a
+second parser.
 
 “Extensible” currently means:
 

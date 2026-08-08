@@ -16,7 +16,8 @@ const COMMAND_FIELD: &str = "command";
 const ARGUMENTS_FIELD: &str = "args";
 const ENVIRONMENT_FIELD: &str = "env";
 
-/// The current Claude Desktop global configuration target on macOS and Linux.
+/// The current Claude Desktop global configuration target on macOS, Linux,
+/// and Windows.
 ///
 /// Discovery is read-only. Missing configuration is a normal state; every
 /// other filesystem failure remains contextual and actionable.
@@ -593,7 +594,12 @@ mod tests {
 
     impl Environment for FixtureEnvironment {
         fn value(&self, name: &'static str) -> Option<OsString> {
-            (name == "HOME").then(|| self.home.clone().into_os_string())
+            match name {
+                "HOME" | "USERPROFILE" => Some(self.home.clone().into_os_string()),
+                "LOCALAPPDATA" => Some(self.home.join("AppData/Local").into_os_string()),
+                "APPDATA" => Some(self.home.join("AppData/Roaming").into_os_string()),
+                _ => None,
+            }
         }
     }
 
@@ -657,6 +663,18 @@ mod tests {
             adapter.configuration_path(),
             root.path()
                 .join("user/.config/Claude/claude_desktop_config.json")
+        );
+        assert!(adapter.configuration_path().starts_with(root.path()));
+    }
+
+    #[test]
+    fn windows_discovery_path_matches_the_current_global_contract() {
+        let (root, adapter) = adapter_fixture_for(Platform::Windows);
+
+        assert_eq!(
+            adapter.configuration_path(),
+            root.path()
+                .join("user/AppData/Roaming/Claude/claude_desktop_config.json")
         );
         assert!(adapter.configuration_path().starts_with(root.path()));
     }

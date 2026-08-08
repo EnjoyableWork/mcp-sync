@@ -5,6 +5,9 @@ use std::path::{Component, Path, PathBuf};
 
 const HOME: &str = "HOME";
 const XDG_CONFIG_HOME: &str = "XDG_CONFIG_HOME";
+const USER_PROFILE: &str = "USERPROFILE";
+const LOCAL_APP_DATA: &str = "LOCALAPPDATA";
+const APP_DATA: &str = "APPDATA";
 
 /// Supplies only the environment values needed to resolve configuration
 /// locations. Tests provide an isolated implementation instead of reading the
@@ -26,6 +29,7 @@ impl Environment for ProcessEnvironment {
 pub enum Platform {
     MacOs,
     Linux,
+    Windows,
 }
 
 impl Platform {
@@ -33,6 +37,7 @@ impl Platform {
         match std::env::consts::OS {
             "macos" => Ok(Self::MacOs),
             "linux" => Ok(Self::Linux),
+            "windows" => Ok(Self::Windows),
             operating_system => Err(PathResolutionError::UnsupportedPlatform { operating_system }),
         }
     }
@@ -55,12 +60,23 @@ impl ConfigurationPaths {
         platform: Platform,
         environment: &impl Environment,
     ) -> Result<Self, PathResolutionError> {
-        let user_home = required_absolute_path(environment, HOME)?;
-        let configuration_home = optional_absolute_path(environment, XDG_CONFIG_HOME)?
-            .unwrap_or_else(|| user_home.join(".config"));
-        let user_data_home = match platform {
-            Platform::MacOs => user_home.join("Library/Application Support"),
-            Platform::Linux => configuration_home.clone(),
+        let (user_home, configuration_home, user_data_home) = match platform {
+            Platform::MacOs | Platform::Linux => {
+                let user_home = required_absolute_path(environment, HOME)?;
+                let configuration_home = optional_absolute_path(environment, XDG_CONFIG_HOME)?
+                    .unwrap_or_else(|| user_home.join(".config"));
+                let user_data_home = if platform == Platform::MacOs {
+                    user_home.join("Library/Application Support")
+                } else {
+                    configuration_home.clone()
+                };
+                (user_home, configuration_home, user_data_home)
+            }
+            Platform::Windows => (
+                required_absolute_path(environment, USER_PROFILE)?,
+                required_absolute_path(environment, LOCAL_APP_DATA)?,
+                required_absolute_path(environment, APP_DATA)?,
+            ),
         };
         let canonical_configuration = configuration_home.join("mcp-sync/config.json");
 
@@ -145,7 +161,7 @@ impl fmt::Display for PathResolutionError {
         match self {
             Self::UnsupportedPlatform { operating_system } => write!(
                 formatter,
-                "unsupported operating system `{operating_system}`; mcp-sync currently supports macOS and Linux"
+                "unsupported operating system `{operating_system}`; mcp-sync currently supports macOS, Linux, and Windows"
             ),
             Self::MissingVariable { variable } => {
                 write!(formatter, "configuration path requires `{variable}`")
@@ -207,6 +223,8 @@ mod tests {
             let user_home = root.path().join("user");
             for directory in [
                 user_home.join(".config"),
+                user_home.join("AppData/Local"),
+                user_home.join("AppData/Roaming"),
                 user_home.join("Library/Application Support"),
             ] {
                 std::fs::create_dir_all(directory)
@@ -218,6 +236,13 @@ mod tests {
 
         fn environment(&self) -> FixtureEnvironment {
             FixtureEnvironment::default().with_path("HOME", &self.user_home)
+        }
+
+        fn windows_environment(&self) -> FixtureEnvironment {
+            FixtureEnvironment::default()
+                .with_path("USERPROFILE", &self.user_home)
+                .with_path("LOCALAPPDATA", self.user_home.join("AppData/Local"))
+                .with_path("APPDATA", self.user_home.join("AppData/Roaming"))
         }
 
         fn assert_isolated(&self, path: &Path) {
@@ -276,6 +301,38 @@ mod tests {
         assert_eq!(
             paths.canonical_configuration(),
             fixture.user_home.join(".config/mcp-sync/config.json")
+        );
+
+        for path in [
+            paths.user_home(),
+            paths.configuration_home(),
+            paths.user_data_home(),
+            paths.canonical_configuration(),
+        ] {
+            fixture.assert_isolated(path);
+        }
+    }
+
+    #[test]
+    fn windows_roots_resolve_from_the_injected_profile_variables() {
+        let fixture = PathFixture::new();
+
+        let paths =
+            ConfigurationPaths::resolve_for(Platform::Windows, &fixture.windows_environment())
+                .expect("synthetic Windows paths should resolve without HOME or XDG variables");
+
+        assert_eq!(paths.user_home(), fixture.user_home);
+        assert_eq!(
+            paths.configuration_home(),
+            fixture.user_home.join("AppData/Local")
+        );
+        assert_eq!(
+            paths.user_data_home(),
+            fixture.user_home.join("AppData/Roaming")
+        );
+        assert_eq!(
+            paths.canonical_configuration(),
+            fixture.user_home.join("AppData/Local/mcp-sync/config.json")
         );
 
         for path in [
@@ -365,6 +422,44 @@ mod tests {
     }
 
     #[test]
+    fn missing_windows_profile_variables_are_contextual_resolution_errors() {
+        let fixture = PathFixture::new();
+        let cases = [
+            (FixtureEnvironment::default(), "USERPROFILE"),
+            (
+                FixtureEnvironment::default().with_path("USERPROFILE", &fixture.user_home),
+                "LOCALAPPDATA",
+            ),
+            (
+                FixtureEnvironment::default()
+                    .with_path("USERPROFILE", &fixture.user_home)
+                    .with_path("LOCALAPPDATA", fixture.user_home.join("AppData/Local")),
+                "APPDATA",
+            ),
+        ];
+
+        for (environment, variable) in cases {
+            let error = ConfigurationPaths::resolve_for(Platform::Windows, &environment)
+                .expect_err("every Windows profile variable should be required");
+            assert_eq!(error, PathResolutionError::MissingVariable { variable });
+        }
+    }
+
+    #[test]
+    fn empty_windows_profile_variables_are_treated_as_missing() {
+        let fixture = PathFixture::new();
+
+        for variable in ["USERPROFILE", "LOCALAPPDATA", "APPDATA"] {
+            let environment = fixture
+                .windows_environment()
+                .with_value(variable, OsString::new());
+            let error = ConfigurationPaths::resolve_for(Platform::Windows, &environment)
+                .expect_err("empty Windows profile variables should fail closed");
+            assert_eq!(error, PathResolutionError::MissingVariable { variable });
+        }
+    }
+
+    #[test]
     fn relative_environment_paths_are_rejected() {
         let fixture = PathFixture::new();
         let cases = [
@@ -388,6 +483,20 @@ mod tests {
     }
 
     #[test]
+    fn relative_windows_profile_paths_are_rejected() {
+        let fixture = PathFixture::new();
+
+        for variable in ["USERPROFILE", "LOCALAPPDATA", "APPDATA"] {
+            let environment = fixture
+                .windows_environment()
+                .with_path(variable, "relative-windows-path");
+            let error = ConfigurationPaths::resolve_for(Platform::Windows, &environment)
+                .expect_err("relative Windows profile paths should fail");
+            assert_eq!(error, PathResolutionError::NonAbsoluteVariable { variable });
+        }
+    }
+
+    #[test]
     fn parent_traversal_in_environment_paths_is_rejected() {
         let fixture = PathFixture::new();
         let traversing_home = fixture.root.path().join("user/../outside");
@@ -400,5 +509,20 @@ mod tests {
             error,
             PathResolutionError::ParentTraversal { variable: "HOME" }
         );
+    }
+
+    #[test]
+    fn parent_traversal_in_windows_profile_paths_is_rejected() {
+        let fixture = PathFixture::new();
+        let traversing_path = fixture.root.path().join("user/../outside");
+
+        for variable in ["USERPROFILE", "LOCALAPPDATA", "APPDATA"] {
+            let environment = fixture
+                .windows_environment()
+                .with_path(variable, &traversing_path);
+            let error = ConfigurationPaths::resolve_for(Platform::Windows, &environment)
+                .expect_err("parent traversal in Windows profile paths should fail");
+            assert_eq!(error, PathResolutionError::ParentTraversal { variable });
+        }
     }
 }
