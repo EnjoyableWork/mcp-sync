@@ -59,7 +59,7 @@ jobs:
             exit 1
           fi
           if [[ "$GITHUB_REF_NAME" == v0.1.0 ]]; then
-            echo "v0.1.0 is reserved for the zero-cost market release" >&2
+            echo "v0.1.0 is reserved for the source and GNU/Linux release" >&2
             exit 1
           fi
           release_version=${BASH_REMATCH[1]}

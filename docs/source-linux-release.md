@@ -1,4 +1,4 @@
-# Zero-cost market-release runbook
+# Source and GNU/Linux release runbook
 
 This is the operational contract for `MCP-028` and `MCP-029`. `MCP-028`
 proves the path without creating a tag, GitHub Release, crates.io version, or
@@ -8,7 +8,7 @@ The funded Apple/Windows pipeline remains available in the
 
 ## Fixed `v0.1.0` identity and boundary
 
-The market-validation version is `0.1.0`, tagged `v0.1.0`, from
+The initial zero-cost version is `0.1.0`, tagged `v0.1.0`, from
 `EnjoyableWork/mcp-sync`. Cargo publishes `enjoyable-mcp-sync`, Homebrew uses
 `EnjoyableWork/homebrew-tap` and formula `mcp-sync`, and every path installs an
 executable named `mcp-sync`.
@@ -26,10 +26,44 @@ mcp-sync-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
 ```
 
 Each uploaded asset receives GitHub build-provenance attestation from
-`.github/workflows/market-release.yml`. `SHA256SUMS` covers the other six files
-exactly. There is no project-issued macOS or Windows binary in this release and
-there is no WinGet package. macOS and Windows users build the exact Cargo
-package locally; Homebrew builds that same package on macOS and GNU/Linux.
+`.github/workflows/source-linux-release.yml`. `SHA256SUMS` covers the other six
+files exactly. There is no project-issued macOS or Windows binary in this
+release and there is no WinGet package. macOS and Windows users build the exact
+Cargo package locally; Homebrew builds that same package on macOS and
+GNU/Linux.
+
+## End-to-end release sequence
+
+A release selects an already committed and tested state; code is not committed
+"onto" a release. The protected sequence is:
+
+1. Finish the version, release notes, and release automation on a branch, then
+   merge that branch to `main`.
+2. Let CI, the source and GNU/Linux release preflight, and the retained signed
+   six-target preflight prove the exact `main` commit.
+3. Dispatch `.github/workflows/release-authorize.yml` from `main`. The owner
+   reviews and approves its `release-control` deployment. This records authority
+   but creates no tag and publishes nothing.
+4. Create one annotated `v0.1.0` tag that points to that exact commit and push
+   only the tag. The tag is the immutable version marker.
+5. The tag starts `.github/workflows/source-linux-release.yml`. The owner
+   approves its protected `release` deployment, after which GitHub builds,
+   attests, verifies, and publishes the immutable GitHub Release.
+6. From the exact tag, compare the local Cargo package with the immutable
+   release asset, perform Cargo's publication dry run, publish to crates.io,
+   and verify that crates.io serves identical bytes.
+7. Dispatch `.github/workflows/source-linux-release-publish-homebrew.yml` from
+   the tag. After another `release` approval, it copies the exact attested
+   formula to the organization tap with the tap-scoped deploy key.
+8. Dispatch `.github/workflows/source-linux-release-channels.yml`. This final
+   read-only workflow installs from every public channel represented by the
+   release and exercises recovery on every supported native host.
+9. Record the immutable release, registry, tap, and smoke evidence in
+   `PROJECT.md`; only then mark `MCP-029` and M2 complete.
+
+The separate approvals are intentional. They keep tag creation, GitHub Release
+publication, crates.io publication, and tap mutation independently reviewable
+and prevent one broad credential from publishing everywhere.
 
 ## Trigger separation and repository controls
 
@@ -41,22 +75,22 @@ Before a stable tag exists, verify all of the following:
 - The `release` environment requires review and permits only `v*` tag
   deployments.
 - The exact current `main` commit has green CI, green
-  `Market release preflight`, and green retained six-target `Release preflight`
-  runs.
+  `Source and GNU/Linux release preflight`, and green retained six-target
+  `Release preflight` runs.
 - No interactive administration token or Apple/Microsoft signing credential is
-  present in the market workflow.
+  present in the source and GNU/Linux workflow.
 
 A push of the exact annotated `v0.1.0` tag can invoke only
-`.github/workflows/market-release.yml`. The funded
+`.github/workflows/source-linux-release.yml`. The funded
 `.github/workflows/release.yml` has no tag trigger; it requires manual dispatch
 on a selected stable tag and `confirm_funded_signing=true`. Do not weaken this
 separation by adding a broad `v*` push trigger to the funded workflow.
 
 ## Non-publishing preflight
 
-`Market release preflight` runs on pull requests, pushes to `main`, and manual
-dispatch without secrets or write permissions. It must prove all of the
-following before `MCP-028` is complete:
+`Source and GNU/Linux release preflight` runs on pull requests, pushes to
+`main`, and manual dispatch without secrets or write permissions. It must prove
+all of the following before `MCP-028` is complete:
 
 1. Two consecutive `cargo package --locked` operations produce the same
    `enjoyable-mcp-sync-0.1.0.crate` SHA-256.
@@ -69,9 +103,9 @@ following before `MCP-028` is complete:
    local `.crate`; it does not publish or substitute a different formula.
 5. Only native GNU/Linux ARM64 and x64 archives are assembled, smoke-tested,
    and paired with valid SPDX 2.3 JSON SBOMs.
-6. `scripts/verify-market-release-assets.sh` and
-   `scripts/verify-published-market-release.sh` accept the exact dry-run payload
-   and reject an extra macOS, Windows, or unrelated file.
+6. `scripts/verify-source-linux-release-assets.sh` and
+   `scripts/verify-published-source-linux-release.sh` accept the exact dry-run
+   payload and reject an extra macOS, Windows, or unrelated file.
 7. The retained `Release preflight` continues to build and smoke all six
    unsigned test artifacts without credentials, proving that the future signed
    pipeline has not decayed.
@@ -107,9 +141,9 @@ bytes are verified.
 
 ## GitHub Release publication
 
-The `v0.1.0` tag invokes the protected market workflow. It revalidates the tag,
-current `main` commit, package version, immutable-release setting, tag ruleset,
-registry identity, and existing release state. It then:
+The `v0.1.0` tag invokes the protected source and GNU/Linux workflow. It
+revalidates the tag, current `main` commit, package version, immutable-release
+setting, tag ruleset, registry identity, and existing release state. It then:
 
 1. packages the Cargo source twice and requires equal hashes;
 2. generates the source-building Homebrew formula twice and requires equal
@@ -161,13 +195,13 @@ and installs through Homebrew's locked standard Cargo arguments.
 
 After the exact crates.io package is public and byte-equal to the immutable
 release asset, dispatch
-`.github/workflows/market-release-publish-homebrew.yml` from tag `v0.1.0` with
-version `0.1.0`. The protected job rechecks the immutable release, every
+`.github/workflows/source-linux-release-publish-homebrew.yml` from tag `v0.1.0`
+with version `0.1.0`. The protected job rechecks the immutable release, every
 attestation, and the exact crates.io bytes before using the tap-scoped deploy
 key. It creates only `Formula/mcp-sync.rb`, refuses to replace different
 published bytes, and accepts an already-identical formula as a no-op. It has no
-write permission to `EnjoyableWork/mcp-sync` and does not publish Cargo,
-WinGet, or a binary.
+write permission to `EnjoyableWork/mcp-sync` and does not publish Cargo, WinGet,
+or a binary.
 
 Require Homebrew style, strict online audit, formula test, explicit
 `--build-from-source` installation, and the installed restore journey on native
@@ -175,7 +209,7 @@ ARM64 and x64 macOS and GNU/Linux hosts. This is not a bottle and does not
 claim a project-issued or notarized macOS executable.
 
 After Cargo and Homebrew are public, dispatch
-`.github/workflows/market-release-channels.yml` with version `0.1.0`. The
+`.github/workflows/source-linux-release-channels.yml` with version `0.1.0`. The
 read-only, credential-free workflow requires the immutable seven-file release,
 all attestations, exact crates.io `.crate` bytes, exact tap formula bytes,
 native GitHub Linux archive smokes, six native Cargo installs, and four native

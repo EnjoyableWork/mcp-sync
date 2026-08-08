@@ -94,7 +94,7 @@ jobs:
           }
 
           require_successful_run ci.yml CI
-          require_successful_run market-release-preflight.yml 'Market release preflight'
+          require_successful_run source-linux-release-preflight.yml 'Source and GNU/Linux release preflight'
           require_successful_run release-preflight.yml 'Release preflight'
 
       - name: Recheck immutable-release and stable-tag controls
@@ -140,14 +140,14 @@ jobs:
             echo "- Version: \`$RELEASE_VERSION\`"
             echo "- Commit: \`$GITHUB_SHA\`"
             echo '- CI: successful on this exact commit'
-            echo '- Zero-cost market release preflight: successful on this exact commit'
+            echo '- Source and GNU/Linux release preflight: successful on this exact commit'
             echo '- Retained six-target signed release preflight: successful on this exact commit'
             echo '- Immutable releases and stable-tag ruleset: verified'
             echo
             echo 'The recorded named bypass actor may now create one annotated tag'
             echo "\`v$RELEASE_VERSION\` at \`$GITHUB_SHA\` and push only that tag."
             if [[ "$RELEASE_VERSION" == 0.1.0 ]]; then
-              echo 'The v0.1.0 tag invokes only the zero-cost market workflow.'
+              echo 'The v0.1.0 tag invokes only the source and GNU/Linux release workflow.'
             else
               echo 'The tag push invokes no publishing workflow by itself.'
             fi

@@ -19,9 +19,9 @@ const SIGNED_RUNNERS: [&str; 6] = [
     "windows-2025",
 ];
 
-const MARKET_LINUX_TARGETS: [&str; 2] = ["aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"];
+const SOURCE_LINUX_TARGETS: [&str; 2] = ["aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"];
 
-const MARKET_LINUX_RUNNERS: [&str; 2] = ["ubuntu-24.04-arm", "ubuntu-24.04"];
+const SOURCE_LINUX_RUNNERS: [&str; 2] = ["ubuntu-24.04-arm", "ubuntu-24.04"];
 
 fn repository_file(relative_path: &str) -> String {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative_path);
@@ -106,7 +106,7 @@ fn funded_signed_workflow_is_explicit_and_preserves_the_full_trust_contract() {
         "confirm_funded_signing:",
         "funded signing must be explicitly confirmed on manual dispatch",
         "funded release dispatch must select an existing stable tag",
-        "v0.1.0 is reserved for the zero-cost market release",
+        "v0.1.0 is reserved for the source and GNU/Linux release",
         "environment: release",
         "name: release",
         "refs/tags/v*",
@@ -172,13 +172,13 @@ fn funded_signed_workflow_is_explicit_and_preserves_the_full_trust_contract() {
 }
 
 #[test]
-fn market_tag_workflow_publishes_only_attested_linux_and_source_outputs() {
-    let workflow = repository_file(".github/workflows/market-release.yml");
+fn source_linux_tag_workflow_publishes_only_attested_linux_and_source_outputs() {
+    let workflow = repository_file(".github/workflows/source-linux-release.yml");
 
-    for target in MARKET_LINUX_TARGETS {
+    for target in SOURCE_LINUX_TARGETS {
         assert!(workflow.contains(target));
     }
-    for runner in MARKET_LINUX_RUNNERS {
+    for runner in SOURCE_LINUX_RUNNERS {
         assert!(workflow.contains(&format!("runner: {runner}")));
     }
     for excluded_target in [
@@ -189,7 +189,7 @@ fn market_tag_workflow_publishes_only_attested_linux_and_source_outputs() {
     ] {
         assert!(
             !workflow.contains(excluded_target),
-            "market release must not contain project-issued target {excluded_target}"
+            "source and GNU/Linux release must not contain project-issued target {excluded_target}"
         );
     }
     for forbidden_contract in [
@@ -204,7 +204,7 @@ fn market_tag_workflow_publishes_only_attested_linux_and_source_outputs() {
     ] {
         assert!(
             !workflow.contains(forbidden_contract),
-            "market release must not depend on {forbidden_contract}"
+            "source and GNU/Linux release must not depend on {forbidden_contract}"
         );
     }
     for required_contract in [
@@ -212,9 +212,9 @@ fn market_tag_workflow_publishes_only_attested_linux_and_source_outputs() {
         "environment: release",
         "immutable-releases",
         "cargo package --locked",
-        "scripts/generate-market-release-channels.sh",
-        "scripts/verify-market-release-assets.sh",
-        "scripts/verify-published-market-release.sh",
+        "scripts/generate-source-linux-release-channels.sh",
+        "scripts/verify-source-linux-release-assets.sh",
+        "scripts/verify-published-source-linux-release.sh",
         "actions/attest-build-provenance@",
         "enjoyable-mcp-sync-${{ env.RELEASE_VERSION }}.crate",
         "release-assets/mcp-sync.rb",
@@ -227,20 +227,20 @@ fn market_tag_workflow_publishes_only_attested_linux_and_source_outputs() {
     ] {
         assert!(
             workflow.contains(required_contract),
-            "market workflow should enforce {required_contract}"
+            "source and GNU/Linux workflow should enforce {required_contract}"
         );
     }
     assert_actions_are_commit_pinned(&workflow);
 }
 
 #[test]
-fn market_preflight_proves_native_source_installs_and_exact_payload_without_secrets() {
-    let workflow = repository_file(".github/workflows/market-release-preflight.yml");
+fn source_linux_preflight_proves_native_source_installs_and_exact_payload_without_secrets() {
+    let workflow = repository_file(".github/workflows/source-linux-release-preflight.yml");
 
     for target in SIGNED_TARGETS {
         assert!(
             workflow.contains(target),
-            "market preflight should source-install on {target}"
+            "source and GNU/Linux preflight should source-install on {target}"
         );
     }
     for runner in SIGNED_RUNNERS {
@@ -248,15 +248,15 @@ fn market_preflight_proves_native_source_installs_and_exact_payload_without_secr
     }
     for required_contract in [
         "cargo package --locked",
-        "scripts/generate-market-release-channels.sh",
+        "scripts/generate-source-linux-release-channels.sh",
         "cargo install",
         "brew install --build-from-source",
         "brew audit --strict \"$formula_name\"",
         "scripts/smoke-installed.sh",
         "scripts/smoke-installed.ps1",
         "scripts/smoke-archive.sh",
-        "scripts/verify-market-release-assets.sh",
-        "scripts/verify-published-market-release.sh",
+        "scripts/verify-source-linux-release-assets.sh",
+        "scripts/verify-published-source-linux-release.sh",
         "syft-version: v1.50.0",
         "retention-days: 1",
     ] {
@@ -270,8 +270,8 @@ fn market_preflight_proves_native_source_installs_and_exact_payload_without_secr
 }
 
 #[test]
-fn market_channel_verifier_is_read_only_and_covers_every_represented_install() {
-    let workflow = repository_file(".github/workflows/market-release-channels.yml");
+fn source_linux_channel_verifier_is_read_only_and_covers_every_represented_install() {
+    let workflow = repository_file(".github/workflows/source-linux-release-channels.yml");
 
     for target in SIGNED_TARGETS {
         assert!(
@@ -283,11 +283,11 @@ fn market_channel_verifier_is_read_only_and_covers_every_represented_install() {
         assert!(workflow.contains(&format!("runner: {runner}")));
     }
     for required_contract in [
-        "scripts/verify-published-market-release.sh",
+        "scripts/verify-published-source-linux-release.sh",
         ".immutable == true",
         "gh release verify",
         "gh attestation verify",
-        ".github/workflows/market-release.yml",
+        ".github/workflows/source-linux-release.yml",
         "cargo install enjoyable-mcp-sync",
         "brew install --build-from-source EnjoyableWork/tap/mcp-sync",
         "scripts/smoke-archive.sh",
@@ -311,18 +311,18 @@ fn market_channel_verifier_is_read_only_and_covers_every_represented_install() {
 }
 
 #[test]
-fn market_homebrew_publisher_uses_only_the_tap_scoped_release_secret() {
-    let workflow = repository_file(".github/workflows/market-release-publish-homebrew.yml");
+fn source_linux_homebrew_publisher_uses_only_the_tap_scoped_release_secret() {
+    let workflow = repository_file(".github/workflows/source-linux-release-publish-homebrew.yml");
 
     for required_contract in [
         "workflow_dispatch:",
         "refs/tags/v$RELEASE_VERSION",
         "environment:\n      name: release",
         ".immutable == true",
-        "scripts/verify-published-market-release.sh",
+        "scripts/verify-published-source-linux-release.sh",
         "gh release verify",
         "gh attestation verify",
-        ".github/workflows/market-release.yml",
+        ".github/workflows/source-linux-release.yml",
         "enjoyable-mcp-sync/$RELEASE_VERSION/download",
         "secrets.HOMEBREW_TAP_DEPLOY_KEY",
         "git@github.com:EnjoyableWork/homebrew-tap.git",
@@ -358,15 +358,15 @@ fn market_homebrew_publisher_uses_only_the_tap_scoped_release_secret() {
 }
 
 #[test]
-fn market_generator_and_verifiers_enforce_source_builds_and_linux_only_assets() {
-    let generator = repository_file("scripts/generate-market-release-channels.sh");
-    let asset_verifier = repository_file("scripts/verify-market-release-assets.sh");
-    let published_verifier = repository_file("scripts/verify-published-market-release.sh");
+fn source_linux_generator_and_verifiers_enforce_source_builds_and_linux_only_assets() {
+    let generator = repository_file("scripts/generate-source-linux-release-channels.sh");
+    let asset_verifier = repository_file("scripts/verify-source-linux-release-assets.sh");
+    let published_verifier = repository_file("scripts/verify-published-source-linux-release.sh");
 
     for required_contract in [
-        "enjoyable-mcp-sync-$market_version.crate",
+        "enjoyable-mcp-sync-$release_version.crate",
         "class McpSync < Formula",
-        "releases/download/v$market_version/$market_package_name",
+        "releases/download/v$release_version/$release_package_name",
         "depends_on \"rust\" => :build",
         "std_cargo_args(path: \".\")",
         "Cargo package contains a path outside its versioned root",
@@ -378,7 +378,7 @@ fn market_generator_and_verifiers_enforce_source_builds_and_linux_only_assets() 
         assert!(!generator.contains(forbidden_contract));
     }
 
-    for target in MARKET_LINUX_TARGETS {
+    for target in SOURCE_LINUX_TARGETS {
         assert!(asset_verifier.contains(target));
         assert!(published_verifier.contains(target));
     }
@@ -387,7 +387,7 @@ fn market_generator_and_verifiers_enforce_source_builds_and_linux_only_assets() 
         assert!(!published_verifier.contains(excluded_target));
     }
     for required_asset in [
-        "enjoyable-mcp-sync-$market_asset_version.crate",
+        "enjoyable-mcp-sync-$release_asset_version.crate",
         "mcp-sync.rb",
         "SHA256SUMS",
     ] {
@@ -404,12 +404,12 @@ fn authorization_workflow_proves_main_without_receiving_tag_write_authority() {
         "environment: release-control",
         "actions: read",
         "contents: read",
-        "market-release-preflight.yml",
+        "source-linux-release-preflight.yml",
         "release-preflight.yml",
         "ci.yml",
         "immutable-releases",
         "Protect stable release tags",
-        "The v0.1.0 tag invokes only the zero-cost market workflow.",
+        "The v0.1.0 tag invokes only the source and GNU/Linux release workflow.",
         "The tag push invokes no publishing workflow by itself.",
         "funded signed",
         "Actions deliberately has no tag-creation or bypass credential.",
@@ -426,11 +426,12 @@ fn authorization_workflow_proves_main_without_receiving_tag_write_authority() {
 fn package_and_public_docs_keep_the_accepted_release_identities() {
     let manifest = repository_file("Cargo.toml");
     let readme = repository_file("README.md");
-    let runbook = repository_file("docs/market-release.md");
+    let runbook = repository_file("docs/source-linux-release.md");
     let signed_runbook = repository_file("docs/release.md");
     let release_notes = repository_file("docs/releases/v0.1.0.md");
     let release_asset_verifier = repository_file("scripts/verify-published-release.sh");
-    let market_asset_verifier = repository_file("scripts/verify-published-market-release.sh");
+    let source_linux_asset_verifier =
+        repository_file("scripts/verify-published-source-linux-release.sh");
 
     for required_manifest_value in [
         "name = \"enjoyable-mcp-sync\"",
@@ -438,10 +439,10 @@ fn package_and_public_docs_keep_the_accepted_release_identities() {
         "name = \"mcp-sync\"",
         "publish = [\"crates-io\"]",
         "\"/.github/workflows/release*.yml\"",
-        "\"/.github/workflows/market-release*.yml\"",
+        "\"/.github/workflows/source-linux-release*.yml\"",
         "\"/tests/**\"",
         "\"/scripts/**\"",
-        "\"/docs/market-release.md\"",
+        "\"/docs/source-linux-release.md\"",
         "\"/docs/releases/**\"",
         "\"/Cargo.lock\"",
         "\"/LICENSE\"",
@@ -465,9 +466,9 @@ fn package_and_public_docs_keep_the_accepted_release_identities() {
         assert!(signed_runbook.contains(target));
         assert!(release_asset_verifier.contains(target));
     }
-    for target in MARKET_LINUX_TARGETS {
+    for target in SOURCE_LINUX_TARGETS {
         assert!(runbook.contains(target));
-        assert!(market_asset_verifier.contains(target));
+        assert!(source_linux_asset_verifier.contains(target));
     }
     assert!(runbook.contains("v0.1.0"));
     assert!(runbook.contains("no project-issued macOS or Windows binary"));
@@ -504,7 +505,7 @@ fn published_channel_workflow_proves_exact_metadata_and_every_native_install_pat
     for required_contract in [
         "workflow_dispatch:",
         "Verify funded signed release channels",
-        "v0.1.0 belongs to the zero-cost market channel verifier",
+        "v0.1.0 belongs to the source and GNU/Linux channel verifier",
         "Verify immutable release and downstream metadata",
         ".immutable == true",
         "scripts/verify-published-release.sh",
