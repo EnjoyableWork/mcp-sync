@@ -1,6 +1,6 @@
 use crate::config::{CanonicalConfig, CanonicalServer, ConfigError, parse_unique_json_value};
 use crate::filesystem::{FileIoError, FileSystem};
-use crate::paths::MacOsConfigurationPaths;
+use crate::paths::ConfigurationPaths;
 use crate::reconciliation::{ReconciliationOutcomeKind, ReconciliationPlan};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -16,7 +16,7 @@ const COMMAND_FIELD: &str = "command";
 const ARGUMENTS_FIELD: &str = "args";
 const ENVIRONMENT_FIELD: &str = "env";
 
-/// The current Claude Desktop global configuration target on macOS.
+/// The current Claude Desktop global configuration target on macOS and Linux.
 ///
 /// Discovery is read-only. Missing configuration is a normal state; every
 /// other filesystem failure remains contextual and actionable.
@@ -26,10 +26,10 @@ pub struct ClaudeDesktopAdapter {
 }
 
 impl ClaudeDesktopAdapter {
-    pub fn for_macos(paths: &MacOsConfigurationPaths) -> Self {
+    pub fn from_paths(paths: &ConfigurationPaths) -> Self {
         Self {
             configuration_path: paths
-                .application_support()
+                .user_data_home()
                 .join(CLAUDE_DIRECTORY)
                 .join(CLAUDE_CONFIGURATION_FILE),
         }
@@ -579,7 +579,7 @@ impl Error for ClaudeDesktopDocumentError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::paths::Environment;
+    use crate::paths::{Environment, Platform};
     use crate::reconciliation::{ReconciliationOutcomeKind, reconcile};
     use std::ffi::OsString;
 
@@ -615,14 +615,21 @@ mod tests {
         }
     }
 
-    fn adapter_fixture() -> (tempfile::TempDir, ClaudeDesktopAdapter) {
+    fn adapter_fixture_for(platform: Platform) -> (tempfile::TempDir, ClaudeDesktopAdapter) {
         let root = tempfile::tempdir().expect("temporary adapter fixture should be created");
-        let paths = MacOsConfigurationPaths::resolve(&FixtureEnvironment {
-            home: root.path().join("user"),
-        })
-        .expect("synthetic macOS paths should resolve");
-        let adapter = ClaudeDesktopAdapter::for_macos(&paths);
+        let paths = ConfigurationPaths::resolve_for(
+            platform,
+            &FixtureEnvironment {
+                home: root.path().join("user"),
+            },
+        )
+        .expect("synthetic platform paths should resolve");
+        let adapter = ClaudeDesktopAdapter::from_paths(&paths);
         (root, adapter)
+    }
+
+    fn adapter_fixture() -> (tempfile::TempDir, ClaudeDesktopAdapter) {
+        adapter_fixture_for(Platform::MacOs)
     }
 
     fn desired_config() -> CanonicalConfig {
@@ -638,6 +645,18 @@ mod tests {
             adapter.configuration_path(),
             root.path()
                 .join("user/Library/Application Support/Claude/claude_desktop_config.json")
+        );
+        assert!(adapter.configuration_path().starts_with(root.path()));
+    }
+
+    #[test]
+    fn linux_discovery_path_matches_the_current_global_contract() {
+        let (root, adapter) = adapter_fixture_for(Platform::Linux);
+
+        assert_eq!(
+            adapter.configuration_path(),
+            root.path()
+                .join("user/.config/Claude/claude_desktop_config.json")
         );
         assert!(adapter.configuration_path().starts_with(root.path()));
     }

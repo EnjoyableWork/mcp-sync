@@ -5,7 +5,7 @@ use crate::codex::{CodexAdapter, CodexAdapterError, CodexDiscovery};
 use crate::config::{CanonicalConfig, CanonicalServer, ConfigError};
 use crate::cursor::{CursorAdapter, CursorAdapterError, CursorDiscovery};
 use crate::filesystem::{FileCreator, FileIoError, FileSystem};
-use crate::paths::MacOsConfigurationPaths;
+use crate::paths::ConfigurationPaths;
 use crate::vscode::{VsCodeAdapter, VsCodeAdapterError, VsCodeDiscovery};
 use crate::windsurf::{WindsurfAdapter, WindsurfAdapterError, WindsurfDiscovery};
 use std::collections::{BTreeMap, BTreeSet};
@@ -14,14 +14,14 @@ use std::fmt;
 use std::io;
 use std::path::PathBuf;
 
-/// Discover every implemented macOS client and create the first canonical
+/// Discover every client supported on the current platform and create the first canonical
 /// configuration.
 ///
 /// Every read, parse, normalization, conflict, and serialization step finishes
 /// before the create-only filesystem boundary is called. Native client files
 /// are never written by this use case.
 pub fn initialize(
-    paths: &MacOsConfigurationPaths,
+    paths: &ConfigurationPaths,
     filesystem: &(impl FileSystem + FileCreator),
 ) -> Result<InitReport, InitError> {
     let canonical_path = paths.canonical_configuration();
@@ -35,19 +35,19 @@ pub fn initialize(
         Err(source) => return Err(InitError::ReadCanonical { source }),
     }
 
-    let claude = ClaudeDesktopAdapter::for_macos(paths)
+    let claude = ClaudeDesktopAdapter::from_paths(paths)
         .discover(filesystem)
         .map_err(|source| InitError::DiscoverClaude { source })?;
-    let cursor = CursorAdapter::for_macos(paths)
+    let cursor = CursorAdapter::from_paths(paths)
         .discover(filesystem)
         .map_err(|source| InitError::DiscoverCursor { source })?;
-    let windsurf = WindsurfAdapter::for_macos(paths)
+    let windsurf = WindsurfAdapter::from_paths(paths)
         .discover(filesystem)
         .map_err(|source| InitError::DiscoverWindsurf { source })?;
-    let vscode = VsCodeAdapter::for_macos(paths)
+    let vscode = VsCodeAdapter::from_paths(paths)
         .discover(filesystem)
         .map_err(|source| InitError::DiscoverVsCode { source })?;
-    let codex = CodexAdapter::for_macos(paths)
+    let codex = CodexAdapter::from_paths(paths)
         .discover(filesystem)
         .map_err(|source| InitError::DiscoverCodex { source })?;
 
@@ -824,9 +824,10 @@ mod tests {
         }
 
         let root = tempfile::tempdir().expect("a temporary fixture should be created");
-        let paths = MacOsConfigurationPaths::resolve(&FixtureEnvironment(
-            root.path().join("synthetic-user"),
-        ))
+        let paths = ConfigurationPaths::resolve_for(
+            crate::paths::Platform::MacOs,
+            &FixtureEnvironment(root.path().join("synthetic-user")),
+        )
         .expect("synthetic paths should resolve");
         let filesystem = ExistingCanonicalFileSystem {
             canonical_path: paths.canonical_configuration().to_owned(),

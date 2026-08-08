@@ -1,6 +1,6 @@
 use crate::config::{CanonicalConfig, CanonicalServer, ConfigError};
 use crate::filesystem::{FileIoError, FileMutationError, FileReplacer, FileSystem};
-use crate::paths::MacOsConfigurationPaths;
+use crate::paths::ConfigurationPaths;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt;
@@ -55,7 +55,7 @@ impl fmt::Debug for AddRequest {
 /// Every actual change is validated and serialized before the atomic boundary
 /// receives the original and desired bytes together.
 pub fn add_server(
-    paths: &MacOsConfigurationPaths,
+    paths: &ConfigurationPaths,
     filesystem: &(impl FileSystem + FileReplacer),
     request: AddRequest,
 ) -> Result<AddReport, CatalogError> {
@@ -96,7 +96,7 @@ pub fn add_server(
 
 /// Read deterministic, structurally redacted summaries from canonical state.
 pub fn list_servers(
-    paths: &MacOsConfigurationPaths,
+    paths: &ConfigurationPaths,
     filesystem: &impl FileSystem,
 ) -> Result<ListReport, CatalogError> {
     let loaded = load_canonical(paths, filesystem)?;
@@ -119,7 +119,7 @@ struct LoadedCanonical {
 }
 
 fn load_canonical(
-    paths: &MacOsConfigurationPaths,
+    paths: &ConfigurationPaths,
     filesystem: &impl FileSystem,
 ) -> Result<LoadedCanonical, CatalogError> {
     let path = paths.canonical_configuration();
@@ -418,11 +418,12 @@ mod tests {
         }
     }
 
-    fn paths() -> (tempfile::TempDir, MacOsConfigurationPaths) {
+    fn paths() -> (tempfile::TempDir, ConfigurationPaths) {
         let root = tempfile::tempdir().expect("a temporary fixture should be created");
-        let paths = MacOsConfigurationPaths::resolve(&FixtureEnvironment(
-            root.path().join("synthetic-user"),
-        ))
+        let paths = ConfigurationPaths::resolve_for(
+            crate::paths::Platform::MacOs,
+            &FixtureEnvironment(root.path().join("synthetic-user")),
+        )
         .expect("synthetic paths should resolve");
         (root, paths)
     }

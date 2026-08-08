@@ -1,6 +1,6 @@
 use crate::config::{CanonicalConfig, CanonicalServer, ConfigError, parse_unique_json_value};
 use crate::filesystem::{FileIoError, FileSystem};
-use crate::paths::MacOsConfigurationPaths;
+use crate::paths::ConfigurationPaths;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use std::env;
@@ -29,7 +29,7 @@ const INITIALIZED_NOTIFICATION: &[u8] =
 /// Canonical process values cross into the process adapter but never enter the
 /// returned report, diagnostics, or debug output.
 pub fn test_server(
-    paths: &MacOsConfigurationPaths,
+    paths: &ConfigurationPaths,
     filesystem: &impl FileSystem,
     tester: &impl InitializeTester,
     name: &str,
@@ -891,7 +891,7 @@ mod tests {
     };
     use crate::config::CanonicalServer;
     use crate::filesystem::OsFileSystem;
-    use crate::paths::{Environment, MacOsConfigurationPaths};
+    use crate::paths::{ConfigurationPaths, Environment, Platform};
     use serde_json::Value;
     use std::cell::Cell;
     use std::collections::BTreeMap;
@@ -937,10 +937,13 @@ mod tests {
         }
     }
 
-    fn fixture_paths(root: &Path) -> MacOsConfigurationPaths {
-        MacOsConfigurationPaths::resolve(&FixtureEnvironment {
-            home: root.as_os_str().to_owned(),
-        })
+    fn fixture_paths(root: &Path) -> ConfigurationPaths {
+        ConfigurationPaths::resolve_for(
+            Platform::MacOs,
+            &FixtureEnvironment {
+                home: root.as_os_str().to_owned(),
+            },
+        )
         .expect("disposable paths should resolve")
     }
 

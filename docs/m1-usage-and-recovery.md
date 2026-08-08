@@ -3,19 +3,20 @@
 This guide describes the currently implemented source-checkout behavior of
 `mcp-sync`: the completed M1 foundation, the global Windsurf, native VS Code,
 and global Codex adapters added by `MCP-014` through `MCP-016`, and the bounded
-STDIO initialize health boundary added by `MCP-017`. It is the operational
-companion to the [north-star README](../README.md), not a replacement for that
-product specification. Use it when building from source on macOS and reconciling the
-five implemented global targets: Claude Desktop, Cursor, Windsurf's legacy
-Cascade configuration, VS Code's native default user profile, and the global
-Codex host configuration shared by the ChatGPT desktop app, Codex CLI, and
-Codex IDE extension.
+STDIO initialize health boundary added by `MCP-017`, and the Linux path and
+behavior support added by `MCP-018`. It is the operational companion to the
+[north-star README](../README.md), not a replacement for that product
+specification. Use it when building from source on macOS or GNU/Linux and
+reconciling the five implemented global targets: Claude Desktop, Cursor,
+Windsurf's legacy Cascade configuration, VS Code's native default user profile,
+and the global Codex host configuration shared by the ChatGPT desktop app,
+Codex CLI, and Codex IDE extension.
 
 ## Current supported journey
 
 | Area | Currently implemented behavior |
 | --- | --- |
-| Platform | macOS |
+| Platform | macOS; GNU/Linux x64/ARM64 implementation under the `MCP-018` CI completion gate |
 | Canonical format | Strict JSON schema version `1` for local STDIO servers |
 | Client targets | Global Claude Desktop, global Cursor, global Windsurf legacy Cascade configuration, native VS Code default user profile, and global Codex host configuration |
 | Commands | `init`, `add`, `list`, `test`, `sync --dry-run`, and `sync` |
@@ -24,9 +25,8 @@ Codex IDE extension.
 
 Only `test` starts the one named canonical server. `init`, `sync --dry-run`,
 and `sync` remain configuration operations and never start a configured MCP
-server. Additional platforms, packaged installation, explicit prune behavior,
-and a built-in restore command remain later work tracked in
-[PROJECT.md](../PROJECT.md).
+server. Windows, packaged installation, explicit prune behavior, and a built-in
+restore command remain later work tracked in [PROJECT.md](../PROJECT.md).
 
 ## Build and verify the checkout
 
@@ -42,16 +42,23 @@ cargo deny --all-features --locked check
 The examples below use `./target/debug/mcp-sync`. The installed executable is
 named `mcp-sync` once a verified distribution channel exists.
 
-## Files managed on macOS
+## Files managed by platform
 
-| Purpose | Path |
+The canonical path and three client paths are the same on macOS and Linux:
+
+| Purpose | Path on both platforms |
 | --- | --- |
 | Canonical configuration | `$XDG_CONFIG_HOME/mcp-sync/config.json` when `XDG_CONFIG_HOME` is a non-empty absolute path; otherwise `$HOME/.config/mcp-sync/config.json` |
-| Claude Desktop global target | `$HOME/Library/Application Support/Claude/claude_desktop_config.json` |
 | Cursor global target | `$HOME/.cursor/mcp.json` |
 | Windsurf global legacy Cascade target | `$HOME/.codeium/windsurf/mcp_config.json` |
-| VS Code native default user-profile target | `$HOME/Library/Application Support/Code/User/mcp.json` |
 | Codex global host target | `$HOME/.codex/config.toml` |
+
+Claude Desktop and VS Code use the platform user-data root:
+
+| Purpose | macOS | GNU/Linux |
+| --- | --- | --- |
+| Claude Desktop global target | `$HOME/Library/Application Support/Claude/claude_desktop_config.json` | `$XDG_CONFIG_HOME/Claude/claude_desktop_config.json`, or `$HOME/.config/Claude/claude_desktop_config.json` when XDG is unset or empty |
+| VS Code native default user-profile target | `$HOME/Library/Application Support/Code/User/mcp.json` | `$XDG_CONFIG_HOME/Code/User/mcp.json`, or `$HOME/.config/Code/User/mcp.json` when XDG is unset or empty |
 
 Project-level `.cursor/mcp.json` files are outside the ownership boundary and
 remain untouched. `mcp-sync` also preserves unknown top-level data and fields
@@ -257,12 +264,8 @@ The current implementation uses one adjacent backup slot per existing file:
 
 | Changed file | Backup path |
 | --- | --- |
-| Canonical configuration changed by `add` | `<canonical-config>.bak` |
-| Claude Desktop changed by `sync` | `$HOME/Library/Application Support/Claude/claude_desktop_config.json.bak` |
-| Cursor changed by `sync` | `$HOME/.cursor/mcp.json.bak` |
-| Windsurf changed by `sync` | `$HOME/.codeium/windsurf/mcp_config.json.bak` |
-| VS Code changed by `sync` | `$HOME/Library/Application Support/Code/User/mcp.json.bak` |
-| Codex changed by `sync` | `$HOME/.codex/config.toml.bak` |
+| Canonical configuration changed by `add` | The resolved canonical path above with `.bak` appended |
+| Any existing client target changed by `sync` | That platform's resolved target path above with `.bak` appended |
 
 Each changed write replaces the regular `.bak` with the bytes observed
 immediately before that write. A no-op leaves the backup untouched. If a longer
@@ -333,22 +336,28 @@ because another changed write may replace the most useful `.bak` evidence.
 
 ## Manual restoration from an adjacent backup
 
-There is no built-in restore command. The following macOS `zsh` procedure
-performs a guarded, same-directory replacement for an existing JSON target.
-Use it for the canonical file or one of the four JSON clients, not for Codex
-TOML. Set `target` to exactly one applicable path from the table above. Keep
-the clients closed and first preserve both current files somewhere
+There is no built-in restore command. The following `bash` procedure works on
+macOS and Linux and performs a guarded, same-directory replacement for an
+existing JSON target. It requires Python 3 for syntax and duplicate-key
+validation. Use it for the canonical file or one of the four JSON clients, not
+for Codex TOML. Set `target` to exactly one applicable path from the tables
+above. Keep the clients closed and first preserve both current files somewhere
 access-controlled if there is any uncertainty about which state to keep.
 
-```zsh
+```bash
 (
 set -euo pipefail
 
 target="$HOME/.cursor/mcp.json"
 backup="${target}.bak"
+json_python=python3
 
 if [[ ! -f "$target" || -L "$target" || ! -f "$backup" || -L "$backup" ]]; then
-  print -u2 'target and backup must both be regular files'
+  printf '%s\n' 'target and backup must both be regular files' >&2
+  exit 1
+fi
+if ! "$json_python" -c 'import json' >/dev/null 2>&1; then
+  printf '%s\n' 'JSON restoration requires Python 3' >&2
   exit 1
 fi
 
@@ -356,7 +365,28 @@ stage=$(mktemp "${target}.restore.XXXXXX")
 trap 'rm -f -- "$stage"' EXIT
 
 cp -p -- "$backup" "$stage"
-plutil -convert json -o /dev/null -- "$stage"
+"$json_python" - "$stage" <<'PY'
+import json
+import sys
+
+def unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object key")
+        result[key] = value
+    return result
+
+def reject_nonstandard_number(value):
+    raise ValueError(f"non-standard JSON number: {value}")
+
+with open(sys.argv[1], encoding="utf-8") as document:
+    json.load(
+        document,
+        object_pairs_hook=unique_object,
+        parse_constant=reject_nonstandard_number,
+    )
+PY
 cmp -s -- "$backup" "$stage"
 mv -f -- "$stage" "$target"
 
@@ -366,30 +396,43 @@ trap - EXIT
 
 For Claude Desktop, replace the `target=` line with:
 
-```zsh
+```bash
 target="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
+```
+
+On Linux with the default XDG root, use:
+
+```bash
+target="$HOME/.config/Claude/claude_desktop_config.json"
 ```
 
 For Windsurf, replace the `target=` line with:
 
-```zsh
+```bash
 target="$HOME/.codeium/windsurf/mcp_config.json"
 ```
 
 For VS Code's native default user profile, replace the `target=` line with:
 
-```zsh
+```bash
 target="$HOME/Library/Application Support/Code/User/mcp.json"
+```
+
+On Linux with the default XDG root, use:
+
+```bash
+target="$HOME/.config/Code/User/mcp.json"
 ```
 
 For the default canonical path, replace the `target=` line with:
 
-```zsh
+```bash
 target="$HOME/.config/mcp-sync/config.json"
 ```
 
-If `XDG_CONFIG_HOME` selected the canonical root, use that absolute path
-instead. Validate canonical state afterward with
+If a non-empty absolute `XDG_CONFIG_HOME` selected the canonical root or a
+Linux user-data root, replace `$HOME/.config` with that exact value. Validate
+canonical state afterward with
 `./target/debug/mcp-sync list`; validate target state and see the resulting
 difference with `./target/debug/mcp-sync sync --dry-run`.
 Restoring a target without restoring the canonical definition normally creates
@@ -402,7 +445,7 @@ requires Python 3.11 or newer for its standard-library `tomllib` validator. If
 that module is unavailable, stop and obtain an equivalent trusted TOML parser;
 do not skip validation.
 
-```zsh
+```bash
 (
 set -euo pipefail
 
@@ -411,11 +454,11 @@ backup="${target}.bak"
 toml_python=python3 # set to an installed Python 3.11+ executable when needed
 
 if [[ ! -f "$target" || -L "$target" || ! -f "$backup" || -L "$backup" ]]; then
-  print -u2 'target and backup must both be regular files'
+  printf '%s\n' 'target and backup must both be regular files' >&2
   exit 1
 fi
 if ! "$toml_python" -c 'import tomllib' >/dev/null 2>&1; then
-  print -u2 'TOML restoration requires Python 3.11+ with tomllib'
+  printf '%s\n' 'TOML restoration requires Python 3.11+ with tomllib' >&2
   exit 1
 fi
 
@@ -452,13 +495,15 @@ and prune entries from backup absence.
 The following are delivery facts, not changes to the README's intended product
 promise:
 
-- The current implementation is verified on macOS only and runs from a Rust
-  source checkout.
+- The current implementation is verified on macOS and passes the complete local
+  gate on native GNU/Linux ARM64. The required native GNU/Linux x64 and ARM64 CI
+  result still gates `MCP-018`; usage remains from a Rust source checkout.
 - Only global Claude Desktop, global Cursor, Windsurf's global legacy Cascade
   JSON, VS Code's native default user-profile JSON, and global Codex TOML are
-  managed. Windsurf, VS Code, and Codex have fixture and built-binary evidence
-  but no current-client smoke claim. Linux and Windows remain later main-story
-  work.
+  managed. Linux has deterministic path, fixture, and built-binary behavior
+  evidence, but no Linux current-client smoke claim. Windsurf, VS Code, and
+  Codex have no current-client smoke claim on either implemented platform.
+  Windows remains later main-story work.
 - Canonical schema v1 represents local STDIO definitions with `command`,
   ordered `args`, and literal `env` only. Remote transports, OAuth, working
   directories, and secret references are not canonical capabilities yet.

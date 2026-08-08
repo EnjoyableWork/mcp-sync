@@ -1,6 +1,6 @@
 use crate::config::{CanonicalConfig, CanonicalServer, ConfigError};
 use crate::filesystem::{FileIoError, FileSystem};
-use crate::paths::MacOsConfigurationPaths;
+use crate::paths::ConfigurationPaths;
 use crate::reconciliation::{ReconciliationOutcomeKind, ReconciliationPlan};
 use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
@@ -18,7 +18,7 @@ const ARGUMENTS_FIELD: &str = "args";
 const ENVIRONMENT_FIELD: &str = "env";
 const URL_FIELD: &str = "url";
 
-/// The global Codex-host MCP target on macOS.
+/// The global Codex-host MCP target on macOS and Linux.
 ///
 /// Discovery resolves exactly `~/.codex/config.toml` through the injected
 /// user home. The ChatGPT desktop app, Codex CLI, and Codex IDE extension
@@ -31,7 +31,7 @@ pub struct CodexAdapter {
 }
 
 impl CodexAdapter {
-    pub fn for_macos(paths: &MacOsConfigurationPaths) -> Self {
+    pub fn from_paths(paths: &ConfigurationPaths) -> Self {
         Self {
             configuration_path: paths
                 .user_home()
@@ -629,7 +629,7 @@ impl Error for CodexDocumentError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::paths::Environment;
+    use crate::paths::{Environment, Platform};
     use crate::reconciliation::{ReconciliationOutcomeKind, reconcile};
     use std::ffi::OsString;
 
@@ -665,14 +665,21 @@ mod tests {
         }
     }
 
-    fn adapter_fixture() -> (tempfile::TempDir, CodexAdapter) {
+    fn adapter_fixture_for(platform: Platform) -> (tempfile::TempDir, CodexAdapter) {
         let root = tempfile::tempdir().expect("temporary adapter fixture should be created");
-        let paths = MacOsConfigurationPaths::resolve(&FixtureEnvironment {
-            home: root.path().join("user"),
-        })
-        .expect("synthetic macOS paths should resolve");
-        let adapter = CodexAdapter::for_macos(&paths);
+        let paths = ConfigurationPaths::resolve_for(
+            platform,
+            &FixtureEnvironment {
+                home: root.path().join("user"),
+            },
+        )
+        .expect("synthetic platform paths should resolve");
+        let adapter = CodexAdapter::from_paths(&paths);
         (root, adapter)
+    }
+
+    fn adapter_fixture() -> (tempfile::TempDir, CodexAdapter) {
+        adapter_fixture_for(Platform::MacOs)
     }
 
     fn desired_config() -> CanonicalConfig {
@@ -683,6 +690,27 @@ mod tests {
     #[test]
     fn macos_discovery_path_is_only_the_global_user_contract() {
         let (root, adapter) = adapter_fixture();
+        let home = root.path().join("user");
+
+        assert_eq!(
+            adapter.configuration_path(),
+            home.join(".codex/config.toml")
+        );
+        assert!(adapter.configuration_path().starts_with(root.path()));
+        for excluded in [
+            home.join("workspace/.codex/config.toml"),
+            home.join("workspace/nested/.codex/config.toml"),
+            home.join(".codex/review.config.toml"),
+            home.join(".codex/auth.json"),
+            PathBuf::from("/etc/codex/config.toml"),
+        ] {
+            assert_ne!(adapter.configuration_path(), excluded);
+        }
+    }
+
+    #[test]
+    fn linux_discovery_path_is_only_the_global_user_contract() {
+        let (root, adapter) = adapter_fixture_for(Platform::Linux);
         let home = root.path().join("user");
 
         assert_eq!(
