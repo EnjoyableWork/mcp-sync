@@ -41,14 +41,18 @@ A release selects an already committed and tested state; code is not committed
    merge that branch to `main`.
 2. Let CI, the source and GNU/Linux release preflight, and the retained signed
    six-target preflight prove the exact `main` commit.
-3. Dispatch `.github/workflows/release-authorize.yml` from `main`. The owner
-   reviews and approves its `release-control` deployment. This records authority
-   but creates no tag and publishes nothing.
+3. Run `scripts/verify-release-repository-controls.sh` for the exact `main`
+   commit, then dispatch `.github/workflows/release-authorize.yml` from `main`
+   with `confirm_repository_controls=true`. The owner reviews and approves its
+   `release-control` deployment. This records authority but creates no tag and
+   publishes nothing.
 4. Create one annotated `v0.1.0` tag that points to that exact commit and push
    only the tag. The tag is the immutable version marker.
-5. The tag starts `.github/workflows/source-linux-release.yml`. The owner
-   approves its protected `release` deployment, after which GitHub builds,
-   attests, verifies, and publishes the immutable GitHub Release.
+5. The tag starts `.github/workflows/source-linux-release.yml`. Immediately
+   before approving its protected `release` deployment, rerun the operator-side
+   repository-control verifier for the tagged commit. After approval, GitHub
+   requires the successful exact-commit authorization, builds, attests,
+   verifies, and publishes the immutable GitHub Release.
 6. From the exact tag, compare the local Cargo package with the immutable
    release asset, perform Cargo's publication dry run, publish to crates.io,
    and verify that crates.io serves identical bytes.
@@ -74,11 +78,36 @@ Before a stable tag exists, verify all of the following:
   restricts creation, update, and deletion to the recorded emergency bypass.
 - The `release` environment requires review and permits only `v*` tag
   deployments.
+- The `release-control` environment requires review and permits only `main`
+  deployments.
 - The exact current `main` commit has green CI, green
   `Source and GNU/Linux release preflight`, and green retained six-target
   `Release preflight` runs.
 - No interactive administration token or Apple/Microsoft signing credential is
   present in the source and GNU/Linux workflow.
+
+GitHub's immutable-release setting endpoint requires repository
+administration read access, which the standard Actions `GITHUB_TOKEN` does not
+provide. Keep that credential boundary outside Actions. From a clean checkout
+whose `HEAD` is the exact current `main` commit, run:
+
+```bash
+scripts/verify-release-repository-controls.sh "$(git rev-parse HEAD)"
+```
+
+The command uses the controlled operator host's existing authenticated `gh`
+session to require the exact current `main` SHA, enabled release immutability,
+the public stable-tag ruleset, and the exact `main` / `v*` policies plus required
+reviewer on both protected environments. It reads no secret values. A passing
+check authorizes dispatch with `confirm_repository_controls=true`; a failed or
+stale check requires denying the pending deployment. Run it once immediately
+before the `release-control` authorization dispatch and again immediately
+before approving the tag-triggered `release` deployment.
+
+Actions independently verifies the public ruleset without a credential. The
+tag-triggered publisher also requires a successful protected authorization run
+for its exact commit, and publication is not successful unless the public
+release reports `immutable: true` and its release attestation verifies.
 
 A push of the exact annotated `v0.1.0` tag can invoke only
 `.github/workflows/source-linux-release.yml`. The funded
@@ -110,6 +139,10 @@ all of the following before `MCP-028` is complete:
    unsigned test artifacts without credentials, proving that the future signed
    pipeline has not decayed.
 
+The source and GNU/Linux preflight also executes the public stable-tag ruleset
+verifier without a credential, proving the same API path used by protected
+authorization and publication jobs.
+
 The preflight artifacts have one-day retention and are not releases. They must
 not be described or shared as supported project-issued macOS or Windows
 binaries.
@@ -131,9 +164,10 @@ must still:
    release identity only the write access needed for `Formula/mcp-sync.rb`.
    Store its repository-scoped write deploy key as
    `HOMEBREW_TAP_DEPLOY_KEY` in the protected `release` environment; and
-3. dispatch `.github/workflows/release-authorize.yml` from the exact current
-   `main` commit, review its evidence, then deliberately create and push the
-   one annotated `v0.1.0` tag it authorizes.
+3. run the operator-side repository-control verifier for the exact current
+   `main` commit, dispatch `.github/workflows/release-authorize.yml` from that
+   commit with `confirm_repository_controls=true`, review its evidence, then
+   deliberately create and push the one annotated `v0.1.0` tag it authorizes.
 
 Never place a token value in a command argument, ticket, tracked file, or
 workflow log. Revoke every first-publication token after the published registry
@@ -141,9 +175,11 @@ bytes are verified.
 
 ## GitHub Release publication
 
-The `v0.1.0` tag invokes the protected source and GNU/Linux workflow. It
-revalidates the tag, current `main` commit, package version, immutable-release
-setting, tag ruleset, registry identity, and existing release state. It then:
+The `v0.1.0` tag invokes the protected source and GNU/Linux workflow. Approve
+its `release` deployment only after rerunning the operator-side repository
+control check for the tagged commit. The workflow revalidates the tag, current
+`main` commit, package version, successful exact-commit authorization, public
+tag ruleset, registry identity, and existing release state. It then:
 
 1. packages the Cargo source twice and requires equal hashes;
 2. generates the source-building Homebrew formula twice and requires equal
@@ -221,9 +257,10 @@ paths install the same protected version.
 
 ## Failure and correction
 
-Do not publish a draft when a package hash, formula, SBOM, attestation,
-checksum, or installed smoke fails. A draft can be repaired and reverified
-because it is not public or immutable. Once published, never delete or replace
-an asset, move the tag, or overwrite package metadata. Correct a release defect
-with a new version and preserve the evidence explaining the superseding
-release.
+Do not authorize or approve a deployment when the operator-side repository
+control check fails or targets a stale commit. Do not publish a draft when a
+package hash, formula, SBOM, attestation, checksum, or installed smoke fails. A
+draft can be repaired and reverified because it is not public or immutable.
+Once published, never delete or replace an asset, move the tag, or overwrite
+package metadata. Correct a release defect with a new version and preserve the
+evidence explaining the superseding release.

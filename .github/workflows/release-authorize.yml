@@ -2,6 +2,12 @@ name: Authorize stable tag
 
 on:
   workflow_dispatch:
+    inputs:
+      confirm_repository_controls:
+        description: Confirm the operator-side repository-control verifier passed for current main
+        required: true
+        default: false
+        type: boolean
 
 permissions: {}
 
@@ -30,9 +36,14 @@ jobs:
       - name: Require the exact current main commit and stable version
         id: candidate
         env:
+          CONFIRM_REPOSITORY_CONTROLS: ${{ inputs.confirm_repository_controls }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          if [[ "$CONFIRM_REPOSITORY_CONTROLS" != true ]]; then
+            echo "operator-side release repository controls must be explicitly confirmed" >&2
+            exit 1
+          fi
           if [[ "$GITHUB_REF" != refs/heads/main ]]; then
             echo "stable tag authorization must be dispatched from main" >&2
             exit 1
@@ -97,38 +108,8 @@ jobs:
           require_successful_run source-linux-release-preflight.yml 'Source and GNU/Linux release preflight'
           require_successful_run release-preflight.yml 'Release preflight'
 
-      - name: Recheck immutable-release and stable-tag controls
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_RULESET_NAME: Protect stable release tags
-        run: |
-          set -euo pipefail
-          test "$(
-            gh api "repos/$GITHUB_REPOSITORY/immutable-releases" \
-              -H 'X-GitHub-Api-Version: 2026-03-10' \
-              --jq '.enabled'
-          )" = true
-
-          ruleset_id="$(
-            gh api "repos/$GITHUB_REPOSITORY/rulesets" \
-              -H 'X-GitHub-Api-Version: 2026-03-10' \
-              --jq ".[] | select(.name == \"$RELEASE_RULESET_NAME\") | .id"
-          )"
-          if [[ -z "$ruleset_id" || "$ruleset_id" == *$'\n'* ]]; then
-            echo "expected exactly one stable release tag ruleset" >&2
-            exit 1
-          fi
-          gh api "repos/$GITHUB_REPOSITORY/rulesets/$ruleset_id" \
-            -H 'X-GitHub-Api-Version: 2026-03-10' \
-            | jq -e '
-                .enforcement == "active" and
-                .target == "tag" and
-                .conditions.ref_name.include == ["refs/tags/v*"] and
-                ([.rules[].type] | sort) == (["creation", "deletion", "update"] | sort) and
-                (.bypass_actors | length) == 1 and
-                .bypass_actors[0].actor_type == "User" and
-                .bypass_actors[0].bypass_mode == "always"
-              ' >/dev/null
+      - name: Recheck the public stable-tag ruleset
+        run: scripts/verify-public-stable-tag-ruleset.sh "$GITHUB_REPOSITORY"
 
       - name: Record the authorized manual tag operation
         env:
@@ -142,7 +123,8 @@ jobs:
             echo '- CI: successful on this exact commit'
             echo '- Source and GNU/Linux release preflight: successful on this exact commit'
             echo '- Retained six-target signed release preflight: successful on this exact commit'
-            echo '- Immutable releases and stable-tag ruleset: verified'
+            echo '- Admin-only immutable-release and environment controls: operator-confirmed'
+            echo '- Public stable-tag ruleset: workflow-verified'
             echo
             echo 'The recorded named bypass actor may now create one annotated tag'
             echo "\`v$RELEASE_VERSION\` at \`$GITHUB_SHA\` and push only that tag."

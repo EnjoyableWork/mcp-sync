@@ -8,6 +8,11 @@ on:
         required: true
         default: false
         type: boolean
+      confirm_repository_controls:
+        description: Confirm the operator-side repository-control verifier passed for the selected tag commit
+        required: true
+        default: false
+        type: boolean
 
 run-name: Funded signed release ${{ github.ref_name }}
 
@@ -25,6 +30,7 @@ jobs:
     timeout-minutes: 10
     environment: release
     permissions:
+      actions: read
       contents: read
     outputs:
       version: ${{ steps.contract.outputs.version }}
@@ -40,14 +46,18 @@ jobs:
         id: contract
         env:
           CONFIRM_FUNDED_SIGNING: ${{ inputs.confirm_funded_signing }}
+          CONFIRM_REPOSITORY_CONTROLS: ${{ inputs.confirm_repository_controls }}
           GH_TOKEN: ${{ github.token }}
-          RELEASE_RULESET_NAME: Protect stable release tags
         run: |
           set -euo pipefail
 
           if [[ "$GITHUB_EVENT_NAME" != workflow_dispatch ]] ||
             [[ "$CONFIRM_FUNDED_SIGNING" != true ]]; then
             echo "funded signing must be explicitly confirmed on manual dispatch" >&2
+            exit 1
+          fi
+          if [[ "$CONFIRM_REPOSITORY_CONTROLS" != true ]]; then
+            echo "operator-side release repository controls must be explicitly confirmed" >&2
             exit 1
           fi
           if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
@@ -87,36 +97,23 @@ jobs:
             exit 1
           fi
 
-          immutable_enabled="$(
-            gh api "repos/$GITHUB_REPOSITORY/immutable-releases" \
-              -H 'X-GitHub-Api-Version: 2026-03-10' \
-              --jq '.enabled'
+          authorization_url="$(
+            gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow release-authorize.yml \
+              --branch main \
+              --commit "$GITHUB_SHA" \
+              --event workflow_dispatch \
+              --status completed \
+              --limit 5 \
+              --json headSha,conclusion,url \
+              --jq "map(select(.headSha == \"$GITHUB_SHA\" and .conclusion == \"success\"))[0].url // empty"
           )"
-          if [[ "$immutable_enabled" != true ]]; then
-            echo "repository release immutability is not enabled" >&2
+          if [[ -z "$authorization_url" ]]; then
+            echo "release has no successful protected authorization for this exact commit" >&2
             exit 1
           fi
-
-          ruleset_id="$(
-            gh api "repos/$GITHUB_REPOSITORY/rulesets" \
-              -H 'X-GitHub-Api-Version: 2026-03-10' \
-              --jq ".[] | select(.name == \"$RELEASE_RULESET_NAME\") | .id"
-          )"
-          if [[ -z "$ruleset_id" || "$ruleset_id" == *$'\n'* ]]; then
-            echo "expected exactly one stable release tag ruleset" >&2
-            exit 1
-          fi
-          gh api "repos/$GITHUB_REPOSITORY/rulesets/$ruleset_id" \
-            -H 'X-GitHub-Api-Version: 2026-03-10' \
-            | jq -e '
-                .enforcement == "active" and
-                .target == "tag" and
-                .conditions.ref_name.include == ["refs/tags/v*"] and
-                ([.rules[].type] | sort) == (["creation", "deletion", "update"] | sort) and
-                (.bypass_actors | length) == 1 and
-                .bypass_actors[0].actor_type == "User" and
-                .bypass_actors[0].bypass_mode == "always"
-              ' >/dev/null
+          scripts/verify-public-stable-tag-ruleset.sh "$GITHUB_REPOSITORY"
 
           registry_response="$RUNNER_TEMP/enjoyable-mcp-sync-crates.json"
           registry_status="$(

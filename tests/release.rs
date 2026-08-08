@@ -104,13 +104,18 @@ fn funded_signed_workflow_is_explicit_and_preserves_the_full_trust_contract() {
     for required_contract in [
         "workflow_dispatch:",
         "confirm_funded_signing:",
+        "confirm_repository_controls:",
         "funded signing must be explicitly confirmed on manual dispatch",
+        "operator-side release repository controls must be explicitly confirmed",
         "funded release dispatch must select an existing stable tag",
         "v0.1.0 is reserved for the source and GNU/Linux release",
         "environment: release",
         "name: release",
         "refs/tags/v*",
-        "immutable-releases",
+        "actions: read",
+        "release-authorize.yml",
+        "release has no successful protected authorization for this exact commit",
+        "scripts/verify-public-stable-tag-ruleset.sh",
         "Developer ID Application",
         "--identifier com.enjoyablework.mcp-sync",
         "--options runtime",
@@ -158,6 +163,7 @@ fn funded_signed_workflow_is_explicit_and_preserves_the_full_trust_contract() {
     assert!(workflow.contains("attestations: write"));
     assert!(workflow.contains("contents: write"));
     assert!(workflow.contains("persist-credentials: false"));
+    assert!(!workflow.contains("repos/$GITHUB_REPOSITORY/immutable-releases"));
     assert!(
         !workflow.contains("  push:"),
         "a normal stable tag must not invoke paid signing"
@@ -210,7 +216,10 @@ fn source_linux_tag_workflow_publishes_only_attested_linux_and_source_outputs() 
     for required_contract in [
         "tags:\n      - v0.1.0",
         "environment: release",
-        "immutable-releases",
+        "actions: read",
+        "release-authorize.yml",
+        "release has no successful protected authorization for this exact commit",
+        "scripts/verify-public-stable-tag-ruleset.sh",
         "cargo package --locked",
         "scripts/generate-source-linux-release-channels.sh",
         "scripts/verify-source-linux-release-assets.sh",
@@ -230,6 +239,7 @@ fn source_linux_tag_workflow_publishes_only_attested_linux_and_source_outputs() 
             "source and GNU/Linux workflow should enforce {required_contract}"
         );
     }
+    assert!(!workflow.contains("repos/$GITHUB_REPOSITORY/immutable-releases"));
     assert_actions_are_commit_pinned(&workflow);
 }
 
@@ -247,6 +257,7 @@ fn source_linux_preflight_proves_native_source_installs_and_exact_payload_withou
         assert!(workflow.contains(&format!("runner: {runner}")));
     }
     for required_contract in [
+        "scripts/verify-public-stable-tag-ruleset.sh",
         "cargo package --locked",
         "scripts/generate-source-linux-release-channels.sh",
         "cargo install",
@@ -401,14 +412,15 @@ fn authorization_workflow_proves_main_without_receiving_tag_write_authority() {
 
     for required_contract in [
         "workflow_dispatch:",
+        "confirm_repository_controls:",
         "environment: release-control",
         "actions: read",
         "contents: read",
         "source-linux-release-preflight.yml",
         "release-preflight.yml",
         "ci.yml",
-        "immutable-releases",
-        "Protect stable release tags",
+        "operator-side release repository controls must be explicitly confirmed",
+        "scripts/verify-public-stable-tag-ruleset.sh",
         "The v0.1.0 tag invokes only the source and GNU/Linux release workflow.",
         "The tag push invokes no publishing workflow by itself.",
         "funded signed",
@@ -419,7 +431,45 @@ fn authorization_workflow_proves_main_without_receiving_tag_write_authority() {
     assert!(!workflow.contains("contents: write"));
     assert!(!workflow.contains("secrets."));
     assert!(!workflow.contains("git push"));
+    assert!(!workflow.contains("repos/$GITHUB_REPOSITORY/immutable-releases"));
     assert_actions_are_commit_pinned(&workflow);
+}
+
+#[test]
+fn repository_control_verifiers_keep_admin_access_operator_side() {
+    let public_ruleset = repository_file("scripts/verify-public-stable-tag-ruleset.sh");
+    let operator_controls = repository_file("scripts/verify-release-repository-controls.sh");
+
+    for required_contract in [
+        "https://api.github.com/repos/$release_ruleset_repository/rulesets",
+        "Protect stable release tags",
+        ".enforcement == \"active\"",
+        ".target == \"tag\"",
+        "refs/tags/v*",
+        "creation",
+        "deletion",
+        "update",
+    ] {
+        assert!(public_ruleset.contains(required_contract));
+    }
+    for forbidden_contract in ["gh api", "GH_TOKEN", "secrets.", "immutable-releases"] {
+        assert!(!public_ruleset.contains(forbidden_contract));
+    }
+
+    for required_contract in [
+        "gh auth status --hostname github.com",
+        "commits/main",
+        "immutable-releases",
+        "bypass_mode == \"always\"",
+        "verify-public-stable-tag-ruleset.sh",
+        "verify_release_environment release-control main branch",
+        "verify_release_environment release 'v*' tag",
+        "required_reviewers",
+        "deployment-branch-policies",
+    ] {
+        assert!(operator_controls.contains(required_contract));
+    }
+    assert!(!operator_controls.contains("secrets."));
 }
 
 #[test]
@@ -471,6 +521,7 @@ fn package_and_public_docs_keep_the_accepted_release_identities() {
         assert!(source_linux_asset_verifier.contains(target));
     }
     assert!(runbook.contains("v0.1.0"));
+    assert!(runbook.contains("verify-release-repository-controls.sh"));
     assert!(runbook.contains("no project-issued macOS or Windows binary"));
     assert!(runbook.contains("only the `publish-new` endpoint"));
     assert!(runbook.contains("exact crate-name pattern `enjoyable-mcp-sync`"));
