@@ -1,9 +1,15 @@
-name: Publish immutable release
+name: Publish funded signed immutable release
 
 on:
-  push:
-    tags:
-      - v*
+  workflow_dispatch:
+    inputs:
+      confirm_funded_signing:
+        description: Confirm that funded Apple and Windows signing authorities are active
+        required: true
+        default: false
+        type: boolean
+
+run-name: Funded signed release ${{ github.ref_name }}
 
 permissions: {}
 
@@ -33,13 +39,27 @@ jobs:
       - name: Validate the tag, source, registry identity, and repository controls
         id: contract
         env:
+          CONFIRM_FUNDED_SIGNING: ${{ inputs.confirm_funded_signing }}
           GH_TOKEN: ${{ github.token }}
           RELEASE_RULESET_NAME: Protect stable release tags
         run: |
           set -euo pipefail
 
+          if [[ "$GITHUB_EVENT_NAME" != workflow_dispatch ]] ||
+            [[ "$CONFIRM_FUNDED_SIGNING" != true ]]; then
+            echo "funded signing must be explicitly confirmed on manual dispatch" >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
+            echo "funded release dispatch must select an existing stable tag" >&2
+            exit 1
+          fi
           if [[ ! "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
             echo "release tag must be a stable v-prefixed semantic version" >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_NAME" == v0.1.0 ]]; then
+            echo "v0.1.0 is reserved for the zero-cost market release" >&2
             exit 1
           fi
           release_version=${BASH_REMATCH[1]}

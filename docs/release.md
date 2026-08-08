@@ -1,13 +1,17 @@
-# Stable release runbook
+# Funded signed-native release runbook
 
-This runbook is the operational contract for `MCP-021`. It does not make an
-unpublished channel current: the release, registry records, downstream package
-repositories, and native smoke runs are the evidence for each live claim.
+This runbook preserves the funding-dependent `SIDE-006` contract produced by
+the superseded `MCP-021` path. It is not the `v0.1.0` market-release procedure;
+use [the zero-cost runbook](market-release.md) for that release. Nothing in this
+document makes an unpublished channel current: the release, registry records,
+downstream package repositories, and native smoke runs are the evidence for
+each live claim.
 
-## Fixed first-release identity
+## Funded release identity
 
-The first stable version is `0.1.0`, tagged `v0.1.0`, from
-`EnjoyableWork/mcp-sync`. Cargo publishes `enjoyable-mcp-sync`, Homebrew uses
+Activation must select a new stable version later than `0.1.0` and tag it
+`v{version}` from `EnjoyableWork/mcp-sync`; never reuse or replace `v0.1.0`.
+Cargo publishes `enjoyable-mcp-sync`, Homebrew uses
 `EnjoyableWork/homebrew-tap` and formula `mcp-sync`, WinGet uses
 `EnjoyableWork.mcp-sync`, and every channel installs an executable named
 `mcp-sync`.
@@ -16,12 +20,12 @@ The GitHub Release must contain exactly these six archives, six matching SPDX
 JSON SBOMs, and `SHA256SUMS`:
 
 ```text
-mcp-sync-v0.1.0-aarch64-apple-darwin.tar.gz
-mcp-sync-v0.1.0-x86_64-apple-darwin.tar.gz
-mcp-sync-v0.1.0-aarch64-unknown-linux-gnu.tar.gz
-mcp-sync-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
-mcp-sync-v0.1.0-aarch64-pc-windows-msvc.zip
-mcp-sync-v0.1.0-x86_64-pc-windows-msvc.zip
+mcp-sync-v{version}-aarch64-apple-darwin.tar.gz
+mcp-sync-v{version}-x86_64-apple-darwin.tar.gz
+mcp-sync-v{version}-aarch64-unknown-linux-gnu.tar.gz
+mcp-sync-v{version}-x86_64-unknown-linux-gnu.tar.gz
+mcp-sync-v{version}-aarch64-pc-windows-msvc.zip
+mcp-sync-v{version}-x86_64-pc-windows-msvc.zip
 ```
 
 Each SBOM replaces the archive suffix with `.spdx.json` while retaining the
@@ -42,10 +46,12 @@ Before a stable tag exists, verify all of the following:
 - The current `main` commit has green CI and a green six-target
   `Release preflight` run.
 
-The tag-only `Publish immutable release` workflow uses the `release`
-environment and checks the immutable-release setting and ruleset again before
-building. A named ruleset bypass actor creates the annotated tag manually only
-after preflight; the workflow token does not receive tag-bypass authority.
+The manual `Publish funded signed immutable release` workflow uses the
+`release` environment and checks the immutable-release setting and ruleset
+again before building. A named ruleset bypass actor creates the annotated tag
+manually only after preflight, then dispatches `.github/workflows/release.yml`
+on that tag with `confirm_funded_signing=true`; the workflow token does not
+receive tag-bypass authority, and an ordinary tag push cannot invoke signing.
 
 ## Protected signing inputs
 
@@ -104,13 +110,14 @@ signing certificate plus a timestamp certificate before ZIP creation.
 5. Verify all protected signing input names exist without displaying their
    values. Confirm Apple and Microsoft identity validation is active rather
    than merely requested.
-6. As the named ruleset bypass actor, create one annotated `v0.1.0` tag at the
+6. As the named ruleset bypass actor, create one annotated `v{version}` tag at the
    exact current `main` commit and push only that tag. Never move or reuse it.
-7. Approve the `release` environment deployment after confirming the displayed
-   tag and commit. The tag workflow builds natively, signs, notarizes, packages,
-   exercises installed restore, generates and verifies SBOMs and attestations,
-   assembles the exact draft, verifies downloaded bytes, and only then
-   publishes it.
+7. Explicitly dispatch `.github/workflows/release.yml` on ref `v{version}` with
+   `confirm_funded_signing=true`, then approve the `release` environment after
+   confirming the displayed tag and commit. The workflow builds natively,
+   signs, notarizes, packages, exercises installed restore, generates and
+   verifies SBOMs and attestations, assembles the exact draft, verifies
+   downloaded bytes, and only then publishes it.
 8. Require the release API to report `immutable: true`; verify the release
    attestation and all 13 downloaded assets before publishing any downstream
    channel.
@@ -130,7 +137,7 @@ cargo publish --locked
 Inject the one-time, scope-minimized crates.io token through the operator's
 protected credential mechanism; do not include it in shell history or a
 workflow. Revoke it immediately after publication. Verify
-`cargo install enjoyable-mcp-sync --version '=0.1.0' --locked` natively on all
+`cargo install enjoyable-mcp-sync --version '={version}' --locked` natively on all
 six supported OS/CPU combinations and exercise `scripts/smoke-installed.sh` or
 `scripts/smoke-installed.ps1` against the installed executable. Configure a
 repository/environment-bound crates.io trusted publisher for later versions
@@ -151,14 +158,14 @@ downstream definitions from that exact `SHA256SUMS` file:
 ```bash
 scripts/generate-release-channels.sh \
   <downloaded-release-assets> \
-  0.1.0 \
+  {version} \
   <new-output-directory>
 ```
 
 The generator refuses a pre-existing output directory and writes through a
 temporary sibling. Copy
 `homebrew/Formula/mcp-sync.rb` into the newly created organization tap. Copy
-the generated `winget/manifests/e/EnjoyableWork/mcp-sync/0.1.0` directory into
+the generated `winget/manifests/e/EnjoyableWork/mcp-sync/{version}` directory into
 the matching path on the submission branch in the personal `winget-pkgs` fork.
 Do not hand-edit URLs, hashes, identifiers, architectures, or versions after
 generation; regenerate from the verified immutable assets if any input is
@@ -166,14 +173,14 @@ wrong.
 
 Generate WinGet ZIP/portable manifests for publisher `EnjoyableWork`, package
 identifier `EnjoyableWork.mcp-sync`, package name `mcp-sync`, and version
-`0.1.0`. Pin the ARM64 and x64 immutable GitHub archive URLs and hashes. Validate
+`{version}`. Pin the ARM64 and x64 immutable GitHub archive URLs and hashes. Validate
 with the current WinGet tooling, submit through a personal `winget-pkgs` fork,
 wait for the public manifest to merge, and then require native ARM64 and x64
-`winget install --id EnjoyableWork.mcp-sync --version 0.1.0 --exact` plus the
+`winget install --id EnjoyableWork.mcp-sync --version {version} --exact` plus the
 installed restore smoke.
 
 After Cargo, the tap formula, and the WinGet manifests are public, dispatch
-`.github/workflows/release-channels.yml` with version `0.1.0`. This read-only,
+`.github/workflows/release-channels.yml` with the funded version. This read-only,
 credential-free workflow first requires the immutable release and all 13
 attestations, an unyanked crates.io record owned by this repository, and exact
 byte equality between freshly generated downstream definitions and their
@@ -184,8 +191,8 @@ Windows targets. The macOS and Windows binary-channel jobs recheck native code
 signing and timestamp trust before the installed restore journey.
 
 Record the immutable release, registry records, downstream commits or pull
-requests, and every native smoke run in `PROJECT.md`. MCP-021 and M2 remain open
-until all four channels install the same protected version.
+requests, and every native smoke run in `PROJECT.md`. `SIDE-006` remains open
+until all four funded channels install the same protected version.
 
 ## Failure and correction
 
