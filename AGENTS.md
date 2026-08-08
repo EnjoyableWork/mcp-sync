@@ -6,9 +6,9 @@
 reconciling that desired state into the native configuration files used by MCP
 clients.
 
-The repository has completed its source-checkout macOS M1 proof, is adding
-GNU/Linux x64/ARM64 configuration evidence under `MCP-018`, and remains
-pre-release. The README is a deliberate target-state exception: it presents the
+The repository has completed its source-checkout macOS M1 proof and GNU/Linux
+x64/ARM64 configuration proof, and remains pre-release. The README is a
+deliberate target-state exception: it presents the
 intended finished product in confident public product language and should not
 be rewritten as a progress report. Everywhere else, do not describe a planned
 command, client adapter, platform, safety property, or distribution channel as
@@ -111,12 +111,12 @@ native file. The source-checkout usage and recovery guide documents the current
 workflow, redaction boundary, bounded health behavior, one-slot backups,
 transaction recovery, guarded manual restoration, and current limitations
 without turning the README into a progress report. All five Linux targets have
-deterministic path, fixture, and built-binary behavior coverage; the required
-native x64/ARM64 CI result still gates `MCP-018`, and there is no Linux
-current-client smoke claim. Windsurf, VS Code, and Codex have no current-client
-smoke claim on either platform. Windows, restore UX, and distribution remain
-later-ticket scope. Use the existing Clap command tree as CLI behavior grows;
-do not introduce a second parser.
+deterministic path, fixture, built-binary behavior, and native x64/ARM64
+whole-suite CI coverage under `MCP-018`; there is no Linux current-client smoke
+claim. Windsurf, VS Code, and Codex have no current-client smoke claim on either
+platform. Windows, restore UX, and distribution remain later-ticket scope. Use
+the existing Clap command tree as CLI behavior grows; do not introduce a second
+parser.
 
 “Extensible” currently means:
 

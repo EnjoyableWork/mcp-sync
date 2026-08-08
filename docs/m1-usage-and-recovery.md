@@ -16,7 +16,7 @@ Codex CLI, and Codex IDE extension.
 
 | Area | Currently implemented behavior |
 | --- | --- |
-| Platform | macOS; GNU/Linux x64/ARM64 implementation under the `MCP-018` CI completion gate |
+| Platform | macOS and GNU/Linux x64/ARM64 source-checkout behavior |
 | Canonical format | Strict JSON schema version `1` for local STDIO servers |
 | Client targets | Global Claude Desktop, global Cursor, global Windsurf legacy Cascade configuration, native VS Code default user profile, and global Codex host configuration |
 | Commands | `init`, `add`, `list`, `test`, `sync --dry-run`, and `sync` |
@@ -495,9 +495,9 @@ and prune entries from backup absence.
 The following are delivery facts, not changes to the README's intended product
 promise:
 
-- The current implementation is verified on macOS and passes the complete local
-  gate on native GNU/Linux ARM64. The required native GNU/Linux x64 and ARM64 CI
-  result still gates `MCP-018`; usage remains from a Rust source checkout.
+- The current implementation is verified on macOS and through the complete
+  [native GNU/Linux x64 and ARM64 CI gate](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31239949393)
+  recorded for `MCP-018`; usage remains from a Rust source checkout.
 - Only global Claude Desktop, global Cursor, Windsurf's global legacy Cascade
   JSON, VS Code's native default user-profile JSON, and global Codex TOML are
   managed. Linux has deterministic path, fixture, and built-binary behavior
