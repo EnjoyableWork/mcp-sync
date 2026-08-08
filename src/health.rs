@@ -899,6 +899,7 @@ mod tests {
     use std::fs;
     use std::path::Path;
     use std::process::{Command, Stdio};
+    use std::sync::{Mutex, MutexGuard};
     use std::time::{Duration, Instant};
 
     #[cfg(unix)]
@@ -914,6 +915,14 @@ mod tests {
         shutdown_timeout: Duration::from_secs(1),
         maximum_response_bytes: 64 * 1024,
     };
+
+    static PROCESS_FIXTURE_LOCK: Mutex<()> = Mutex::new(());
+
+    fn process_fixture_lock() -> MutexGuard<'static, ()> {
+        PROCESS_FIXTURE_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     struct FixtureEnvironment {
         home: OsString,
@@ -1248,6 +1257,7 @@ mod tests {
 
     #[test]
     fn operating_system_boundary_sequences_handshake_and_minimizes_environment() {
+        let _process_fixture = process_fixture_lock();
         let root = tempfile::tempdir().expect("temporary process root should be created");
         let request_path = root.path().join("initialize.json");
         let notification_path = root.path().join("initialized.json");
@@ -1307,6 +1317,7 @@ exit 0
 
     #[test]
     fn response_timeout_force_terminates_and_reaps_the_child() {
+        let _process_fixture = process_fixture_lock();
         let root = tempfile::tempdir().expect("temporary process root should be created");
         let pid_path = root.path().join("pid");
         let server = shell_server(
@@ -1343,7 +1354,10 @@ while ($true) { Start-Sleep -Milliseconds 10 }
         let error = run_initialize(&server, limits)
             .expect_err("a silent process should time out and be terminated");
 
-        assert!(matches!(error, InitializeError::ResponseTimedOut { .. }));
+        assert!(
+            matches!(error, InitializeError::ResponseTimedOut { .. }),
+            "unexpected silent-process failure: {error}"
+        );
         assert!(started.elapsed() < elapsed_bound);
         let pid = fs::read_to_string(pid_path).expect("server should publish its pid");
         assert!(!process_exists(&pid), "the timed-out child must be reaped");
@@ -1351,6 +1365,7 @@ while ($true) { Start-Sleep -Milliseconds 10 }
 
     #[test]
     fn malformed_output_is_redacted_and_force_cleans_the_child() {
+        let _process_fixture = process_fixture_lock();
         let root = tempfile::tempdir().expect("temporary process root should be created");
         let pid_path = root.path().join("pid");
         let private = "synthetic-private-stdout";
@@ -1377,10 +1392,13 @@ while ($true) { Start-Sleep -Milliseconds 10 }
         let error = run_initialize(&server, SHORT_LIMITS)
             .expect_err("malformed protocol output should fail and terminate the child");
 
-        assert!(matches!(
-            error,
-            InitializeError::InvalidResponse(ResponseViolation::MalformedJson)
-        ));
+        assert!(
+            matches!(
+                error,
+                InitializeError::InvalidResponse(ResponseViolation::MalformedJson)
+            ),
+            "unexpected malformed-response failure: {error}"
+        );
         assert!(!error.to_string().contains(private));
         assert!(!format!("{error:?}").contains(private));
         let pid = fs::read_to_string(pid_path).expect("server should publish its pid");
@@ -1389,6 +1407,7 @@ while ($true) { Start-Sleep -Milliseconds 10 }
 
     #[test]
     fn initialized_process_that_refuses_shutdown_is_force_cleaned_and_fails() {
+        let _process_fixture = process_fixture_lock();
         let root = tempfile::tempdir().expect("temporary process root should be created");
         let pid_path = root.path().join("pid");
         let server = shell_server(
@@ -1422,7 +1441,10 @@ while ($true) { Start-Sleep -Milliseconds 10 }
         let error = run_initialize(&server, limits)
             .expect_err("a process that ignores stdin closure should fail bounded shutdown");
 
-        assert!(matches!(error, InitializeError::ShutdownTimedOut { .. }));
+        assert!(
+            matches!(error, InitializeError::ShutdownTimedOut { .. }),
+            "unexpected shutdown-resistant-process failure: {error}"
+        );
         let pid = fs::read_to_string(pid_path).expect("server should publish its pid");
         assert!(
             !process_exists(&pid),
@@ -1432,6 +1454,7 @@ while ($true) { Start-Sleep -Milliseconds 10 }
 
     #[test]
     fn oversized_and_undelimited_messages_fail_without_unbounded_reads() {
+        let _process_fixture = process_fixture_lock();
         // Keep stdin open until the client sends `initialize` so the fixture
         // exercises response framing instead of racing the request write.
         let oversized_payload = "x".repeat(129);

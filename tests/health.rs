@@ -6,10 +6,18 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 use support::SyntheticHome;
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(8);
+static PROCESS_FIXTURE_LOCK: Mutex<()> = Mutex::new(());
+
+fn process_fixture_lock() -> MutexGuard<'static, ()> {
+    PROCESS_FIXTURE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 fn health_command(home: &SyntheticHome, name: &str) -> AssertCommand {
     let mut command = AssertCommand::from_std(home.command());
@@ -155,6 +163,7 @@ fn process_exists(pid: &str) -> bool {
 
 #[test]
 fn built_binary_completes_initialize_and_initialized_with_redacted_output() {
+    let _process_fixture = process_fixture_lock();
     let home = SyntheticHome::new();
     let script = script_path(&home, "healthy-server");
     let request_path = home.root().join("initialize-request.json");
@@ -252,6 +261,7 @@ exit 0
 
 #[test]
 fn built_binary_timeout_is_bounded_and_reaps_the_silent_child() {
+    let _process_fixture = process_fixture_lock();
     let home = SyntheticHome::new();
     let script = script_path(&home, "silent-server");
     let pid_path = home.root().join("silent-server.pid");
@@ -311,6 +321,7 @@ IFS= read -r never
 
 #[test]
 fn built_binary_rejects_malformed_stdout_and_reaps_the_child_without_echoing_it() {
+    let _process_fixture = process_fixture_lock();
     let home = SyntheticHome::new();
     let script = script_path(&home, "malformed-server");
     let pid_path = home.root().join("malformed-server.pid");
@@ -363,6 +374,7 @@ while :; do :; done
 
 #[test]
 fn built_binary_redacts_json_rpc_error_message_data_and_stderr() {
+    let _process_fixture = process_fixture_lock();
     let home = SyntheticHome::new();
     let script = script_path(&home, "rejecting-server");
     let private_response = "synthetic-rejection-private-response";
