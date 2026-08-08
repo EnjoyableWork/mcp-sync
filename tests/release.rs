@@ -472,6 +472,7 @@ fn package_and_public_docs_keep_the_accepted_release_identities() {
     assert!(runbook.contains("v0.1.0"));
     assert!(runbook.contains("no project-issued macOS or Windows binary"));
     assert!(runbook.contains("only the `publish-new` endpoint"));
+    assert!(runbook.contains("exact crate-name pattern `enjoyable-mcp-sync`"));
     assert!(runbook.contains("Revoke every first-publication token"));
     assert!(signed_runbook.contains("com.enjoyablework.mcp-sync"));
     assert!(signed_runbook.contains("confirm_funded_signing"));
