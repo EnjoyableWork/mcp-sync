@@ -1,4 +1,4 @@
-name: Market release preflight
+name: Source and GNU/Linux release preflight
 
 on:
   pull_request:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: market-release-preflight-${{ github.workflow }}-${{ github.ref }}
+  group: source-linux-release-preflight-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -50,29 +50,29 @@ jobs:
           second_hash="$(sha256sum "$package" | awk '{ print $1 }')"
           test "$first_hash" = "$second_hash"
 
-          scripts/generate-market-release-channels.sh \
+          scripts/generate-source-linux-release-channels.sh \
             "$package" \
             "$RELEASE_VERSION" \
-            generated-market-channels
-          scripts/generate-market-release-channels.sh \
+            generated-source-linux-channels
+          scripts/generate-source-linux-release-channels.sh \
             "$package" \
             "$RELEASE_VERSION" \
-            generated-market-channels-second
-          diff -ru generated-market-channels generated-market-channels-second
+            generated-source-linux-channels-second
+          diff -ru generated-source-linux-channels generated-source-linux-channels-second
 
-          mkdir -p market-source-assets
+          mkdir -p source-linux-source-assets
           install -m 0644 \
-            "generated-market-channels/cargo/enjoyable-mcp-sync-$RELEASE_VERSION.crate" \
-            market-source-assets/
+            "generated-source-linux-channels/cargo/enjoyable-mcp-sync-$RELEASE_VERSION.crate" \
+            source-linux-source-assets/
           install -m 0644 \
-            generated-market-channels/homebrew/Formula/mcp-sync.rb \
-            market-source-assets/
+            generated-source-linux-channels/homebrew/Formula/mcp-sync.rb \
+            source-linux-source-assets/
 
       - name: Retain the source outputs briefly
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: market-preflight-source
-          path: market-source-assets/*
+          name: source-linux-preflight-source
+          path: source-linux-source-assets/*
           if-no-files-found: error
           retention-days: 1
 
@@ -113,8 +113,8 @@ jobs:
       - name: Download the exact source outputs
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: market-preflight-source
-          path: market-source-assets
+          name: source-linux-preflight-source
+          path: source-linux-source-assets
 
       - name: Verify the native Rust host and package version
         id: version
@@ -134,7 +134,7 @@ jobs:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          package="$GITHUB_WORKSPACE/market-source-assets/enjoyable-mcp-sync-$RELEASE_VERSION.crate"
+          package="$GITHUB_WORKSPACE/source-linux-source-assets/enjoyable-mcp-sync-$RELEASE_VERSION.crate"
           package_root="$RUNNER_TEMP/mcp-sync-cargo-package"
           install_root="$RUNNER_TEMP/mcp-sync-cargo-install"
           mkdir -p "$package_root"
@@ -154,14 +154,14 @@ jobs:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          tap_name=EnjoyableWork/market-preflight
+          tap_name=EnjoyableWork/source-linux-preflight
           formula_name="$tap_name/mcp-sync"
           brew tap-new --no-git "$tap_name"
           tap_root="$(brew --repository "$tap_name")"
           mkdir -p "$tap_root/Formula"
-          install -m 0644 market-source-assets/mcp-sync.rb "$tap_root/Formula/mcp-sync.rb"
+          install -m 0644 source-linux-source-assets/mcp-sync.rb "$tap_root/Formula/mcp-sync.rb"
 
-          package="$GITHUB_WORKSPACE/market-source-assets/enjoyable-mcp-sync-$RELEASE_VERSION.crate"
+          package="$GITHUB_WORKSPACE/source-linux-source-assets/enjoyable-mcp-sync-$RELEASE_VERSION.crate"
           cache_path="$(brew --cache --build-from-source "$formula_name")"
           mkdir -p "$(dirname "$cache_path")"
           install -m 0644 "$package" "$cache_path"
@@ -222,7 +222,7 @@ jobs:
         if: matrix.publish_linux
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: market-preflight-${{ matrix.rust_target }}
+          name: source-linux-preflight-${{ matrix.rust_target }}
           path: release-assets/*
           if-no-files-found: error
           retention-days: 1
@@ -254,8 +254,8 @@ jobs:
       - name: Download the exact source outputs
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: market-preflight-source
-          path: market-source-assets
+          name: source-linux-preflight-source
+          path: source-linux-source-assets
 
       - name: Install the exact Cargo package and exercise restore
         shell: pwsh
@@ -274,7 +274,7 @@ jobs:
             throw 'Cargo package version is not stable.'
           }
 
-          $package = Join-Path $env:GITHUB_WORKSPACE "market-source-assets/enjoyable-mcp-sync-$releaseVersion.crate"
+          $package = Join-Path $env:GITHUB_WORKSPACE "source-linux-source-assets/enjoyable-mcp-sync-$releaseVersion.crate"
           $packageRoot = Join-Path $env:RUNNER_TEMP 'mcp-sync-cargo-package'
           $installRoot = Join-Path $env:RUNNER_TEMP 'mcp-sync-cargo-install'
           New-Item -ItemType Directory -Path $packageRoot | Out-Null
@@ -294,7 +294,7 @@ jobs:
             -ExpectedVersion $releaseVersion
 
   payload:
-    name: Verify the exact non-publishing market payload
+    name: Verify the exact non-publishing source and GNU/Linux payload
     needs:
       - source
       - unix
@@ -318,10 +318,10 @@ jobs:
           )"
           printf 'version=%s\n' "$release_version" >>"$GITHUB_OUTPUT"
 
-      - name: Download every represented market payload
+      - name: Download every represented source and GNU/Linux payload
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: market-preflight-*
+          pattern: source-linux-preflight-*
           path: release-assets
           merge-multiple: true
 
@@ -330,13 +330,13 @@ jobs:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          scripts/verify-market-release-assets.sh release-assets "$RELEASE_VERSION"
-          scripts/verify-published-market-release.sh release-assets "$RELEASE_VERSION"
+          scripts/verify-source-linux-release-assets.sh release-assets "$RELEASE_VERSION"
+          scripts/verify-published-source-linux-release.sh release-assets "$RELEASE_VERSION"
 
       - name: Retain the complete dry-run payload briefly
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: market-preflight-complete
+          name: source-linux-preflight-complete
           path: release-assets/*
           if-no-files-found: error
           retention-days: 1

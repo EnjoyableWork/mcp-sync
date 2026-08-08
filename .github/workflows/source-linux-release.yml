@@ -1,4 +1,4 @@
-name: Publish zero-cost market release
+name: Publish source and GNU/Linux release
 
 on:
   push:
@@ -8,12 +8,12 @@ on:
 permissions: {}
 
 concurrency:
-  group: market-release-${{ github.ref }}
+  group: source-linux-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   validate:
-    name: Validate protected market-release authority
+    name: Validate protected source-linux-release authority
     if: github.repository == 'EnjoyableWork/mcp-sync'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -24,7 +24,7 @@ jobs:
       version: ${{ steps.contract.outputs.version }}
 
     steps:
-      - name: Check out the protected market tag
+      - name: Check out the protected release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -39,11 +39,11 @@ jobs:
           set -euo pipefail
 
           if [[ "$GITHUB_EVENT_NAME" != push ]] || [[ "$GITHUB_REF_NAME" != v0.1.0 ]]; then
-            echo "the zero-cost market workflow accepts only the protected v0.1.0 tag push" >&2
+            echo "the source and GNU/Linux workflow accepts only the protected v0.1.0 tag push" >&2
             exit 1
           fi
           if [[ ! "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            echo "market release tag must be a stable v-prefixed semantic version" >&2
+            echo "release tag must be a stable v-prefixed semantic version" >&2
             exit 1
           fi
           release_version=${BASH_REMATCH[1]}
@@ -53,20 +53,20 @@ jobs:
               | jq -r '.packages[] | select(.name == "enjoyable-mcp-sync") | .version'
           )"
           if [[ "$release_version" != "$package_version" ]]; then
-            echo "market release tag does not match the Cargo package version" >&2
+            echo "release tag does not match the Cargo package version" >&2
             exit 1
           fi
           if [[ "$(git cat-file -t "$GITHUB_REF_NAME")" != tag ]]; then
-            echo "market releases require an intentional annotated tag" >&2
+            echo "source and GNU/Linux releases require an intentional annotated tag" >&2
             exit 1
           fi
           git fetch --no-tags origin main
           if [[ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]]; then
-            echo "market release tag must identify the current main commit" >&2
+            echo "release tag must identify the current main commit" >&2
             exit 1
           fi
           if [[ "$(git rev-parse "$GITHUB_REF_NAME^{commit}")" != "$GITHUB_SHA" ]]; then
-            echo "market release tag does not resolve to the triggering commit" >&2
+            echo "release tag does not resolve to the triggering commit" >&2
             exit 1
           fi
 
@@ -102,7 +102,7 @@ jobs:
             curl --silent --show-error \
               --output "$registry_response" \
               --write-out '%{http_code}' \
-              --header 'User-Agent: mcp-sync-market-release/0.1 (+https://github.com/EnjoyableWork/mcp-sync)' \
+              --header 'User-Agent: mcp-sync-source-linux-release/0.1 (+https://github.com/EnjoyableWork/mcp-sync)' \
               'https://crates.io/api/v1/crates/enjoyable-mcp-sync'
           )"
           case "$registry_status" in
@@ -120,7 +120,7 @@ jobs:
               ;;
           esac
 
-          existing_release="$RUNNER_TEMP/existing-market-release.json"
+          existing_release="$RUNNER_TEMP/existing-source-linux-release.json"
           if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" \
             -H 'X-GitHub-Api-Version: 2026-03-10' \
             >"$existing_release" 2>/dev/null; then
@@ -160,22 +160,22 @@ jobs:
           second_hash="$(sha256sum "$package" | awk '{ print $1 }')"
           test "$first_hash" = "$second_hash"
 
-          scripts/generate-market-release-channels.sh \
+          scripts/generate-source-linux-release-channels.sh \
             "$package" \
             "$RELEASE_VERSION" \
-            generated-market-channels
-          scripts/generate-market-release-channels.sh \
+            generated-source-linux-channels
+          scripts/generate-source-linux-release-channels.sh \
             "$package" \
             "$RELEASE_VERSION" \
-            generated-market-channels-second
-          diff -ru generated-market-channels generated-market-channels-second
+            generated-source-linux-channels-second
+          diff -ru generated-source-linux-channels generated-source-linux-channels-second
 
           mkdir -p release-assets
           install -m 0644 \
-            "generated-market-channels/cargo/enjoyable-mcp-sync-$RELEASE_VERSION.crate" \
+            "generated-source-linux-channels/cargo/enjoyable-mcp-sync-$RELEASE_VERSION.crate" \
             release-assets/
           install -m 0644 \
-            generated-market-channels/homebrew/Formula/mcp-sync.rb \
+            generated-source-linux-channels/homebrew/Formula/mcp-sync.rb \
             release-assets/
 
       - name: Attest the Cargo source package
@@ -191,7 +191,7 @@ jobs:
       - name: Upload the source-channel payload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: market-release-source
+          name: source-linux-release-source
           path: release-assets/*
           if-no-files-found: error
           retention-days: 7
@@ -283,13 +283,13 @@ jobs:
       - name: Upload the GNU/Linux release payload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: market-release-${{ matrix.rust_target }}
+          name: source-linux-release-${{ matrix.rust_target }}
           path: release-assets/*
           if-no-files-found: error
           retention-days: 7
 
   publish:
-    name: Verify the market payload and publish immutably
+    name: Verify the source and GNU/Linux payload and publish immutably
     needs:
       - validate
       - source
@@ -308,43 +308,43 @@ jobs:
       RELEASE_VERSION: ${{ needs.validate.outputs.version }}
 
     steps:
-      - name: Check out market-release verification sources
+      - name: Check out source-linux-release verification sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Download the complete market-release payload
+      - name: Download the complete source-linux-release payload
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: market-release-*
+          pattern: source-linux-release-*
           path: release-assets
           merge-multiple: true
 
       - name: Require the exact payload and create SHA256SUMS
-        run: scripts/verify-market-release-assets.sh release-assets "$RELEASE_VERSION"
+        run: scripts/verify-source-linux-release-assets.sh release-assets "$RELEASE_VERSION"
 
       - name: Attest the checksum manifest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: release-assets/SHA256SUMS
 
-      - name: Verify every market build-provenance attestation
+      - name: Verify every source and GNU/Linux build-provenance attestation
         run: |
           set -euo pipefail
           for release_asset in release-assets/*; do
             gh attestation verify "$release_asset" \
               --repo "$GITHUB_REPOSITORY" \
-              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/market-release.yml" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/source-linux-release.yml" \
               --source-ref "$GITHUB_REF" \
               --source-digest "$GITHUB_SHA" \
               --format json >/dev/null
           done
 
-      - name: Create or repair the draft market release
+      - name: Create or repair the draft source and GNU/Linux release
         id: draft
         run: |
           set -euo pipefail
-          release_state="$RUNNER_TEMP/market-release-state.json"
+          release_state="$RUNNER_TEMP/source-linux-release-state.json"
           if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" \
             -H 'X-GitHub-Api-Version: 2026-03-10' \
             >"$release_state" 2>/dev/null; then
@@ -357,7 +357,7 @@ jobs:
               gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
               printf 'already_immutable=false\n' >>"$GITHUB_OUTPUT"
             else
-              echo "existing market release is published without immutability" >&2
+              echo "existing source and GNU/Linux release is published without immutability" >&2
               exit 1
             fi
           else
@@ -374,7 +374,7 @@ jobs:
           set -euo pipefail
           mkdir -p draft-download
           gh release download "$GITHUB_REF_NAME" --dir draft-download
-          scripts/verify-published-market-release.sh draft-download "$RELEASE_VERSION"
+          scripts/verify-published-source-linux-release.sh draft-download "$RELEASE_VERSION"
           for release_asset in release-assets/*; do
             cmp --silent "$release_asset" "draft-download/$(basename "$release_asset")"
           done
@@ -400,17 +400,17 @@ jobs:
             sleep 5
           done
           if [[ "$immutable" != true ]]; then
-            echo "published market release did not become immutable" >&2
+            echo "published source and GNU/Linux release did not become immutable" >&2
             exit 1
           fi
           gh release verify "$GITHUB_REF_NAME" --format json >/dev/null
 
-      - name: Re-download and verify the immutable market release
+      - name: Re-download and verify the immutable source and GNU/Linux release
         run: |
           set -euo pipefail
           mkdir -p immutable-download
           gh release download "$GITHUB_REF_NAME" --dir immutable-download
-          scripts/verify-published-market-release.sh immutable-download "$RELEASE_VERSION"
+          scripts/verify-published-source-linux-release.sh immutable-download "$RELEASE_VERSION"
           for release_asset in release-assets/*; do
             cmp --silent "$release_asset" "immutable-download/$(basename "$release_asset")"
           done

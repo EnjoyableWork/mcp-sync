@@ -1,11 +1,11 @@
 # Funded signed-native release runbook
 
 This runbook preserves the funding-dependent `SIDE-006` contract produced by
-the superseded `MCP-021` path. It is not the `v0.1.0` market-release procedure;
-use [the zero-cost runbook](market-release.md) for that release. Nothing in this
-document makes an unpublished channel current: the release, registry records,
-downstream package repositories, and native smoke runs are the evidence for
-each live claim.
+the superseded `MCP-021` path. It is not the `v0.1.0` source and GNU/Linux
+release procedure; use [that release's runbook](source-linux-release.md).
+Nothing in this document makes an unpublished channel current: the release,
+registry records, downstream package repositories, and native smoke runs are
+the evidence for each live claim.
 
 ## Funded release identity
 

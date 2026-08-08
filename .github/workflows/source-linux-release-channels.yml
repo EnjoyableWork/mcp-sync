@@ -1,10 +1,10 @@
-name: Verify zero-cost market release channels
+name: Verify source and GNU/Linux release channels
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: Market version without the v prefix
+        description: Release version without the v prefix
         required: true
         default: 0.1.0
         type: string
@@ -12,12 +12,12 @@ on:
 permissions: {}
 
 concurrency:
-  group: market-release-channels-${{ inputs.version }}
+  group: source-linux-release-channels-${{ inputs.version }}
   cancel-in-progress: false
 
 jobs:
   validate:
-    name: Verify immutable market release and source metadata
+    name: Verify immutable source and GNU/Linux release metadata
     if: github.repository == 'EnjoyableWork/mcp-sync'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -28,19 +28,19 @@ jobs:
       version: ${{ steps.version.outputs.value }}
 
     steps:
-      - name: Validate the market version input
+      - name: Validate the release version input
         id: version
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           if [[ "$RELEASE_VERSION" != 0.1.0 ]]; then
-            echo "the zero-cost market channel verifier accepts only version 0.1.0" >&2
+            echo "the source and GNU/Linux channel verifier accepts only version 0.1.0" >&2
             exit 1
           fi
           printf 'value=%s\n' "$RELEASE_VERSION" >>"$GITHUB_OUTPUT"
 
-      - name: Check out the immutable market tag
+      - name: Check out the immutable release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -55,7 +55,7 @@ jobs:
           set -euo pipefail
           release_tag="v$RELEASE_VERSION"
           if [[ "$(git cat-file -t "$release_tag")" != tag ]]; then
-            echo "published market release must use an annotated tag" >&2
+            echo "published source and GNU/Linux release must use an annotated tag" >&2
             exit 1
           fi
           package_version="$(
@@ -64,7 +64,7 @@ jobs:
           )"
           test "$package_version" = "$RELEASE_VERSION"
 
-          release_json="$RUNNER_TEMP/mcp-sync-market-release.json"
+          release_json="$RUNNER_TEMP/mcp-sync-source-linux-release.json"
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$release_tag" \
             -H 'X-GitHub-Api-Version: 2026-03-10' >"$release_json"
           jq -e \
@@ -72,19 +72,19 @@ jobs:
             '.tag_name == $tag and .draft == false and .prerelease == false and .immutable == true' \
             "$release_json" >/dev/null
 
-          release_assets="$RUNNER_TEMP/mcp-sync-market-assets"
+          release_assets="$RUNNER_TEMP/mcp-sync-source-linux-assets"
           mkdir -p "$release_assets"
           gh release download "$release_tag" \
             --repo "$GITHUB_REPOSITORY" \
             --dir "$release_assets"
-          scripts/verify-published-market-release.sh "$release_assets" "$RELEASE_VERSION"
+          scripts/verify-published-source-linux-release.sh "$release_assets" "$RELEASE_VERSION"
           gh release verify "$release_tag" --repo "$GITHUB_REPOSITORY"
 
           release_commit="$(git rev-parse "$release_tag^{commit}")"
           for release_asset in "$release_assets"/*; do
             gh attestation verify "$release_asset" \
               --repo "$GITHUB_REPOSITORY" \
-              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/market-release.yml" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/source-linux-release.yml" \
               --source-ref "refs/tags/$release_tag" \
               --source-digest "$release_commit" \
               --format json >/dev/null
@@ -95,7 +95,7 @@ jobs:
             curl --silent --show-error --location --retry 5 \
               --output "$registry_response" \
               --write-out '%{http_code}' \
-              --header 'User-Agent: mcp-sync-market-channel-verifier/0.1 (+https://github.com/EnjoyableWork/mcp-sync)' \
+              --header 'User-Agent: mcp-sync-source-linux-channel-verifier/0.1 (+https://github.com/EnjoyableWork/mcp-sync)' \
               'https://crates.io/api/v1/crates/enjoyable-mcp-sync'
           )"
           test "$registry_status" = 200
@@ -142,7 +142,7 @@ jobs:
       RUST_TARGET: ${{ matrix.rust_target }}
 
     steps:
-      - name: Check out the immutable market tag
+      - name: Check out the immutable release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -174,7 +174,7 @@ jobs:
           )
           gh attestation verify "$download_root/$archive" \
             --repo "$GITHUB_REPOSITORY" \
-            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/market-release.yml" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/source-linux-release.yml" \
             --source-ref "refs/tags/$release_tag" \
             --source-digest "$(git rev-parse HEAD)" \
             --format json >/dev/null
@@ -208,7 +208,7 @@ jobs:
       RUST_TARGET: ${{ matrix.rust_target }}
 
     steps:
-      - name: Check out the immutable market tag
+      - name: Check out the immutable release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -248,7 +248,7 @@ jobs:
       RUST_TARGET: ${{ matrix.rust_target }}
 
     steps:
-      - name: Check out the immutable market tag
+      - name: Check out the immutable release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -268,7 +268,7 @@ jobs:
             --locked `
             --root $installRoot
           if ($LASTEXITCODE -ne 0) {
-            throw 'Cargo could not install the exact market package.'
+            throw 'Cargo could not install the exact source package.'
           }
           & scripts/smoke-installed.ps1 `
             -Executable (Join-Path $installRoot 'bin/mcp-sync.exe') `
@@ -302,7 +302,7 @@ jobs:
       RUST_TARGET: ${{ matrix.rust_target }}
 
     steps:
-      - name: Check out the immutable market tag
+      - name: Check out the immutable release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
