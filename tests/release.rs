@@ -225,3 +225,101 @@ fn package_and_public_docs_keep_the_accepted_release_identities() {
     assert!(release_notes.contains("# mcp-sync v0.1.0"));
     assert!(release_notes.contains("immutable GitHub Release"));
 }
+
+#[test]
+fn published_channel_workflow_proves_exact_metadata_and_every_native_install_path() {
+    let workflow = repository_file(".github/workflows/release-channels.yml");
+    let generator = repository_file("scripts/generate-release-channels.sh");
+    let macos_trust = repository_file("scripts/verify-macos-release-trust.sh");
+    let windows_trust = repository_file("scripts/verify-windows-release-trust.ps1");
+
+    for target in TARGETS {
+        assert!(
+            workflow.contains(target),
+            "published-channel smoke should include native target {target}"
+        );
+    }
+    for runner in RUNNERS {
+        assert!(
+            workflow.contains(&format!("runner: {runner}")),
+            "published-channel smoke should use native runner {runner}"
+        );
+    }
+
+    for required_contract in [
+        "workflow_dispatch:",
+        "Verify immutable release and downstream metadata",
+        ".immutable == true",
+        "scripts/verify-published-release.sh",
+        "gh release verify",
+        "gh attestation verify",
+        "--signer-workflow",
+        "--source-ref",
+        "--source-digest",
+        "https://crates.io/api/v1/crates/enjoyable-mcp-sync",
+        "scripts/generate-release-channels.sh",
+        "EnjoyableWork/homebrew-tap/main/Formula/mcp-sync.rb",
+        "microsoft/winget-pkgs/master/manifests/e/EnjoyableWork/mcp-sync",
+        "cargo install enjoyable-mcp-sync",
+        "brew install EnjoyableWork/tap/mcp-sync",
+        "--id EnjoyableWork.mcp-sync",
+        "scripts/smoke-installed.sh",
+        "scripts/smoke-installed.ps1",
+        "scripts/verify-macos-release-trust.sh",
+        "scripts/verify-windows-release-trust.ps1",
+        "Repair-WinGetPackageManager -Force -Latest",
+    ] {
+        assert!(
+            workflow.contains(required_contract),
+            "published-channel workflow should enforce {required_contract}"
+        );
+    }
+    assert!(workflow.contains("attestations: read"));
+    assert!(!workflow.contains("contents: write"));
+    assert!(!workflow.contains("id-token: write"));
+    assert!(!workflow.contains("secrets."));
+    assert_actions_are_commit_pinned(&workflow);
+
+    for generated_contract in [
+        "class McpSync < Formula",
+        "on_macos do",
+        "on_linux do",
+        "on_arm do",
+        "on_intel do",
+        "bin.install \"mcp-sync\"",
+        "PackageIdentifier: EnjoyableWork.mcp-sync",
+        "PackageVersion: $channel_version",
+        "InstallerType: zip",
+        "NestedInstallerType: portable",
+        "Commands:",
+        "Architecture: arm64",
+        "Architecture: x64",
+        "RelativeFilePath: mcp-sync.exe",
+        "PortableCommandAlias: mcp-sync",
+        "ManifestVersion: 1.12.0",
+        "winget-manifest.installer.1.12.0.schema.json",
+        "verify-published-release.sh",
+        "release_hash",
+    ] {
+        assert!(
+            generator.contains(generated_contract),
+            "channel generator should retain {generated_contract}"
+        );
+    }
+
+    for trust_contract in [
+        "Identifier=com.enjoyablework.mcp-sync",
+        "flags=.*runtime",
+        "Timestamp=",
+        "spctl --assess --type execute",
+    ] {
+        assert!(macos_trust.contains(trust_contract));
+    }
+    for trust_contract in [
+        "SignatureStatus]::Valid",
+        "SignerCertificate",
+        "TimeStamperCertificate",
+    ] {
+        assert!(windows_trust.contains(trust_contract));
+    }
+}
