@@ -34,6 +34,34 @@ pub trait FileReplacer {
     ) -> Result<(), FileMutationError>;
 }
 
+/// Guarded restoration from one adjacent backup generation.
+///
+/// Implementations must require the `.bak` path to remain byte-for-byte equal
+/// to `expected_backup`. A missing target is created without consuming the
+/// backup. An existing target is replaced atomically and its exact prior bytes
+/// become the new backup, so a valid prior target can be restored again.
+/// Symbolic links and non-regular target or backup paths must be rejected.
+pub trait BackupRestorer {
+    fn restore_backup_if_unchanged(
+        &self,
+        path: &Path,
+        expected_target: ExpectedFile<'_>,
+        expected_backup: &[u8],
+    ) -> Result<(), FileMutationError>;
+}
+
+/// Regular-file reads used to plan a restore without following symbolic links.
+///
+/// The optional read is for a target that may need recreation. The required
+/// read is for its adjacent backup. Both return exact private bytes and reject
+/// directories, symbolic links, and other non-regular file types.
+pub trait RestoreFileSystem {
+    fn read_optional_regular_file(&self, path: &Path)
+    -> Result<Option<Vec<u8>>, FileMutationError>;
+
+    fn read_required_regular_file(&self, path: &Path) -> Result<Vec<u8>, FileMutationError>;
+}
+
 /// The exact file state observed while a higher-level transaction is planned.
 ///
 /// Existing bytes may contain credentials. Implementations must use them only
@@ -107,6 +135,54 @@ impl FileReplacer for OsFileSystem {
         replacement: &[u8],
     ) -> Result<(), FileMutationError> {
         replace_existing_with_backup(path, expected_current, replacement).map(drop)
+    }
+}
+
+impl BackupRestorer for OsFileSystem {
+    fn restore_backup_if_unchanged(
+        &self,
+        path: &Path,
+        expected_target: ExpectedFile<'_>,
+        expected_backup: &[u8],
+    ) -> Result<(), FileMutationError> {
+        match expected_target {
+            ExpectedFile::Missing => restore_missing_from_backup(path, expected_backup),
+            ExpectedFile::Existing(current) => {
+                let previous_backup = FileSnapshot::Existing(expected_backup.to_vec());
+                replace_existing_with_backup_snapshot_after(
+                    path,
+                    current,
+                    expected_backup,
+                    previous_backup,
+                    || {},
+                )
+                .map(drop)
+            }
+        }
+    }
+}
+
+impl RestoreFileSystem for OsFileSystem {
+    fn read_optional_regular_file(
+        &self,
+        path: &Path,
+    ) -> Result<Option<Vec<u8>>, FileMutationError> {
+        match snapshot_optional_regular_file(path)? {
+            FileSnapshot::Missing => Ok(None),
+            FileSnapshot::Existing(bytes) => Ok(Some(bytes)),
+        }
+    }
+
+    fn read_required_regular_file(&self, path: &Path) -> Result<Vec<u8>, FileMutationError> {
+        match snapshot_optional_regular_file(path)? {
+            FileSnapshot::Missing => Err(FileIoError::new(
+                FileOperation::InspectFile,
+                path,
+                io::Error::new(io::ErrorKind::NotFound, "required file does not exist"),
+            )
+            .into()),
+            FileSnapshot::Existing(bytes) => Ok(bytes),
+        }
     }
 }
 
@@ -229,6 +305,25 @@ fn replace_existing_with_backup_after(
     let backup_path = backup_path(path);
     let previous_backup = snapshot_optional_regular_file(&backup_path)?;
 
+    replace_existing_with_backup_snapshot_after(
+        path,
+        expected_current,
+        replacement,
+        previous_backup,
+        after_backup,
+    )
+}
+
+fn replace_existing_with_backup_snapshot_after(
+    path: &Path,
+    expected_current: &[u8],
+    replacement: &[u8],
+    previous_backup: FileSnapshot,
+    after_backup: impl FnOnce(),
+) -> Result<FileSnapshot, FileMutationError> {
+    ensure_regular_file(path, true)?;
+    let backup_path = backup_path(path);
+
     let replacement_file = prepare_temporary_file(path, replacement)?;
     let backup_file = prepare_temporary_file(&backup_path, expected_current)?;
 
@@ -270,6 +365,53 @@ fn replace_existing_with_backup_after(
     }
 
     Ok(previous_backup)
+}
+
+fn restore_missing_from_backup(
+    path: &Path,
+    expected_backup: &[u8],
+) -> Result<(), FileMutationError> {
+    restore_missing_from_backup_after(path, expected_backup, || {})
+}
+
+fn restore_missing_from_backup_after(
+    path: &Path,
+    expected_backup: &[u8],
+    after_publish: impl FnOnce(),
+) -> Result<(), FileMutationError> {
+    let backup_path = backup_path(path);
+    ensure_snapshot_unchanged(path, &FileSnapshot::Missing)?;
+    ensure_snapshot_unchanged(
+        &backup_path,
+        &FileSnapshot::Existing(expected_backup.to_vec()),
+    )?;
+    let replacement_file = prepare_temporary_file(path, expected_backup)?;
+
+    // Recheck both inputs immediately before no-clobber publication. The
+    // backup is deliberately retained because there was no current target to
+    // rotate into its slot.
+    ensure_snapshot_unchanged(path, &FileSnapshot::Missing)?;
+    ensure_expected_bytes(&backup_path, expected_backup)?;
+    replacement_file
+        .persist_noclobber(path)
+        .map_err(|error| FileIoError::new(FileOperation::PublishNewFile, path, error.error))?;
+    after_publish();
+
+    // If the backup changed across publication, remove only the exact target
+    // bytes created here and report the stale plan. Never clobber the changed
+    // backup while compensating.
+    if let Err(failure) = ensure_expected_bytes(&backup_path, expected_backup) {
+        return match remove_if_unchanged(path, expected_backup) {
+            Ok(()) => Err(failure),
+            Err(recovery) => Err(FileMutationError::RecoveryFailed {
+                path: path.to_owned(),
+                failure: Box::new(failure),
+                recovery: Box::new(recovery),
+            }),
+        };
+    }
+
+    Ok(())
 }
 
 fn snapshot_optional_regular_file(path: &Path) -> Result<FileSnapshot, FileMutationError> {
@@ -584,10 +726,10 @@ impl From<FileIoError> for FileMutationError {
 #[cfg(test)]
 mod tests {
     use super::{
-        ExpectedFile, FileCreator, FileIoError, FileMutationError, FileOperation, FileReplacer,
-        FileSnapshot, FileSystem, OsFileSystem, TransactionalFileUpdater, UnsupportedFileKind,
-        backup_path, ensure_regular_file, ensure_snapshot_unchanged,
-        replace_existing_with_backup_after,
+        BackupRestorer, ExpectedFile, FileCreator, FileIoError, FileMutationError, FileOperation,
+        FileReplacer, FileSnapshot, FileSystem, OsFileSystem, TransactionalFileUpdater,
+        UnsupportedFileKind, backup_path, ensure_regular_file, ensure_snapshot_unchanged,
+        replace_existing_with_backup_after, restore_missing_from_backup_after,
     };
     use std::error::Error;
     use std::io;
@@ -727,6 +869,167 @@ mod tests {
                 .iter()
                 .all(|name| !name.to_string_lossy().starts_with(".mcp-sync-"))
         );
+    }
+
+    #[test]
+    fn existing_target_restore_swaps_exact_bytes_and_is_reversible() {
+        let fixture = tempfile::tempdir().expect("temporary filesystem fixture should be created");
+        let path = fixture.path().join("config.json");
+        let backup = backup_path(&path);
+        let current = b"current private configuration\n";
+        let retained = b"retained private configuration\n";
+        std::fs::write(&path, current).expect("the current fixture should be written");
+        std::fs::write(&backup, retained).expect("the retained fixture should be written");
+
+        OsFileSystem
+            .restore_backup_if_unchanged(&path, ExpectedFile::Existing(current), retained)
+            .expect("a matching restore pair should be swapped");
+
+        assert_eq!(
+            std::fs::read(&path).expect("the restored target should be readable"),
+            retained
+        );
+        assert_eq!(
+            std::fs::read(&backup).expect("the rotated backup should be readable"),
+            current
+        );
+        assert_no_temporary_files(fixture.path());
+
+        OsFileSystem
+            .restore_backup_if_unchanged(&path, ExpectedFile::Existing(retained), current)
+            .expect("the immediately preceding valid target should be restorable again");
+
+        assert_eq!(
+            std::fs::read(&path).expect("the second restored target should be readable"),
+            current
+        );
+        assert_eq!(
+            std::fs::read(&backup).expect("the second rotated backup should be readable"),
+            retained
+        );
+        assert_no_temporary_files(fixture.path());
+    }
+
+    #[test]
+    fn missing_target_restore_recreates_exact_bytes_and_retains_the_backup() {
+        let fixture = tempfile::tempdir().expect("temporary filesystem fixture should be created");
+        let path = fixture.path().join("config.json");
+        let backup = backup_path(&path);
+        let retained = b"retained private configuration\n";
+        std::fs::write(&backup, retained).expect("the retained fixture should be written");
+
+        OsFileSystem
+            .restore_backup_if_unchanged(&path, ExpectedFile::Missing, retained)
+            .expect("a missing target should be recreated from its matching backup");
+
+        assert_eq!(
+            std::fs::read(&path).expect("the recreated target should be readable"),
+            retained
+        );
+        assert_eq!(
+            std::fs::read(&backup).expect("the retained backup should remain readable"),
+            retained
+        );
+        assert_no_temporary_files(fixture.path());
+    }
+
+    #[test]
+    fn restore_refuses_stale_target_or_backup_without_changing_either_file() {
+        let fixture = tempfile::tempdir().expect("temporary filesystem fixture should be created");
+        let path = fixture.path().join("config.json");
+        let backup = backup_path(&path);
+        let current = b"current private configuration\n";
+        let retained = b"retained private configuration\n";
+        std::fs::write(&path, current).expect("the current fixture should be written");
+        std::fs::write(&backup, retained).expect("the retained fixture should be written");
+
+        let target_error = OsFileSystem
+            .restore_backup_if_unchanged(
+                &path,
+                ExpectedFile::Existing(b"stale current bytes\n"),
+                retained,
+            )
+            .expect_err("a stale target observation must be refused");
+        assert!(matches!(
+            target_error,
+            FileMutationError::ConcurrentModification { path: ref changed } if changed == &path
+        ));
+        assert_eq!(std::fs::read(&path).unwrap(), current);
+        assert_eq!(std::fs::read(&backup).unwrap(), retained);
+
+        let backup_error = OsFileSystem
+            .restore_backup_if_unchanged(
+                &path,
+                ExpectedFile::Existing(current),
+                b"stale backup bytes\n",
+            )
+            .expect_err("a stale backup observation must be refused");
+        assert!(matches!(
+            backup_error,
+            FileMutationError::ConcurrentModification { path: ref changed } if changed == &backup
+        ));
+        assert_eq!(std::fs::read(&path).unwrap(), current);
+        assert_eq!(std::fs::read(&backup).unwrap(), retained);
+        assert_no_temporary_files(fixture.path());
+    }
+
+    #[test]
+    fn restore_refuses_non_regular_backup_without_changing_the_target() {
+        let fixture = tempfile::tempdir().expect("temporary filesystem fixture should be created");
+        let path = fixture.path().join("config.json");
+        let backup = backup_path(&path);
+        let current = b"current private configuration\n";
+        std::fs::write(&path, current).expect("the current fixture should be written");
+        std::fs::create_dir(&backup).expect("the blocking backup directory should be created");
+
+        let error = OsFileSystem
+            .restore_backup_if_unchanged(
+                &path,
+                ExpectedFile::Existing(current),
+                b"planned backup bytes\n",
+            )
+            .expect_err("a backup directory must not be restored");
+
+        assert!(matches!(
+            error,
+            FileMutationError::UnsupportedFileType {
+                path: ref error_path,
+                kind: UnsupportedFileKind::Directory,
+            } if error_path == &backup
+        ));
+        assert_eq!(std::fs::read(&path).unwrap(), current);
+        assert!(backup.is_dir());
+        assert_no_temporary_files(fixture.path());
+    }
+
+    #[test]
+    fn missing_target_restore_removes_its_created_file_if_the_backup_changes_during_publish() {
+        let fixture = tempfile::tempdir().expect("temporary filesystem fixture should be created");
+        let path = fixture.path().join("config.json");
+        let backup = backup_path(&path);
+        let retained = b"retained private configuration\n";
+        let concurrent = b"concurrent private backup\n";
+        std::fs::write(&backup, retained).expect("the retained fixture should be written");
+
+        let error = restore_missing_from_backup_after(&path, retained, || {
+            std::fs::write(&backup, concurrent)
+                .expect("the injected interruption should change the backup")
+        })
+        .expect_err("a backup edit across target publication must fail");
+
+        assert!(matches!(
+            error,
+            FileMutationError::ConcurrentModification { path: ref changed } if changed == &backup
+        ));
+        assert!(
+            !path.exists(),
+            "the exact target created by the failed restore should be removed"
+        );
+        assert_eq!(
+            std::fs::read(&backup).expect("the concurrent backup should remain readable"),
+            concurrent
+        );
+        assert_no_temporary_files(fixture.path());
     }
 
     #[test]

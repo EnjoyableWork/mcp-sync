@@ -5,7 +5,8 @@ This guide describes the currently implemented source-checkout behavior of
 and global Codex adapters added by `MCP-014` through `MCP-016`, and the bounded
 STDIO initialize health boundary added by `MCP-017`, the Linux path and
 behavior support added by `MCP-018`, and the Windows source-checkout support
-completed by `MCP-019`. It is the operational companion to the
+completed by `MCP-019`, plus the explicit restore and retention behavior added
+by `MCP-020`. It is the operational companion to the
 [north-star README](../README.md), not a replacement for that product
 specification. Use it when building from source on macOS, GNU/Linux, or Windows
 and reconciling the five implemented global targets: Claude Desktop, Cursor,
@@ -20,14 +21,14 @@ Codex CLI, and Codex IDE extension.
 | Platform | macOS plus native x64/ARM64 GNU/Linux and Windows MSVC source-checkout behavior |
 | Canonical format | Strict JSON schema version `1` for local STDIO servers |
 | Client targets | Global Claude Desktop, global Cursor, global Windsurf legacy Cascade configuration, native VS Code default user profile, and global Codex host configuration |
-| Commands | `init`, `add`, `list`, `test`, `sync --dry-run`, and `sync` |
-| Safety | Structural redaction, bounded health-process execution, plan-first validation, atomic replacement, recoverable backups, no-op detection, and reverse-order transaction rollback |
+| Commands | `init`, `add`, `list`, `test`, `sync --dry-run`, `sync`, `restore <configuration> --dry-run`, and `restore <configuration>` |
+| Safety | Structural redaction, bounded health-process execution, plan-first validation, atomic replacement, one-generation recoverable backups, guarded restore, no-op detection, and reverse-order transaction rollback |
 | Installation | Build and run from a source checkout |
 
-Only `test` starts the one named canonical server. `init`, `sync --dry-run`,
-and `sync` remain configuration operations and never start a configured MCP
-server. Packaged installation, explicit prune behavior, and a built-in restore
-command remain later work tracked in [PROJECT.md](../PROJECT.md).
+Only `test` starts the one named canonical server. `init`, `sync`, and
+`restore`, including their dry-run forms, remain configuration operations and
+never start a configured MCP server. Packaged installation and explicit prune
+behavior remain later work tracked in [PROJECT.md](../PROJECT.md).
 
 ## Build and verify the checkout
 
@@ -283,10 +284,17 @@ The current implementation uses one adjacent backup slot per existing file:
 | --- | --- |
 | Canonical configuration changed by `add` | The resolved canonical path above with `.bak` appended |
 | Any existing client target changed by `sync` | That platform's resolved target path above with `.bak` appended |
+| Any existing managed file changed by `restore` | The selected target path with `.bak` appended; after success it contains the exact target bytes from immediately before restore |
 
-Each changed write replaces the regular `.bak` with the bytes observed
-immediately before that write. A no-op leaves the backup untouched. If a longer
-history is important, copy the current file and its backup to a separate,
+Retention is exactly one adjacent generation per managed file. A successful
+changed `add`, `sync`, or existing-target `restore` replaces that slot with the
+exact target bytes observed immediately before the operation. There is no
+time-based expiration, age policy, or automatic multi-version history. A
+creation has no prior-file backup; recreating a missing target through
+`restore` preserves its existing backup unchanged. A no-op, validation refusal,
+failed mutation with successful compensation, or rolled-back `sync`
+transaction leaves the pre-operation retention state intact. If longer history
+is important, copy the current file and its backup to a separate,
 access-controlled location before making another change.
 
 `sync` is one five-target transaction. Claude Desktop is applied first, Cursor
@@ -351,15 +359,62 @@ because another changed write may replace the most useful `.bak` evidence.
 5. Run `sync --dry-run` after recovery; apply only when the new plan is
    understood.
 
-## Manual restoration from an adjacent backup
+## Restore one managed configuration from an adjacent backup
 
-There is no built-in restore command. The following `bash` procedure works on
-macOS and Linux and performs a guarded, same-directory replacement for an
-existing JSON target. It requires Python 3 for syntax and duplicate-key
-validation. Use it for the canonical file or one of the four JSON clients, not
-for Codex TOML. Set `target` to exactly one applicable path from the tables
-above. Keep the clients closed and first preserve both current files somewhere
-access-controlled if there is any uncertainty about which state to keep.
+Quit the affected client and preserve both files in access-controlled storage
+first when there is any uncertainty about which state is authoritative. Select
+one fixed global configuration and preview the operation:
+
+```bash
+./target/debug/mcp-sync restore cursor --dry-run
+```
+
+The accepted selections are:
+
+| Selection | Managed file |
+| --- | --- |
+| `canonical` | Canonical `config.json` at the resolved platform path |
+| `claude-desktop` | Global Claude Desktop JSON |
+| `cursor` | Global Cursor JSON |
+| `windsurf` | Global Windsurf legacy Cascade JSON |
+| `vscode` | Native VS Code default user-profile JSON |
+| `codex` | Global Codex TOML |
+
+Arbitrary paths, project files, named profiles, alternate products, and OAuth
+credential stores cannot be selected. Dry-run requires the adjacent `.bak` to
+be a regular file and validates its exact bytes with the same strict canonical,
+native JSON, or Codex TOML parser used elsewhere. It reports only the selected
+path and structural outcome; configuration and backup values remain redacted.
+
+Apply only after the preview is understood:
+
+```bash
+./target/debug/mcp-sync restore cursor
+```
+
+For an existing regular target whose bytes differ, guarded apply verifies that
+both files still match the preview, atomically publishes the backup bytes, and
+rotates the exact previous target into `.bak`. Running the command again can
+therefore undo a restore when the rotated bytes also form a valid document. If
+the target is missing, restore recreates it without consuming or rewriting the
+backup. Equal target and backup bytes are a no-op. A missing or invalid backup,
+symbolic link, directory, other non-regular path, permission failure, or
+concurrent change returns non-zero without silently overwriting either file.
+
+Restoring a client target without restoring canonical state normally produces
+an expected `sync --dry-run` update that would reapply canonical definitions.
+Restoring canonical state can similarly produce planned changes for multiple
+clients. Review that new plan before any subsequent `sync`.
+
+### Manual JSON fallback on macOS and Linux
+
+The built-in command is the supported cross-platform path. If the binary is
+temporarily unavailable, the following `bash` fallback performs a guarded,
+same-directory replacement for an existing JSON target on macOS or Linux. It
+requires Python 3 for syntax and duplicate-key validation and does not rotate
+the current target into `.bak`; preserve both files separately first. Use it
+for the canonical file or one of the four JSON clients, not for Codex TOML.
+Set `target` to exactly one applicable path from the tables above.
 
 ```bash
 (
@@ -455,9 +510,9 @@ difference with `./target/debug/mcp-sync sync --dry-run`.
 Restoring a target without restoring the canonical definition normally creates
 an expected update plan that would reapply the canonical state.
 
-### Restore Codex TOML
+### Manual Codex TOML fallback on macOS and Linux
 
-For `$HOME/.codex/config.toml`, use the following TOML-specific variant. It
+For `$HOME/.codex/config.toml`, use the following fallback variant. It
 requires Python 3.11 or newer for its standard-library `tomllib` validator. If
 that module is unavailable, stop and obtain an equivalent trusted TOML parser;
 do not skip validation.
@@ -534,9 +589,9 @@ promise:
   `sync` never execute server commands.
 - Target-only definitions are drift and are never deleted. There is no prune
   command.
-- Backups use one adjacent slot. There is no retention policy, backup history,
-  built-in restore workflow, or documented guarded Windows manual-restore
-  procedure yet.
+- Restore intentionally retains one adjacent generation rather than automatic
+  backup history. Copy target and backup bytes to separate access-controlled
+  storage when more than one previous state is required.
 - No GitHub Release, Homebrew, WinGet, or Cargo publication has been verified
   for this repository yet.
 

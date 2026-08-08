@@ -78,6 +78,7 @@ checked-in example is available at [examples/config.v1.json](examples/config.v1.
 - 🔄 **Multi-Client Sync:** Maps master configurations into each client's native format instantly.
 - 🩺 **STDIO Health Testing:** Dry-runs server binaries using JSON-RPC handshakes before writing configs.
 - 🛡️ **Atomic Writes & Backups:** Automatically creates `.bak` copies before modifying target files.
+- ♻️ **Validated Restore:** Previews and restores one managed file from its retained adjacent backup.
 - ⚡ **Zero Latency:** Operates purely as a configuration tool and gets out of the way during runtime.
 
 ## 📦 Installation
@@ -182,6 +183,30 @@ Targets that are already semantically current are not rewritten. Existing
 files receive recoverable `.bak` copies before atomic replacement, and if a
 later target fails, earlier target changes are rolled back and reported per
 target.
+
+### 6. Restore one retained configuration
+
+Preview and restore exactly one managed global file from its adjacent `.bak`:
+
+```bash
+mcp-sync restore cursor --dry-run
+mcp-sync restore cursor
+```
+
+The fixed selections are `canonical`, `claude-desktop`, `cursor`, `windsurf`,
+`vscode`, and `codex`; arbitrary paths and project or profile files are not
+accepted. The backup must be a regular file that passes the selected JSON or
+TOML parser. Restoring an existing target rotates its exact previous bytes into
+the same `.bak`, so another restore can undo the operation when those bytes are
+also valid. A missing target is recreated without consuming the backup, and an
+equal target and backup are a no-op.
+
+Retention is deliberately one adjacent generation per managed file, with no
+time-based expiration. Each successful changed `add`, `sync`, or
+existing-target `restore` keeps the bytes immediately preceding that operation;
+no-ops and failed or rolled-back operations preserve the prior slot. Copy both
+files to access-controlled storage before another change when longer history is
+required.
 
 ## 💻 Supported Clients
 

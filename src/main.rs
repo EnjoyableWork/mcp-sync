@@ -1,4 +1,4 @@
-use clap::{ArgAction, Args, Parser, Subcommand};
+use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use std::error::Error;
 use std::fmt;
 use std::process::ExitCode;
@@ -13,6 +13,7 @@ mod health;
 mod init;
 mod paths;
 mod reconciliation;
+mod restore;
 mod sync;
 mod vscode;
 mod windsurf;
@@ -35,6 +36,8 @@ enum Command {
     List,
     /// Test one canonical server through a bounded MCP STDIO initialize exchange.
     Test(TestCommand),
+    /// Restore one managed configuration from its validated adjacent backup.
+    Restore(RestoreCommand),
     /// Reconcile canonical servers into every supported target.
     Sync(SyncCommand),
 }
@@ -75,6 +78,41 @@ struct TestCommand {
     name: String,
 }
 
+#[derive(Args)]
+struct RestoreCommand {
+    /// Managed global configuration whose adjacent backup should be restored.
+    #[arg(value_enum)]
+    configuration: RestoreTargetArgument,
+
+    /// Validate and report the restore without changing the target or backup.
+    #[arg(long)]
+    dry_run: bool,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum RestoreTargetArgument {
+    Canonical,
+    ClaudeDesktop,
+    Cursor,
+    Windsurf,
+    #[value(name = "vscode", alias = "vs-code")]
+    VsCode,
+    Codex,
+}
+
+impl From<RestoreTargetArgument> for restore::RestoreTarget {
+    fn from(target: RestoreTargetArgument) -> Self {
+        match target {
+            RestoreTargetArgument::Canonical => Self::Canonical,
+            RestoreTargetArgument::ClaudeDesktop => Self::ClaudeDesktop,
+            RestoreTargetArgument::Cursor => Self::Cursor,
+            RestoreTargetArgument::Windsurf => Self::Windsurf,
+            RestoreTargetArgument::VsCode => Self::VsCode,
+            RestoreTargetArgument::Codex => Self::Codex,
+        }
+    }
+}
+
 fn run(command: Command) -> Result<CommandReport, ApplicationError> {
     let paths = paths::ConfigurationPaths::resolve(&paths::ProcessEnvironment)
         .map_err(ApplicationError::ResolvePaths)?;
@@ -106,6 +144,21 @@ fn run(command: Command) -> Result<CommandReport, ApplicationError> {
         )
         .map(CommandReport::Test)
         .map_err(ApplicationError::Health),
+        Command::Restore(command) => {
+            let plan = restore::plan_restore(
+                &paths,
+                &filesystem::OsFileSystem,
+                command.configuration.into(),
+            )
+            .map_err(ApplicationError::Restore)?;
+            if command.dry_run {
+                Ok(CommandReport::Restore(restore::dry_run(&plan)))
+            } else {
+                restore::apply_restore(&plan, &filesystem::OsFileSystem)
+                    .map(CommandReport::Restore)
+                    .map_err(ApplicationError::Restore)
+            }
+        }
         Command::Sync(command) => {
             let plan = sync::plan_sync(&paths, &filesystem::OsFileSystem)
                 .map_err(ApplicationError::Sync)?;
@@ -125,6 +178,7 @@ enum CommandReport {
     Add(catalog::AddReport),
     List(catalog::ListReport),
     Test(health::HealthReport),
+    Restore(restore::RestoreReport),
     Sync(sync::SyncReport),
 }
 
@@ -135,6 +189,7 @@ impl fmt::Display for CommandReport {
             Self::Add(report) => report.fmt(formatter),
             Self::List(report) => report.fmt(formatter),
             Self::Test(report) => report.fmt(formatter),
+            Self::Restore(report) => report.fmt(formatter),
             Self::Sync(report) => report.fmt(formatter),
         }
     }
@@ -159,6 +214,7 @@ enum ApplicationError {
     Init(init::InitError),
     Catalog(catalog::CatalogError),
     Health(health::HealthError),
+    Restore(restore::RestoreError),
     Sync(sync::SyncError),
 }
 
@@ -169,6 +225,7 @@ impl fmt::Display for ApplicationError {
             Self::Init(error) => error.fmt(formatter),
             Self::Catalog(error) => error.fmt(formatter),
             Self::Health(error) => error.fmt(formatter),
+            Self::Restore(error) => error.fmt(formatter),
             Self::Sync(error) => error.fmt(formatter),
         }
     }
@@ -181,6 +238,7 @@ impl Error for ApplicationError {
             Self::Init(error) => Some(error),
             Self::Catalog(error) => Some(error),
             Self::Health(error) => Some(error),
+            Self::Restore(error) => Some(error),
             Self::Sync(error) => Some(error),
         }
     }

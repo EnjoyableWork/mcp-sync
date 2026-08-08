@@ -81,6 +81,8 @@ fn a_copied_portable_binary_uses_windows_profile_roots_and_safe_replacement() {
         .assert()
         .success()
         .stderr("");
+    let canonical_after_add =
+        fs::read(&canonical).expect("the updated canonical configuration should be readable");
     assert_file_matches(
         &backup_path(&canonical),
         &canonical_before_add,
@@ -92,6 +94,8 @@ fn a_copied_portable_binary_uses_windows_profile_roots_and_safe_replacement() {
         .assert()
         .success()
         .stderr("");
+    let claude_after_sync = fs::read(home.claude_desktop_configuration())
+        .expect("the updated Claude configuration should be readable");
 
     assert_file_matches(
         &backup_path(&home.claude_desktop_configuration()),
@@ -113,6 +117,83 @@ fn a_copied_portable_binary_uses_windows_profile_roots_and_safe_replacement() {
             "create-only target publication should not invent a backup"
         );
     }
+
+    portable_command(&home, &portable_executable)
+        .args(["restore", "canonical", "--dry-run"])
+        .assert()
+        .success()
+        .stderr("");
+    assert_file_matches(
+        &canonical,
+        &canonical_after_add,
+        "Windows restore dry-run should preserve canonical target bytes",
+    );
+    assert_file_matches(
+        &backup_path(&canonical),
+        &canonical_before_add,
+        "Windows restore dry-run should preserve canonical backup bytes",
+    );
+    portable_command(&home, &portable_executable)
+        .args(["restore", "canonical"])
+        .assert()
+        .success()
+        .stderr("");
+    assert_file_matches(
+        &canonical,
+        &canonical_before_add,
+        "Windows restore should publish exact retained canonical bytes",
+    );
+    assert_file_matches(
+        &backup_path(&canonical),
+        &canonical_after_add,
+        "Windows restore should rotate the previous canonical target into backup",
+    );
+    portable_command(&home, &portable_executable)
+        .args(["restore", "canonical"])
+        .assert()
+        .success()
+        .stderr("");
+    assert_file_matches(
+        &canonical,
+        &canonical_after_add,
+        "a second Windows restore should recover the newer canonical bytes",
+    );
+    assert_file_matches(
+        &backup_path(&canonical),
+        &canonical_before_add,
+        "a second Windows restore should retain the older canonical bytes",
+    );
+
+    portable_command(&home, &portable_executable)
+        .args(["restore", "claude-desktop"])
+        .assert()
+        .success()
+        .stderr("");
+    assert_file_matches(
+        &home.claude_desktop_configuration(),
+        original_claude,
+        "Windows restore should publish exact retained Claude bytes",
+    );
+    assert_file_matches(
+        &backup_path(&home.claude_desktop_configuration()),
+        &claude_after_sync,
+        "Windows restore should rotate the previous Claude target into backup",
+    );
+    portable_command(&home, &portable_executable)
+        .args(["restore", "claude-desktop"])
+        .assert()
+        .success()
+        .stderr("");
+    assert_file_matches(
+        &home.claude_desktop_configuration(),
+        &claude_after_sync,
+        "a second Windows restore should recover the newer Claude bytes",
+    );
+    assert_file_matches(
+        &backup_path(&home.claude_desktop_configuration()),
+        original_claude,
+        "a second Windows restore should retain the older Claude bytes",
+    );
 
     portable_command(&home, &portable_executable)
         .args(["sync", "--dry-run"])
