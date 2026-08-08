@@ -310,20 +310,26 @@ integrity and redaction as product requirements.
 - Do not add an npm package, Node.js wrapper, or JavaScript distribution path
   without a superseding accepted decision. Target GitHub Releases, the
   organization Homebrew tap, WinGet, and the distinctly named Cargo package.
-- `DEC-024` fixes the first public release at six separate 64-bit targets:
-  ARM64 and x64 for macOS, GNU/Linux, and Windows MSVC. Do not add 32-bit,
-  musl/Alpine, or universal-macOS artifacts without native CI, install evidence,
-  and a later accepted support decision.
+- `DEC-036` fixes the zero-cost `v0.1.0` market-validation release at native
+  GNU/Linux ARM64/x64 GitHub artifacts plus source-based Cargo installation on
+  supported platforms and a source-building Homebrew formula on macOS/Linux.
+  It publishes no project-issued macOS or Windows binary and no WinGet package.
+  `DEC-024`'s separate ARM64/x64 macOS, GNU/Linux, and Windows MSVC matrix is
+  retained for funding-dependent `SIDE-006`. Do not add 32-bit, musl/Alpine, or
+  universal-macOS artifacts without native CI, install evidence, and a later
+  accepted support decision.
 - Treat GitHub Releases as the canonical immutable channel. Stable publication
   requires the complete SHA-256 manifest, target-specific SPDX SBOMs, build
-  attestations, and verified native smoke results before Homebrew, WinGet, or
-  Cargo is updated to the same version. Never move a published tag or replace
-  immutable assets; issue a new version.
+  attestations, and verified native smoke results for every artifact represented
+  by that release before its Cargo, Homebrew, or WinGet channels are updated to
+  the same version. Never move a published tag or replace immutable assets;
+  issue a new version.
 - Stable macOS artifacts require Developer ID Application signing, hardened
   runtime, secure timestamping, and accepted notarization. Stable Windows
   executables require timestamped Public Trust Authenticode signing. Missing
-  signing credentials block `MCP-021`; do not silently publish unsigned
-  advertised artifacts or weaken checks for release convenience.
+  signing credentials block funded `SIDE-006`, not the source-based `MCP-028`
+  and `MCP-029` path; do not silently publish unsigned advertised artifacts or
+  weaken checks for release convenience.
 - Preserve the accepted public identities: GitHub `EnjoyableWork/mcp-sync`,
   Cargo `enjoyable-mcp-sync`, Homebrew `EnjoyableWork/tap/mcp-sync`, WinGet
   `EnjoyableWork.mcp-sync`, executable `mcp-sync`, and macOS signing identifier

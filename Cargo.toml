@@ -12,10 +12,12 @@ categories = ["command-line-utilities", "config"]
 publish = ["crates-io"]
 include = [
     "/.github/workflows/release*.yml",
+    "/.github/workflows/market-release*.yml",
     "/src/**",
     "/tests/**",
     "/examples/**",
     "/scripts/**",
+    "/docs/market-release.md",
     "/docs/release.md",
     "/docs/releases/**",
     "/Cargo.toml",
