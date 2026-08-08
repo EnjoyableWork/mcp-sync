@@ -57,10 +57,12 @@ The implemented foundation is one Rust 2024 binary crate with a package named
 `enjoyable-mcp-sync` and an installed binary named `mcp-sync`. The CLI now
 supports help, version, create-only `init`, complete-definition canonical
 `add`, structurally redacted `list`, bounded named-server `test`, and
-five-target `sync --dry-run` / `sync` journeys. It also contains the strict
-canonical JSON v1 model, an injected macOS/GNU/Linux/Windows configuration-path
-resolver, a replaceable filesystem boundary with
-read, no-clobber creation, guarded replacement, and reversible transaction
+five-target `sync --dry-run` / `sync` journeys plus fixed-selection
+`restore <configuration> --dry-run` / `restore <configuration>`. It also
+contains the strict canonical JSON v1 model, an injected
+macOS/GNU/Linux/Windows configuration-path resolver, a replaceable filesystem
+boundary with read, regular-file restore inspection, no-clobber creation,
+guarded replacement, one-generation backup restore, and reversible transaction
 ports, and a pure deterministic reconciliation engine with structurally
 redacted plans. Fixture-backed global Claude Desktop, Cursor, Windsurf, and VS
 Code adapters discover and parse native JSON on all three platforms, while the
@@ -95,7 +97,14 @@ five-target plan without mutation; `sync` applies those exact bytes with no-op
 detection, recoverable backups, atomic replacement, per-target outcomes, and
 reverse-order rollback after a later failure. It preserves target-only and
 unowned native data, reports unmanaged native entries without exposing their
-values, and never touches project-level Cursor, VS Code, or Codex files. Only
+values, and never touches project-level Cursor, VS Code, or Codex files.
+`restore` accepts only canonical, Claude Desktop, Cursor, Windsurf, VS Code, or
+Codex global selections. It validates the adjacent regular `.bak` with the
+owning parser before mutation, treats equal bytes as a no-op, recreates a
+missing target without consuming the backup, and atomically swaps an existing
+target so its immediately preceding exact bytes become the one retained
+generation. Missing, malformed, symbolic-link, non-regular, stale, or
+concurrently changed inputs fail closed. Only
 `test` starts the selected configured process. It performs a five-second,
 1-MiB-bounded newline-delimited MCP `initialize` exchange, validates the
 JSON-RPC envelope and negotiated handshake version, sends
@@ -103,25 +112,26 @@ JSON-RPC envelope and negotiated handshake version, sends
 child within the shutdown bound. Its process environment contains only
 canonical entries plus an inherited `PATH` when canonical state omits one;
 raw stdout, stderr, commands, arguments, environment values, and server error
-data never reach diagnostics. `init` and `sync` remain configuration-only. A
+data never reach diagnostics. `init`, `sync`, and `restore` remain
+configuration-only. A
 combined built-binary synthetic-home suite proves the complete configuration
 flow, deterministic five-client import, health success and failure behavior,
 redaction, idempotence, native preservation, non-zero failures, and
-five-target transaction rollback.
+five-target transaction rollback plus exact six-file restore and retention.
 Controlled current-stable Cursor and Claude Desktop smokes on macOS both accept
 the rendered global definitions and complete MCP initialization; the Claude
 journey uses a no-clobber backup and verified exact restore around its temporary
 native file. The source-checkout usage and recovery guide documents the current
 workflow, redaction boundary, bounded health behavior, one-slot backups,
-transaction recovery, guarded manual restoration, and current limitations
-without turning the README into a progress report. All five Linux targets have
+transaction recovery, validated built-in restoration, manual fallbacks, and
+current limitations without turning the README into a progress report. All five Linux targets have
 deterministic path, fixture, built-binary behavior, and native x64/ARM64
 whole-suite CI coverage under `MCP-018`; there is no Linux current-client smoke
 claim. All five Windows paths, the copied-binary journey, native PowerShell
 health fixtures, and complete native MSVC x64/ARM64 whole-suite CI pass under
 `MCP-019`. There is no Windows current-client smoke claim. Windsurf, VS Code,
 and Codex have no current-client smoke claim on any implemented platform.
-Restore UX and distribution remain later-ticket scope.
+Distribution remains later-ticket scope.
 Use the existing Clap command tree as CLI behavior grows; do not introduce a
 second parser.
 
@@ -276,10 +286,11 @@ integrity and redaction as product requirements.
   partial, unrecovered mutation.
 - Inspect and test behavior for missing files, malformed JSON or TOML,
   permissions, symlinks, non-regular files, interrupted writes, backup
-  collisions, and concurrent modification before claiming safe sync.
-- `init` and `sync` must not execute configured MCP server commands. A health
-  command is an explicit execution boundary and must use timeouts, terminate
-  child processes, and avoid inheriting unnecessary input or secrets.
+  collisions, and concurrent modification before claiming safe sync or restore.
+- `init`, `sync`, and `restore` must not execute configured MCP server
+  commands. A health command is an explicit execution boundary and must use
+  timeouts, terminate child processes, and avoid inheriting unnecessary input
+  or secrets.
 
 ## Dependencies and configuration format
 

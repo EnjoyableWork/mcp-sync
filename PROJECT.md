@@ -7,13 +7,13 @@ lightweight enough to use before a hosted tracker is justified.
 | Control | Current state |
 | --- | --- |
 | Document state | Active |
-| Product state | The source-checkout macOS, GNU/Linux, and Windows implementation reconciles global Claude Desktop, Cursor, Windsurf legacy Cascade, native VS Code default user-profile, and global Codex host configuration, and exposes one bounded named-server STDIO initialize health boundary. Deterministic fixtures and native x64/ARM64 GNU/Linux and Windows MSVC CI prove the five-target configuration behavior without weakening its safety boundaries. Claude Desktop and Cursor retain macOS current-client sync smoke evidence, no Linux or Windows target has a current-client smoke claim, and the repository remains pre-release |
+| Product state | The source-checkout macOS, GNU/Linux, and Windows implementation reconciles global Claude Desktop, Cursor, Windsurf legacy Cascade, native VS Code default user-profile, and global Codex host configuration, exposes one bounded named-server STDIO initialize health boundary, and provides parser-validated restore with one-generation adjacent backup retention for canonical state plus all five targets. Deterministic fixtures and native x64/ARM64 GNU/Linux and Windows MSVC CI prove the pre-restore five-target configuration behavior; the restore journey passes locally on ARM64 and Intel macOS, resolves every supported platform path in tests, and compiles every test surface for all six supported architecture targets. Claude Desktop and Cursor retain macOS current-client sync smoke evidence, no Linux or Windows target has a current-client smoke claim, and the repository remains pre-release |
 | Current milestone | M2 — City, in progress |
-| Overall status | `MCP-019` is `Done`; `MCP-020` is the sole `Ready` main-story ticket, `MCP-021` remains `Proposed`, and `SIDE-001` through `SIDE-005` are proposed but inactive |
-| Current focus | Intentionally activate `MCP-020` under its exact goal before beginning restore and backup-retention UX; keep release publication and side quests dormant |
+| Overall status | `MCP-020` is `Done`; `MCP-021` is the sole `Ready` main-story ticket, no main-story ticket is active, and `SIDE-001` through `SIDE-005` are proposed but inactive |
+| Current focus | Intentionally activate `MCP-021` only after its exact Goal-mode objective and owner are set; keep release publication and side quests dormant until then |
 | Milestone target | Unscheduled; set after an owner and delivery capacity are known |
 | Last reviewed | 2026-08-08 |
-| Next review trigger | Activation, completion, or blocking of `MCP-020`; intentional activation of a side quest; or any change to the supported-client or repository-protection boundary |
+| Next review trigger | Activation, completion, or blocking of `MCP-021`; intentional activation of a side quest; or any change to the supported-client or repository-protection boundary |
 
 ## Document roles
 
@@ -929,8 +929,9 @@ starting restore UX:
   the platform-aware synthetic-home harness keep every read and write beneath
   disposable `%LOCALAPPDATA%`, `%APPDATA%`, and `%USERPROFILE%` roots. A
   Windows-only copied-executable journey runs `init`, guarded canonical `add`,
-  five-target `sync`, and repeat dry-run away from the checkout while checking
-  exact backups and target placement. Native PowerShell fixtures also exercise
+  five-target `sync`, repeat dry-run, and the `MCP-020` canonical plus Claude
+  restore rotation away from the checkout while checking exact backups and
+  target placement. Native PowerShell fixtures also exercise
   bounded health success, timeout, malformed output, redaction, and direct-child
   cleanup rather than compiling those operating-system tests out.
 - The [CI quality matrix](.github/workflows/ci.yml) uses `windows-2025` x64 and
@@ -943,6 +944,46 @@ starting restore UX:
   warning-free Clippy, formatting, and dependency policy under both event
   paths. This is source-checkout behavior, not signed packaging, WinGet
   publication, or a Windows current-client smoke claim.
+
+### Implemented restore and retention boundary
+
+`MCP-020` adds one explicit recovery operation without broadening adapter
+ownership or release scope:
+
+- `mcp-sync restore <configuration> [--dry-run]` accepts only `canonical`,
+  `claude-desktop`, `cursor`, `windsurf`, `vscode`, or `codex`. Each selection
+  resolves through the same injected platform paths as normal discovery;
+  arbitrary paths, project layers, named profiles, alternate products, and
+  credential stores cannot be selected.
+- Planning reads only regular target and backup files, allows the target to be
+  missing or malformed, requires the adjacent `.bak`, and validates the exact
+  backup bytes through the selected strict canonical JSON, native JSON, or
+  Codex TOML parser. Plans, reports, debug output, and errors retain paths and
+  structural state without process or native values.
+- Apply consumes the validated exact-byte pair. Different existing bytes are
+  swapped through synchronized same-directory temporary files, leaving the
+  prior target as the new backup; a missing target is recreated with
+  no-clobber publication while the backup remains unchanged; equal bytes are a
+  no-op. Target and backup staleness, symbolic links, non-regular paths,
+  permissions, invalid backups, interrupted publication, and compensation are
+  fail-closed and covered by focused tests.
+- Retention is exactly the immediately preceding generation with no automatic
+  expiration. Successful changed `add`, `sync`, and existing-target `restore`
+  operations rotate that slot. Creations have no prior-file backup; missing-
+  target restore preserves its retained copy; and no-ops, refusals, recovered
+  failures, and transaction rollback preserve the pre-operation slot. Longer
+  history remains an explicit external archival responsibility.
+- The [restore use case and four platform/parser tests](src/restore.rs),
+  [guarded filesystem swap, recreation, stale-input, interruption, and
+  file-type tests](src/filesystem.rs), [six built-binary exact-byte, malformed-
+  current, missing-target, no-op, redaction, permission, and symlink journeys](tests/restore.rs),
+  [fixed CLI contract](src/main.rs), and extended [portable Windows journey](tests/windows.rs)
+  provide durable evidence. The complete 255-test suite passes on native ARM64
+  macOS and under Intel macOS emulation; all test surfaces compile warning-free
+  for both macOS, GNU/Linux, and Windows MSVC architectures. The existing
+  native Linux and Windows CI matrix will exercise the same journeys on its
+  next repository run; this ticket makes no new current-client or release
+  claim.
 
 ### Proven synthetic M1 journey and failure matrix
 
@@ -1025,10 +1066,10 @@ It never prints a native configuration or copies authentication state:
 The [M1 usage and recovery guide](docs/m1-usage-and-recovery.md) publishes the
 current source-checkout workflow, exact managed paths, redaction boundary,
 plan/apply sequence, one-slot backup behavior, automatic transaction recovery,
-failure playbook, and guarded manual JSON and TOML restore procedures. The
-documented JSON restore commands passed against disposable files; the guide
-now adds a separately validated TOML procedure for Codex. They are guidance
-for the absence of M1 restore UX, not a hidden `restore` implementation.
+failure playbook, built-in cross-platform restore journey, explicit retention
+rules, and guarded manual JSON and TOML fallbacks. `MCP-020` replaces the prior
+manual-only recovery gap while retaining those procedures for a temporarily
+unavailable binary.
 
 The README remains the product destination under `DEC-009`. Its corresponding
 M1 surfaces were audited without adding a current-status banner or weakening
@@ -1039,13 +1080,13 @@ its finished-product story:
 | Canonical JSON v1 | Matches the implemented strict local-STDIO schema and deterministic serialization contract |
 | `init`, complete-definition `add`, and redacted `list` | Match the delivered CLI, validation, import, no-clobber, and structural-output behavior |
 | `sync --dry-run`, `sync`, backups, rollback, and no-ops | Match the delivered five-target macOS, Linux, and Windows plan/apply transaction; Claude Desktop and Cursor additionally retain macOS current-client verification |
-| `mcp-sync test` and STDIO health testing | Matches the explicit named-server five-second initialize boundary, structural protocol validation and redaction, and guaranteed direct-child cleanup; `init` and `sync` remain configuration-only |
+| `mcp-sync test` and STDIO health testing | Matches the explicit named-server five-second initialize boundary, structural protocol validation and redaction, and guaranteed direct-child cleanup; `init`, `sync`, and `restore` remain configuration-only |
 | Windsurf | Delivered for the documented global legacy Cascade JSON contract with fixture and built-binary evidence; no Devin Local or current-client smoke claim |
 | VS Code | Delivered for the native default user-profile `mcp.json` `servers` contract with fixture and built-binary evidence; project/profile/remote/Insiders/portable/extension-owned/Agent Host surfaces remain excluded, and there is no current-client smoke claim |
 | Codex | Delivered for global `~/.codex/config.toml` with TOML-native fixture and built-binary evidence; project layers, remote/OAuth entries, credential stores, and unsupported fields remain outside ownership, and there is no current-client smoke claim |
 | Linux | Implemented for all five global targets with deterministic path and built-binary behavior coverage plus a successful native x64/ARM64 whole-suite CI run; there is no Linux current-client smoke claim |
 | Windows | Implemented for all five global targets with deterministic path, replacement, rollback, copied-binary, and PowerShell health fixtures plus successful native MSVC x64/ARM64 whole-suite CI; there is no Windows current-client smoke claim |
-| Explicit restore and backup retention | North-star UX only; sequenced to `MCP-020`, while the M1 guide records safe manual recovery and current one-slot behavior |
+| Explicit restore and backup retention | Matches the delivered six-selection parser-validated dry-run/apply journey, exact existing-target swap, missing-target recreation, no-op behavior, and documented one-generation retention contract; arbitrary paths and unmanaged configuration layers remain excluded |
 | GitHub Releases, Homebrew, WinGet, and Cargo | North-star distribution only; verification and publication remain gated by `MCP-021` |
 | Source-checkout contributor commands | Match the stable-toolchain locked build, quality script, and dependency-policy checks |
 
@@ -1068,7 +1109,8 @@ promise.
 | D-07 | Complete M1 CLI journey and user guide | M1 | Codex | 2026-08-07 | Done | The combined [golden built-binary journey and failure matrix](tests/golden.rs), command-specific journeys, audited [README contract](README.md), refreshed [controlled current-stable two-client smoke](#controlled-current-client-evidence), and tested [M1 usage and recovery guide](docs/m1-usage-and-recovery.md) complete the M1 journey |
 | D-08 | Five-client, cross-platform support matrix | M2 | Codex | 2026-08-08 | Done | All five global macOS, GNU/Linux, and Windows targets pass deterministic path, fixture, built-binary import/sync, preservation, and rollback coverage: four JSON adapters plus the TOML-native Codex adapter. Native x64/ARM64 whole-suite CI proves GNU/Linux through the `MCP-018` [push](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240607296) and [pull-request](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240608728) runs, and Windows MSVC through the `MCP-019` [push](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31244563467) and [pull-request](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31244565101) runs. Claude Desktop and Cursor retain macOS current-client evidence; no Linux or Windows client has a current-client smoke claim, and Windsurf, native default-profile VS Code, and Codex have none on any implemented platform. Release packaging remains sequenced to `MCP-021` |
 | D-09 | Bounded STDIO health testing | M2 | Codex | 2026-08-07 | Done | [Bounded initialize use case, replaceable process boundary, structural protocol parser, and 11 focused tests](src/health.rs), [five synthetic-home built-binary success and failure journeys](tests/health.rs), [Clap wiring](src/main.rs), and [source-checkout health contract](docs/m1-usage-and-recovery.md) |
-| D-10 | Accessible release channels and recovery runbook | M2 | Unassigned | Unscheduled | Proposed | Six signed or platform-appropriate binaries, protected `v*` tags and release environment, immutable GitHub Release, SHA-256 manifest, SPDX SBOMs, attestations, Homebrew, WinGet, Cargo, per-target install smoke tests, and restore exercise |
+| D-10 | Explicit restore and one-generation backup retention | M2 | Codex | 2026-08-08 | Done | [Fixed restore CLI and validated use case](src/restore.rs), [exact-byte guarded filesystem boundary](src/filesystem.rs), [six isolated built-binary recovery journeys](tests/restore.rs), [portable Windows recovery journey](tests/windows.rs), [public command contract](README.md), [cross-platform usage and retention contract](docs/m1-usage-and-recovery.md), and `DEC-034`; format, warning-free Clippy, all 255 synthetic-home tests, `cargo deny`, ARM64 and Intel macOS suites, all six target compilation surfaces, and documentation, redaction, and process-boundary checks pass |
+| D-11 | Accessible release channels and installed recovery exercise | M2 | Unassigned | Unscheduled | Proposed | Six signed or platform-appropriate binaries, protected `v*` tags and release environment, immutable GitHub Release, SHA-256 manifest, SPDX SBOMs, attestations, Homebrew, WinGet, Cargo, per-target install smoke tests, and restore exercise through the packaged executable |
 
 ## Ticket board
 
@@ -1101,8 +1143,8 @@ predecessor, so only the first incomplete row can become `Ready`.
 | MCP-017 | Add bounded MCP STDIO initialize health testing | M2 | P1 | Codex | Done | `MCP-016` | [Bounded initialize orchestration, replaceable operating-system process boundary, duplicate-safe protocol validation, typed redacted failures, and 11 focused tests](src/health.rs), [five built-binary handshake, timeout, malformed-output, server-error, spawn-failure, redaction, and direct-child reap journeys](tests/health.rs), [single-command Clap wiring](src/main.rs), [public contract](README.md), [operational contract](docs/m1-usage-and-recovery.md), and `DEC-029`. The response is bounded to five seconds and 1 MiB, shutdown to 500 milliseconds before forced reap, and only canonical environment plus a fallback `PATH` reaches the child. Static process-boundary inspection confirms only `test` can spawn; the existing built-binary `init` and `sync` sentinels remain green. Stable-toolchain locked build, synthetic-home format, warning-free Clippy, all 221 tests, `cargo deny`, help, protocol, process cleanup, redaction, README-alignment, and documentation checks pass; no stateless `2026-07-28`, remote transport, later operation, current-server smoke, or platform-expansion claim is made |
 | MCP-018 | Add Linux path and behavior support | M2 | P1 | Codex | Done | `MCP-017` | The [platform-neutral resolver and eight path tests](src/paths.rs), exact Linux path fixtures in all five target adapters, distinct-XDG [built-binary harness](tests/support/mod.rs), request-sequenced [bounded-response regression](src/health.rs), and [native x64/ARM64 CI matrix](.github/workflows/ci.yml) prove the complete source-checkout configuration and bounded-health behavior on GNU/Linux. Both the [push](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240607296) and [pull-request](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240608728) event paths pass exact-host x64 and ARM64 jobs with all 228 tests, formatting, warning-free Clippy, and dependency policy. The focused regression also passed 100 consecutive local runs. Local macOS and native ARM64 gates, portable JSON/TOML recovery exercises, redaction, documentation, and diff checks pass. This ticket excludes Windows evidence, which is recorded under `MCP-019`, plus musl/Alpine, release packaging, and a Linux current-client smoke claim |
 | MCP-019 | Add Windows path and replacement behavior support | M2 | P1 | Codex | Done | `MCP-018` | The [platform resolver](src/paths.rs), exact Windows fixtures in all five target adapters, [synthetic-home harness](tests/support/mod.rs), [copied-binary Windows journey](tests/windows.rs), [PowerShell quality gate](scripts/check.ps1), and unchanged [filesystem](src/filesystem.rs) / [five-target transaction](src/sync.rs) regressions prove deterministic paths, no-clobber creation, exact backups, guarded replacement, interrupted-write compensation, rollback of created and replaced targets, pre-existing-backup restoration, reverse-order later-target recovery, redaction, and bounded PowerShell health cleanup. Both the native MSVC x64/ARM64 [push](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31244563467) and [pull-request](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31244565101) event paths pass exact-host checks, the complete Windows-enabled suite, formatting, warning-free Clippy, and dependency policy. The local 238-test gate, `cargo deny`, both MSVC cross-target Clippy checks, fixture and documentation checks also pass. Restore UX, signed packaging, WinGet, and a Windows current-client smoke remain explicitly unclaimed |
-| MCP-020 | Add explicit restore and backup-retention UX | M2 | P1 | Unassigned | Ready | `MCP-019` | Restore journey and retention rules documented and tested |
-| MCP-021 | Publish accessible, provenance-linked release channels | M2 | P1 | Unassigned | Proposed | `MCP-020` | `DEC-024` and `DEC-031` pass in full: an active `v*` tag ruleset and protected least-privilege release environment secure publication; all six artifacts build and smoke-test natively; macOS and Windows trust checks pass; the immutable release contains checksums, per-target SPDX SBOMs, and attestations; and the exact same `v0.1.0` installs through GitHub Releases, Homebrew, WinGet, and Cargo under the accepted identifiers |
+| MCP-020 | Add explicit restore and backup-retention UX | M2 | P1 | Codex | Done | `MCP-019` | [Fixed-selection restore planning and application](src/restore.rs), [regular-file guarded swap, recreation, compensation, and focused failure tests](src/filesystem.rs), [Clap boundary tests](tests/cli.rs), [six isolated built-binary recovery journeys](tests/restore.rs), and the extended [portable Windows journey](tests/windows.rs) prove non-mutating dry runs, exact reversible replacement, missing-target recreation without backup consumption, no-ops, malformed-current recovery, fail-closed invalid, missing, unreadable, symbolic-link, non-regular, stale, and concurrently changed inputs, parser coverage for canonical state plus all five clients, structural redaction, and fixed global path resolution on macOS, GNU/Linux, and Windows. The [README](README.md), [operational guide](docs/m1-usage-and-recovery.md), and `DEC-034` document one adjacent generation with no expiry and external archival for longer history. Format, warning-free Clippy, all 255 tests through a synthetic home, `cargo deny`, native ARM64 plus Intel macOS suites, warning-free compilation of every test surface for all six supported targets, relative-link and structure checks, and static process-boundary inspection pass; no release channel or current-client smoke claim was added |
+| MCP-021 | Publish accessible, provenance-linked release channels | M2 | P1 | Unassigned | Ready | `MCP-020` | `DEC-024` and `DEC-031` pass in full: an active `v*` tag ruleset and protected least-privilege release environment secure publication; all six artifacts build and smoke-test natively; macOS and Windows trust checks pass; the immutable release contains checksums, per-target SPDX SBOMs, and attestations; and the exact same `v0.1.0` installs through GitHub Releases, Homebrew, WinGet, and Cargo under the accepted identifiers |
 
 ### Testing tool introduction plan
 
@@ -1224,15 +1266,14 @@ is active, ready, or a dependency of the M2 main story.
 
 ### Immediate focus
 
-1. Treat `MCP-019` as complete at the Windows source-checkout boundary recorded
-   above; do not expand that evidence into packaging, WinGet, restore UX, or a
-   current-client smoke claim.
-2. Keep `MCP-020` as the sole `Ready` main-story successor until an owner
-   intentionally starts its exact goal; no main-story ticket is currently in
-   progress.
-3. When `MCP-020` starts, define and test explicit restore behavior and backup
-   retention without weakening the exact-byte recovery guarantees already
-   proven on macOS, GNU/Linux, and Windows. Keep `MCP-021` `Proposed`.
+1. Treat `MCP-020` as complete at `DEC-034`'s validated, exact-byte restore and
+   one-generation retention boundary.
+2. Keep `MCP-021` as the sole `Ready` main-story ticket until an owner
+   intentionally starts it under its exact Goal-mode objective; no main-story
+   ticket is currently active.
+3. When `MCP-021` starts, verify signing authority, tag and environment
+   protection, registry identities, and native six-target capacity before
+   creating or publishing release artifacts or package metadata.
 4. Keep `SIDE-001` through `SIDE-005` proposed and non-gating until one is
    intentionally assigned. If a side-quest outcome becomes necessary for a
    release or safety gate, promote it or fold it into the owning main-story
@@ -1275,22 +1316,25 @@ is active, ready, or a dependency of the M2 main story.
 | DEC-031 | Protect stable release tags and publication credentials as part of `MCP-021` | Accepted | 2026-08-08 | Release immutability begins only after publication, so `MCP-021` must first activate a `v*` tag ruleset that restricts creation to the authorized release path and prevents update or deletion outside an explicit emergency bypass. Publication uses a protected release environment with tag deployment restrictions and least-privilege credentials, preferring OIDC or trusted publishing where supported. This is release-gating main-story scope rather than a side quest; an interactive administration PAT is never stored or reused as a release credential. |
 | DEC-032 | Give every classified side quest a canonical Goal-mode objective | Accepted | 2026-08-08 | A side-quest objective provides the same persistent scope and evidence contract as a main-story objective without changing eligibility, independence, priority, or the one-side-quest WIP cap. One thread still carries only one unfinished goal, so concurrent main-story and side-quest work uses separate threads; completing a side quest activates no successor. |
 | DEC-033 | Resolve Windows user paths through standard profile variables and require native MSVC x64/ARM64 evidence | Accepted | 2026-08-08 | Windows requires non-empty absolute, traversal-free `%USERPROFILE%`, `%LOCALAPPDATA%`, and `%APPDATA%`: home-relative Cursor, Windsurf, and Codex files remain beneath the profile; the machine-specific canonical configuration lives beneath local application data; and Claude Desktop plus VS Code use roaming application data according to their documented Windows contracts. The existing `tempfile` same-directory persistence boundary remains the maintained atomic-replacement-equivalent instead of introducing an unreviewed platform primitive, but native tests must prove overwrite, exact backup, compensation, and reverse-order rollback on both `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`. [GitHub's hosted-runner contract](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) supplies `windows-2025` x64 and public-preview `windows-11-arm` ARM64 runners; preview availability is therefore an explicit CI dependency, not a release-support claim. |
+| DEC-034 | Retain one adjacent backup generation and make restore a validated reversible operation | Accepted | 2026-08-08 | `mcp-sync restore <configuration>` selects only canonical, Claude Desktop, Cursor, Windsurf, VS Code, or Codex global paths and supports a non-mutating `--dry-run`. The adjacent `.bak` must be a regular file whose exact bytes pass the selected configuration parser before apply. An existing regular target is atomically replaced while its immediately preceding bytes become the new `.bak`; a missing target is created without consuming or rewriting the backup. Equal target and backup bytes are a no-op. Missing, invalid, symbolic-link, non-regular, stale, or concurrently changed inputs fail closed without exposing contents. Successful `add`, `sync`, and existing-target `restore` replacements retain exactly the immediately preceding generation with no time-based expiration; creations have no prior-file backup, no-ops and rolled-back or refused operations preserve prior retention state, and longer history remains an explicit external archival responsibility. |
 
 ### Open decisions
 
-`OPEN-07` is resolved by `DEC-028`. No open decision currently blocks
-`MCP-019`. The pull-request approval threshold, allowed merge methods, and
-signed-commit enforcement choice remain scoped to `SIDE-001`; organization
-continuity choices remain scoped to `SIDE-005`. Neither blocks `MCP-019`.
+`OPEN-07` is resolved by `DEC-028`. No open product decision currently blocks
+`MCP-021`; `DEC-024` and `DEC-031` fix its release contract, while signing
+authority and protected publication access remain evidence gates under
+`RISK-12` and `RISK-17`. The pull-request approval threshold, allowed merge
+methods, and signed-commit enforcement choice remain scoped to `SIDE-001`; organization
+continuity choices remain scoped to `SIDE-005`. Neither blocks `MCP-021`.
 
 ## Risk register
 
 | ID | Risk | Impact | Likelihood | Current mitigation | Trigger for escalation | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| RISK-01 | A merge or partial failure loses user configuration | Critical | Medium | Pure plan/apply separation, guarded exact-byte writes, recoverable backups, reversible receipts, reverse-order five-target rollback, non-mutating drift, bounded client ownership, unmanaged-name collision refusal, interrupted-write compensation, and the complete synthetic failure matrix are implemented. A forced Codex fifth-target failure restores Claude Desktop, Cursor, Windsurf, and VS Code plus their pre-existing backups exactly. Current Cursor verification is isolated; current Claude verification uses a no-clobber backup and verified exact restore | Any unrecoverable fixture mutation or ambiguous ownership case | Mitigated — five-target synthetic proof; monitor later targets |
-| RISK-02 | Secrets leak through plans, errors, logs, fixtures, or snapshots | High | Medium | Import conflicts, canonical add/list reports, sync plans, per-target transaction reports, rollback errors, four JSON adapters, the TOML-native Codex document/render debug surfaces, and health-process failures expose structure only. Health journeys prove commands, arguments, environment values, raw stdout/stderr, malformed output, JSON-RPC error messages/data, and unchecked protocol versions remain undisclosed; the broader built-binary sentinels and safe byte/structural assertions cover the complete synthetic matrix without printing fixture contents. Current-client smokes read only synthetic output and structural status; no real configuration, credential, or account value was displayed | Any test or output path observes a secret value | Mitigated — configuration and health synthetic proof |
+| RISK-01 | A merge or partial failure loses user configuration | Critical | Medium | Pure plan/apply separation, guarded exact-byte writes, recoverable backups, reversible receipts, reverse-order five-target rollback, non-mutating drift, bounded client ownership, unmanaged-name collision refusal, interrupted-write compensation, and the complete synthetic failure matrix are implemented. Fixed-target restore validates retained bytes, swaps existing target and backup exactly, recreates missing targets without consuming the backup, and compensates an interrupted creation. A forced Codex fifth-target failure still restores Claude Desktop, Cursor, Windsurf, and VS Code plus their pre-existing backups exactly. Current Cursor verification is isolated; current Claude verification uses a no-clobber backup and verified exact restore | Any unrecoverable fixture mutation or ambiguous ownership case | Mitigated — sync and restore synthetic proof; monitor release packaging |
+| RISK-02 | Secrets leak through plans, errors, logs, fixtures, or snapshots | High | Medium | Import conflicts, canonical add/list reports, sync and restore plans/reports, per-target transaction reports, rollback errors, four JSON adapters, the TOML-native Codex document/render debug surfaces, and health-process failures expose structure only. Health journeys prove commands, arguments, environment values, raw stdout/stderr, malformed output, JSON-RPC error messages/data, and unchecked protocol versions remain undisclosed; restore journeys prove current, retained, malformed, unowned, and parser-error values remain undisclosed; the broader built-binary sentinels and safe byte/structural assertions cover the complete synthetic matrix without printing fixture contents. Current-client smokes read only synthetic output and structural status; no real configuration, credential, or account value was displayed | Any test or output path observes a secret value | Mitigated — configuration, restore, and health synthetic proof |
 | RISK-03 | Native client schemas or paths drift | High | Medium | All five implemented global contracts and macOS, GNU/Linux, and Windows paths are fixture-backed. Current Cursor `3.15.6` and current Claude Desktop `1.26832.0` accept and initialize rendered global entries on macOS. GNU/Linux and Windows have deterministic built-binary coverage and successful native x64/ARM64 whole-suite CI; neither has a current-client smoke claim. Windsurf's legacy Cascade, VS Code's native default-profile, and Codex's global TOML contracts retain explicit exclusions and have no current-client smoke claim on any implemented platform | A client update invalidates fixture/discovery behavior or changes one of the documented global paths or schemas | Mitigated — monitor client updates and all five documented contracts |
-| RISK-04 | Cross-platform file replacement behaves differently | High | Medium | No-clobber creation, guarded atomic replacement, reversible target receipts, and reverse-order rollback are isolated behind filesystem ports with disposable backup, stale-byte, interrupted-write, symlink, non-regular, permission, and cleanup tests. The complete suite passes locally on macOS and in native x64/ARM64 GNU/Linux and Windows CI, including copied-binary Windows replacement and five-target rollback evidence | Platform work requires weakening atomicity or rollback | Mitigated — three-platform source-checkout proof; monitor release packaging |
+| RISK-04 | Cross-platform file replacement behaves differently | High | Medium | No-clobber creation, guarded atomic replacement, one-generation restore, reversible target receipts, and reverse-order rollback are isolated behind filesystem ports with disposable backup, stale-byte, interrupted-write, symlink, non-regular, permission, compensation, and cleanup tests. The complete suite passes on native ARM64 and emulated x64 macOS, every test surface compiles warning-free for all six macOS/GNU/Linux/Windows targets, and the existing native x64/ARM64 GNU/Linux and Windows CI matrix carries the expanded restore plus copied-binary Windows journey | Platform work requires weakening atomicity, restore, or rollback | Mitigated — three-platform source-checkout contract; monitor the next native CI run and release packaging |
 | RISK-05 | Health checks hang or leave child processes running | High | Medium | The only execution boundary enforces a five-second response limit, 1-MiB message limit, 500-millisecond clean-shutdown allowance, force termination, reap, and a drop backstop. Focused and built-binary tests verify direct child PIDs are gone after response timeout, malformed output, and refused shutdown; native Windows x64/ARM64 PowerShell fixtures prove the same operating-system boundary | A health test exceeds its bound or leaves the tested child running | Mitigated — bounded cross-platform process and failure proof |
 | RISK-06 | Broad client/platform scope delays the first usable proof | High | High | The two-client M1 proof is complete; strict story sequence, WIP limit, and milestone gates constrain M2 to one adapter or capability slice at a time | Any M2 ticket starts before its immediate predecessor is done | Mitigated — enforce M2 sequence |
 | RISK-07 | Premature plug-in or workspace abstractions slow iteration | Medium | Medium | One crate; abstractions require real variation or consumer | New public trait/package has only one hypothetical implementation | Mitigated by guidance |

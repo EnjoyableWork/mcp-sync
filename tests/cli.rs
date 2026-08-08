@@ -24,8 +24,47 @@ fn help_describes_the_installed_binary() {
     assert!(stdout.contains("add"));
     assert!(stdout.contains("list"));
     assert!(stdout.contains("test"));
+    assert!(stdout.contains("restore"));
     assert!(stdout.contains("sync"));
     assert!(stdout.contains("--version"));
+}
+
+#[test]
+fn restore_help_limits_selection_and_exposes_dry_run() {
+    let synthetic_home = SyntheticHome::new();
+    let output = synthetic_home
+        .command()
+        .args(["restore", "--help"])
+        .output()
+        .expect("restore help should start");
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).expect("restore help should be UTF-8");
+    assert!(stdout.contains("validated adjacent backup"));
+    assert!(stdout.contains("canonical, claude-desktop, cursor, windsurf, vscode, codex"));
+    assert!(stdout.contains("--dry-run"));
+    assert!(stdout.contains("without changing the target or backup"));
+}
+
+#[test]
+fn restore_rejects_arbitrary_paths_before_configuration_access() {
+    let synthetic_home = SyntheticHome::new();
+    let output = synthetic_home
+        .command()
+        .args(["restore", "../outside-config.json"])
+        .output()
+        .expect("invalid restore selection should return");
+
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).expect("restore error should be UTF-8");
+    assert!(stderr.contains("invalid value"));
+    assert!(stderr.contains("possible values"));
+    assert!(
+        !synthetic_home.canonical_configuration().exists(),
+        "Clap selection validation should happen before path resolution or file access"
+    );
 }
 
 #[test]
