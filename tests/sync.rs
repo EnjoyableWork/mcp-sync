@@ -14,7 +14,9 @@ const CANONICAL_DESIRED: &[u8] = include_bytes!("fixtures/claude-desktop/desired
 const CURSOR_CURRENT: &[u8] = include_bytes!("fixtures/cursor/current.json");
 const WINDSURF_CURRENT: &[u8] = include_bytes!("fixtures/windsurf/current.json");
 const VSCODE_CURRENT: &[u8] = include_bytes!("fixtures/vscode/current.json");
+const CODEX_CURRENT: &[u8] = include_bytes!("fixtures/codex/current.toml");
 const PROJECT_CURSOR: &[u8] = include_bytes!("fixtures/cursor/project.json");
+const PROJECT_CODEX: &[u8] = include_bytes!("fixtures/codex/project.toml");
 
 fn sync_command(home: &SyntheticHome, dry_run: bool) -> AssertCommand {
     let mut command = AssertCommand::from_std(home.command());
@@ -62,9 +64,15 @@ struct ExistingJourney {
     cursor: Vec<u8>,
     windsurf: Vec<u8>,
     vscode: Vec<u8>,
+    codex: Vec<u8>,
     project_path: PathBuf,
     project_vscode_path: PathBuf,
     project_vscode: Vec<u8>,
+    project_codex_path: PathBuf,
+    codex_profile_path: PathBuf,
+    codex_profile: Vec<u8>,
+    codex_auth_path: PathBuf,
+    codex_auth: Vec<u8>,
     process_marker: PathBuf,
     process_command: String,
 }
@@ -110,6 +118,17 @@ impl ExistingJourney {
             "/synthetic/workspace/preserved",
             "/synthetic/env/preserved.env",
             "${userHome}/.synthetic-vscode.env",
+            "fixture-codex-root-private",
+            "fixture-codex-old-secret",
+            "fixture-codex-shared-old",
+            "fixture-codex-local-secret",
+            "fixture-codex-mixed-secret",
+            "fixture-codex-remote-secret",
+            "fixture-codex-future-private",
+            "https://codex.example.invalid/mcp",
+            "https://codex.example.invalid/mixed",
+            "codex-profile-private-value",
+            "codex-auth-private-value",
         ]
     }
 }
@@ -163,17 +182,31 @@ fn prepare_existing_journey(home: &SyntheticHome) -> ExistingJourney {
         )
         .replace("\"remote-only\"", "\"vscode-remote-only\"")
         .into_bytes();
+    let codex = String::from_utf8(CODEX_CURRENT.to_vec())
+        .expect("the Codex fixture should be UTF-8")
+        .replace("args = [\"--serve\"]", "args = [\"--mode\", \"safe\"]")
+        .replace("fixture-codex-unchanged-secret", "fixture-unchanged-secret")
+        .into_bytes();
     let project_path = home.user_root().join("workspace/.cursor/mcp.json");
     let project_vscode_path = home.user_root().join("workspace/.vscode/mcp.json");
     let project_vscode = b"{\"projectVsCodeSentinel\":\"unchanged\"}\n".to_vec();
+    let project_codex_path = home.user_root().join("workspace/.codex/config.toml");
+    let codex_profile_path = home.user_root().join(".codex/review.config.toml");
+    let codex_profile = b"model = \"codex-profile-private-value\"\n".to_vec();
+    let codex_auth_path = home.user_root().join(".codex/auth.json");
+    let codex_auth = b"{\"token\":\"codex-auth-private-value\"}\n".to_vec();
 
     home.write_file(&home.canonical_configuration(), &canonical);
     home.write_file(&home.claude_desktop_configuration(), &claude);
     home.write_file(&home.cursor_configuration(), &cursor);
     home.write_file(&home.windsurf_configuration(), &windsurf);
     home.write_file(&home.vscode_configuration(), &vscode);
+    home.write_file(&home.codex_configuration(), &codex);
     home.write_file(&project_path, PROJECT_CURSOR);
     home.write_file(&project_vscode_path, &project_vscode);
+    home.write_file(&project_codex_path, PROJECT_CODEX);
+    home.write_file(&codex_profile_path, &codex_profile);
+    home.write_file(&codex_auth_path, &codex_auth);
 
     ExistingJourney {
         canonical,
@@ -181,9 +214,15 @@ fn prepare_existing_journey(home: &SyntheticHome) -> ExistingJourney {
         cursor,
         windsurf,
         vscode,
+        codex,
         project_path,
         project_vscode_path,
         project_vscode,
+        project_codex_path,
+        codex_profile_path,
+        codex_profile,
+        codex_auth_path,
+        codex_auth,
         process_marker,
         process_command,
     }
@@ -215,6 +254,24 @@ fn assert_no_temporary_files(path: &Path) {
     assert!(!has_temporary, "temporary files should be cleaned up");
 }
 
+fn assert_codex_exclusions_unchanged(fixture: &ExistingJourney, context: &str) {
+    assert_file_matches(
+        &fixture.project_codex_path,
+        PROJECT_CODEX,
+        &format!("{context} should preserve project Codex bytes"),
+    );
+    assert_file_matches(
+        &fixture.codex_profile_path,
+        &fixture.codex_profile,
+        &format!("{context} should preserve Codex profile bytes"),
+    );
+    assert_file_matches(
+        &fixture.codex_auth_path,
+        &fixture.codex_auth,
+        &format!("{context} should preserve Codex credential bytes"),
+    );
+}
+
 fn assert_native_result(home: &SyntheticHome, process_command: &str) {
     let claude: Value = serde_json::from_slice(
         &fs::read(home.claude_desktop_configuration())
@@ -233,6 +290,11 @@ fn assert_native_result(home: &SyntheticHome, process_command: &str) {
         &fs::read(home.vscode_configuration()).expect("VS Code output should be readable"),
     )
     .expect("VS Code output should remain valid JSON");
+    let codex_text = fs::read_to_string(home.codex_configuration())
+        .expect("Codex output should be readable UTF-8");
+    let codex = codex_text
+        .parse::<toml_edit::DocumentMut>()
+        .expect("Codex output should remain valid TOML");
 
     for target in [&claude, &cursor, &windsurf] {
         assert!(
@@ -252,6 +314,18 @@ fn assert_native_result(home: &SyntheticHome, process_command: &str) {
             && vscode["servers"]["updated"]["args"][1].as_str() == Some("two")
             && vscode["servers"]["updated"]["env"]["ROTATE"].as_str() == Some("fixture-new-secret"),
         "managed VS Code process values should match canonical state"
+    );
+    assert!(
+        codex["mcp_servers"]["added"]["command"].as_str() == Some(process_command)
+            && codex["mcp_servers"]["updated"]["command"].as_str() == Some("/synthetic/bin/new")
+            && codex["mcp_servers"]["updated"]["args"]
+                .as_array()
+                .and_then(|args| args.get(1))
+                .and_then(toml_edit::Value::as_str)
+                == Some("two")
+            && codex["mcp_servers"]["updated"]["env"]["ROTATE"].as_str()
+                == Some("fixture-new-secret"),
+        "managed Codex process values should match canonical state"
     );
 
     assert!(
@@ -284,9 +358,34 @@ fn assert_native_result(home: &SyntheticHome, process_command: &str) {
             && vscode["servers"]["numeric-env"]["env"]["PORT"].as_u64() == Some(3000)
             && vscode["inputs"][0]["id"].as_str() == Some("fixture-api-key")
             && vscode["sandbox"]["network"]["allowedDomains"][0].as_str()
-                == Some("fixture.example.invalid"),
+                == Some("fixture.example.invalid")
+            && codex["model"].as_str() == Some("synthetic-model")
+            && codex["mcp_oauth_callback_port"].as_integer() == Some(5555)
+            && codex["mcp_servers"]["target-only"]["env"]["LOCAL_TOKEN"].as_str()
+                == Some("fixture-codex-local-secret")
+            && codex["mcp_servers"]["updated"]["cwd"].as_str() == Some("/synthetic/updated")
+            && codex["mcp_servers"]["updated"]["enabled"].as_bool() == Some(false)
+            && codex["mcp_servers"]["remote-only"]["auth"].as_str() == Some("oauth")
+            && codex["mcp_servers"]["remote-only"]["http_headers"]["X-Fixture"].as_str()
+                == Some("fixture-codex-remote-secret")
+            && codex["mcp_servers"]["mixed-transport"]["url"].as_str()
+                == Some("https://codex.example.invalid/mixed")
+            && codex["mcp_servers"]["opaque"]["future_transport"].as_str()
+                == Some("fixture-codex-future-private")
+            && codex["plugins"]["fixture@test"]["mcp_servers"]["hosted"]["enabled"].as_bool()
+                == Some(true),
         "unowned, drift, and unmanaged native values should be preserved"
     );
+    for comment in [
+        "# Synthetic global Codex configuration. This comment must survive.",
+        "# managed-field comment survives replacement",
+        "# unowned local field",
+    ] {
+        assert!(
+            codex_text.contains(comment),
+            "Codex structural editing should preserve fixture comments"
+        );
+    }
     assert!(
         claude["futureTopLevel"]["preciseNumber"]
             .as_number()
@@ -318,14 +417,16 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
     let cursor_backup = backup_path(&home.cursor_configuration());
     let windsurf_backup = backup_path(&home.windsurf_configuration());
     let vscode_backup = backup_path(&home.vscode_configuration());
+    let codex_backup = backup_path(&home.codex_configuration());
 
     let dry_output = stdout(&run_success(sync_command(&home, true)));
 
-    assert!(dry_output.starts_with("Dry run validated 4 targets; no files changed.\n"));
+    assert!(dry_output.starts_with("Dry run validated 5 targets; no files changed.\n"));
     assert!(dry_output.contains("Claude Desktop: would update with recoverable backup"));
     assert!(dry_output.contains("Cursor: would update with recoverable backup"));
     assert!(dry_output.contains("Windsurf: would update with recoverable backup"));
     assert!(dry_output.contains("VS Code: would update with recoverable backup"));
+    assert!(dry_output.contains("Codex: would update with recoverable backup"));
     assert_eq!(
         dry_output
             .matches("Claude Desktop: would update with recoverable backup")
@@ -341,6 +442,9 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
     assert!(dry_output.contains(
         "(add: 1; update: 1; unchanged: 1; drift preserved: 1; unmanaged preserved: 2)."
     ));
+    assert!(dry_output.contains(
+        "(add: 1; update: 1; unchanged: 1; drift preserved: 1; unmanaged preserved: 3)."
+    ));
     assert!(dry_output.contains("add \"added\" (arguments: 1; environment keys: \"ADD_TOKEN\")"));
     assert!(dry_output.contains("update \"updated\" (command; arguments 1 -> 2"));
     assert!(dry_output.contains("environment keys updated \"ROTATE\""));
@@ -349,6 +453,9 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
     assert!(dry_output.contains("preserve unmanaged \"windsurf-remote-only\""));
     assert!(dry_output.contains("preserve unmanaged \"numeric-env\""));
     assert!(dry_output.contains("preserve unmanaged \"vscode-remote-only\""));
+    assert!(dry_output.contains("preserve unmanaged \"mixed-transport\""));
+    assert!(dry_output.contains("preserve unmanaged \"opaque\""));
+    assert!(dry_output.contains("preserve unmanaged \"remote-only\""));
     assert_output_omits(&dry_output, &fixture.private_values());
     assert_file_matches(
         &home.canonical_configuration(),
@@ -376,6 +483,11 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
         "dry-run should preserve VS Code bytes",
     );
     assert_file_matches(
+        &home.codex_configuration(),
+        &fixture.codex,
+        "dry-run should preserve Codex bytes",
+    );
+    assert_file_matches(
         &fixture.project_path,
         PROJECT_CURSOR,
         "dry-run should preserve project Cursor bytes",
@@ -385,19 +497,22 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
         &fixture.project_vscode,
         "dry-run should preserve project VS Code bytes",
     );
+    assert_codex_exclusions_unchanged(&fixture, "dry-run");
     assert!(!claude_backup.exists());
     assert!(!cursor_backup.exists());
     assert!(!windsurf_backup.exists());
     assert!(!vscode_backup.exists());
+    assert!(!codex_backup.exists());
     assert!(!fixture.process_marker.exists());
 
     let apply_output = stdout(&run_success(sync_command(&home, false)));
 
-    assert!(apply_output.starts_with("Sync completed for 4 targets.\n"));
+    assert!(apply_output.starts_with("Sync completed for 5 targets.\n"));
     assert!(apply_output.contains("Claude Desktop: updated with recoverable backup"));
     assert!(apply_output.contains("Cursor: updated with recoverable backup"));
     assert!(apply_output.contains("Windsurf: updated with recoverable backup"));
     assert!(apply_output.contains("VS Code: updated with recoverable backup"));
+    assert!(apply_output.contains("Codex: updated with recoverable backup"));
     assert_output_omits(&apply_output, &fixture.private_values());
     assert_file_matches(
         &claude_backup,
@@ -420,6 +535,11 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
         "VS Code backup should contain exact prior bytes",
     );
     assert_file_matches(
+        &codex_backup,
+        &fixture.codex,
+        "Codex backup should contain exact prior bytes",
+    );
+    assert_file_matches(
         &home.canonical_configuration(),
         &fixture.canonical,
         "apply should preserve canonical bytes",
@@ -434,28 +554,32 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
         &fixture.project_vscode,
         "apply should preserve project VS Code bytes",
     );
+    assert_codex_exclusions_unchanged(&fixture, "apply");
     assert!(!fixture.process_marker.exists());
     assert_native_result(&home, &fixture.process_command);
     assert_no_temporary_files(&home.claude_desktop_configuration());
     assert_no_temporary_files(&home.cursor_configuration());
     assert_no_temporary_files(&home.windsurf_configuration());
     assert_no_temporary_files(&home.vscode_configuration());
+    assert_no_temporary_files(&home.codex_configuration());
 
     let claude_after_apply = fs::read(home.claude_desktop_configuration()).unwrap();
     let cursor_after_apply = fs::read(home.cursor_configuration()).unwrap();
     let windsurf_after_apply = fs::read(home.windsurf_configuration()).unwrap();
     let vscode_after_apply = fs::read(home.vscode_configuration()).unwrap();
+    let codex_after_apply = fs::read(home.codex_configuration()).unwrap();
     let claude_backup_after_apply = fs::read(&claude_backup).unwrap();
     let cursor_backup_after_apply = fs::read(&cursor_backup).unwrap();
     let windsurf_backup_after_apply = fs::read(&windsurf_backup).unwrap();
     let vscode_backup_after_apply = fs::read(&vscode_backup).unwrap();
+    let codex_backup_after_apply = fs::read(&codex_backup).unwrap();
     let no_op_output = stdout(&run_success(sync_command(&home, false)));
 
     assert_eq!(
         no_op_output
             .matches("unchanged; no write or backup")
             .count(),
-        4
+        5
     );
     assert_eq!(
         no_op_output
@@ -470,6 +594,9 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
     ));
     assert!(no_op_output.contains(
         "(add: 0; update: 0; unchanged: 3; drift preserved: 1; unmanaged preserved: 2)."
+    ));
+    assert!(no_op_output.contains(
+        "(add: 0; update: 0; unchanged: 3; drift preserved: 1; unmanaged preserved: 3)."
     ));
     assert_output_omits(&no_op_output, &fixture.private_values());
     assert_file_matches(
@@ -493,6 +620,11 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
         "no-op should preserve VS Code bytes",
     );
     assert_file_matches(
+        &home.codex_configuration(),
+        &codex_after_apply,
+        "no-op should preserve Codex bytes",
+    );
+    assert_file_matches(
         &claude_backup,
         &claude_backup_after_apply,
         "no-op should preserve Claude backup bytes",
@@ -513,6 +645,11 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
         "no-op should preserve VS Code backup bytes",
     );
     assert_file_matches(
+        &codex_backup,
+        &codex_backup_after_apply,
+        "no-op should preserve Codex backup bytes",
+    );
+    assert_file_matches(
         &fixture.project_path,
         PROJECT_CURSOR,
         "no-op should preserve project Cursor bytes",
@@ -522,6 +659,7 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
         &fixture.project_vscode,
         "no-op should preserve project VS Code bytes",
     );
+    assert_codex_exclusions_unchanged(&fixture, "no-op");
     assert!(!fixture.process_marker.exists());
 }
 
@@ -543,6 +681,7 @@ fn a_real_second_target_failure_restores_the_first_target_and_its_prior_backup()
     assert!(diagnostic.contains("Cursor: update failed: refusing to replace directory"));
     assert!(diagnostic.contains("Windsurf: not attempted after an earlier failure"));
     assert!(diagnostic.contains("VS Code: not attempted after an earlier failure"));
+    assert!(diagnostic.contains("Codex: not attempted after an earlier failure"));
     assert!(diagnostic.contains("Per-target outcomes:"));
     assert_output_omits(&diagnostic, &fixture.private_values());
     assert!(!diagnostic.contains("older private Claude backup bytes"));
@@ -575,6 +714,12 @@ fn a_real_second_target_failure_restores_the_first_target_and_its_prior_backup()
     );
     assert!(!backup_path(&home.vscode_configuration()).exists());
     assert_file_matches(
+        &home.codex_configuration(),
+        &fixture.codex,
+        "a second-target failure should preserve Codex bytes",
+    );
+    assert!(!backup_path(&home.codex_configuration()).exists());
+    assert_file_matches(
         &home.canonical_configuration(),
         &fixture.canonical,
         "failed sync should preserve canonical bytes",
@@ -589,11 +734,13 @@ fn a_real_second_target_failure_restores_the_first_target_and_its_prior_backup()
         &fixture.project_vscode,
         "failed sync should preserve project VS Code bytes",
     );
+    assert_codex_exclusions_unchanged(&fixture, "second-target failure");
     assert!(!fixture.process_marker.exists());
     assert_no_temporary_files(&home.claude_desktop_configuration());
     assert_no_temporary_files(&home.cursor_configuration());
     assert_no_temporary_files(&home.windsurf_configuration());
     assert_no_temporary_files(&home.vscode_configuration());
+    assert_no_temporary_files(&home.codex_configuration());
 }
 
 #[test]
@@ -617,6 +764,7 @@ fn a_real_third_target_failure_restores_both_prior_targets_and_backups() {
     assert!(diagnostic.contains("Cursor: rolled back after update"));
     assert!(diagnostic.contains("Windsurf: update failed: refusing to replace directory"));
     assert!(diagnostic.contains("VS Code: not attempted after an earlier failure"));
+    assert!(diagnostic.contains("Codex: not attempted after an earlier failure"));
     assert_output_omits(&diagnostic, &fixture.private_values());
     assert!(!diagnostic.contains("older private Claude backup bytes"));
     assert!(!diagnostic.contains("older private Cursor backup bytes"));
@@ -653,6 +801,12 @@ fn a_real_third_target_failure_restores_both_prior_targets_and_backups() {
     );
     assert!(!backup_path(&home.vscode_configuration()).exists());
     assert_file_matches(
+        &home.codex_configuration(),
+        &fixture.codex,
+        "a third-target failure should preserve Codex bytes",
+    );
+    assert!(!backup_path(&home.codex_configuration()).exists());
+    assert_file_matches(
         &home.canonical_configuration(),
         &fixture.canonical,
         "failed four-target sync should preserve canonical bytes",
@@ -665,14 +819,16 @@ fn a_real_third_target_failure_restores_both_prior_targets_and_backups() {
     assert_file_matches(
         &fixture.project_vscode_path,
         &fixture.project_vscode,
-        "failed four-target sync should preserve project VS Code bytes",
+        "failed five-target sync should preserve project VS Code bytes",
     );
+    assert_codex_exclusions_unchanged(&fixture, "third-target failure");
     assert!(!fixture.process_marker.exists());
     for target in [
         home.claude_desktop_configuration(),
         home.cursor_configuration(),
         home.windsurf_configuration(),
         home.vscode_configuration(),
+        home.codex_configuration(),
     ] {
         assert_no_temporary_files(&target);
     }
@@ -702,6 +858,7 @@ fn a_real_fourth_target_failure_restores_all_prior_targets_and_backups_in_revers
     assert!(diagnostic.contains("Cursor: rolled back after update"));
     assert!(diagnostic.contains("Windsurf: rolled back after update"));
     assert!(diagnostic.contains("VS Code: update failed: refusing to replace directory"));
+    assert!(diagnostic.contains("Codex: not attempted after an earlier failure"));
     assert_output_omits(&diagnostic, &fixture.private_values());
     for private_backup in [
         "older private Claude backup bytes",
@@ -731,6 +888,11 @@ fn a_real_fourth_target_failure_restores_all_prior_targets_and_backups_in_revers
             fixture.vscode.as_slice(),
             "VS Code",
         ),
+        (
+            home.codex_configuration(),
+            fixture.codex.as_slice(),
+            "Codex",
+        ),
     ] {
         assert_file_matches(
             &path,
@@ -755,6 +917,7 @@ fn a_real_fourth_target_failure_restores_all_prior_targets_and_backups_in_revers
         "fourth-target rollback should restore the previous Windsurf backup",
     );
     assert!(vscode_backup.is_dir());
+    assert!(!backup_path(&home.codex_configuration()).exists());
     assert_file_matches(
         &home.canonical_configuration(),
         &fixture.canonical,
@@ -765,6 +928,114 @@ fn a_real_fourth_target_failure_restores_all_prior_targets_and_backups_in_revers
         &fixture.project_vscode,
         "failed fourth-target sync should preserve project VS Code bytes",
     );
+    assert_codex_exclusions_unchanged(&fixture, "fourth-target failure");
+    assert!(!fixture.process_marker.exists());
+}
+
+#[test]
+fn a_real_fifth_target_failure_restores_all_prior_targets_and_backups_in_reverse() {
+    let home = SyntheticHome::new();
+    let fixture = prepare_existing_journey(&home);
+    let claude_backup = backup_path(&home.claude_desktop_configuration());
+    let cursor_backup = backup_path(&home.cursor_configuration());
+    let windsurf_backup = backup_path(&home.windsurf_configuration());
+    let vscode_backup = backup_path(&home.vscode_configuration());
+    let codex_backup = backup_path(&home.codex_configuration());
+    let previous_claude_backup = b"older private Claude backup bytes\n";
+    let previous_cursor_backup = b"older private Cursor backup bytes\n";
+    let previous_windsurf_backup = b"older private Windsurf backup bytes\n";
+    let previous_vscode_backup = b"older private VS Code backup bytes\n";
+    home.write_file(&claude_backup, previous_claude_backup);
+    home.write_file(&cursor_backup, previous_cursor_backup);
+    home.write_file(&windsurf_backup, previous_windsurf_backup);
+    home.write_file(&vscode_backup, previous_vscode_backup);
+    fs::create_dir(&codex_backup).expect("the blocking Codex backup should be created");
+
+    let output = run_failure(sync_command(&home, false));
+    let diagnostic = stderr(&output);
+
+    assert!(diagnostic.starts_with("error: sync transaction failed while applying Codex:"));
+    assert!(diagnostic.contains("Claude Desktop: rolled back after update"));
+    assert!(diagnostic.contains("Cursor: rolled back after update"));
+    assert!(diagnostic.contains("Windsurf: rolled back after update"));
+    assert!(diagnostic.contains("VS Code: rolled back after update"));
+    assert!(diagnostic.contains("Codex: update failed: refusing to replace directory"));
+    assert_output_omits(&diagnostic, &fixture.private_values());
+    for private_backup in [
+        "older private Claude backup bytes",
+        "older private Cursor backup bytes",
+        "older private Windsurf backup bytes",
+        "older private VS Code backup bytes",
+    ] {
+        assert!(!diagnostic.contains(private_backup));
+    }
+    for (path, bytes, label) in [
+        (
+            home.claude_desktop_configuration(),
+            fixture.claude.as_slice(),
+            "Claude Desktop",
+        ),
+        (
+            home.cursor_configuration(),
+            fixture.cursor.as_slice(),
+            "Cursor",
+        ),
+        (
+            home.windsurf_configuration(),
+            fixture.windsurf.as_slice(),
+            "Windsurf",
+        ),
+        (
+            home.vscode_configuration(),
+            fixture.vscode.as_slice(),
+            "VS Code",
+        ),
+        (
+            home.codex_configuration(),
+            fixture.codex.as_slice(),
+            "Codex",
+        ),
+    ] {
+        assert_file_matches(
+            &path,
+            bytes,
+            &format!("fifth-target rollback should restore or preserve {label} bytes"),
+        );
+        assert_no_temporary_files(&path);
+    }
+    for (path, bytes, label) in [
+        (&claude_backup, previous_claude_backup.as_slice(), "Claude"),
+        (&cursor_backup, previous_cursor_backup.as_slice(), "Cursor"),
+        (
+            &windsurf_backup,
+            previous_windsurf_backup.as_slice(),
+            "Windsurf",
+        ),
+        (&vscode_backup, previous_vscode_backup.as_slice(), "VS Code"),
+    ] {
+        assert_file_matches(
+            path,
+            bytes,
+            &format!("fifth-target rollback should restore the previous {label} backup"),
+        );
+    }
+    assert!(codex_backup.is_dir());
+    assert_file_matches(
+        &home.canonical_configuration(),
+        &fixture.canonical,
+        "failed fifth-target sync should preserve canonical bytes",
+    );
+    assert_file_matches(
+        &fixture.project_path,
+        PROJECT_CURSOR,
+        "failed fifth-target sync should preserve project Cursor bytes",
+    );
+    assert_file_matches(
+        &fixture.project_vscode_path,
+        &fixture.project_vscode,
+        "failed fifth-target sync should preserve project VS Code bytes",
+    );
+    assert_codex_exclusions_unchanged(&fixture, "fifth-target failure");
     assert!(!fixture.process_marker.exists());
 }
 
@@ -784,7 +1055,7 @@ fn a_created_first_target_is_removed_when_the_second_target_fails() {
     assert!(diagnostic.contains("Cursor: update failed"));
     assert!(diagnostic.contains("Windsurf: not attempted after an earlier failure"));
     assert!(diagnostic.contains("VS Code: not attempted after an earlier failure"));
-    assert!(diagnostic.contains("VS Code: not attempted after an earlier failure"));
+    assert!(diagnostic.contains("Codex: not attempted after an earlier failure"));
     assert_output_omits(&diagnostic, &fixture.private_values());
     assert!(!home.claude_desktop_configuration().exists());
     assert!(!backup_path(&home.claude_desktop_configuration()).exists());
@@ -807,6 +1078,12 @@ fn a_created_first_target_is_removed_when_the_second_target_fails() {
     );
     assert!(!backup_path(&home.vscode_configuration()).exists());
     assert_file_matches(
+        &home.codex_configuration(),
+        &fixture.codex,
+        "creation rollback should preserve Codex bytes",
+    );
+    assert!(!backup_path(&home.codex_configuration()).exists());
+    assert_file_matches(
         &home.vscode_configuration(),
         &fixture.vscode,
         "creation rollback should preserve VS Code bytes",
@@ -822,11 +1099,13 @@ fn a_created_first_target_is_removed_when_the_second_target_fails() {
         &fixture.project_vscode,
         "creation rollback should preserve project VS Code bytes",
     );
+    assert_codex_exclusions_unchanged(&fixture, "creation rollback");
     assert!(!fixture.process_marker.exists());
     assert_no_temporary_files(&home.claude_desktop_configuration());
     assert_no_temporary_files(&home.cursor_configuration());
     assert_no_temporary_files(&home.windsurf_configuration());
     assert_no_temporary_files(&home.vscode_configuration());
+    assert_no_temporary_files(&home.codex_configuration());
 }
 
 #[test]
@@ -864,10 +1143,16 @@ fn malformed_final_vscode_state_stops_before_any_apply_mutation() {
         malformed,
         "preflight failure should preserve malformed VS Code bytes",
     );
+    assert_file_matches(
+        &home.codex_configuration(),
+        &fixture.codex,
+        "VS Code preflight failure should preserve Codex bytes",
+    );
     assert!(!backup_path(&home.claude_desktop_configuration()).exists());
     assert!(!backup_path(&home.cursor_configuration()).exists());
     assert!(!backup_path(&home.windsurf_configuration()).exists());
     assert!(!backup_path(&home.vscode_configuration()).exists());
+    assert!(!backup_path(&home.codex_configuration()).exists());
     assert_file_matches(
         &fixture.project_path,
         PROJECT_CURSOR,
@@ -878,6 +1163,71 @@ fn malformed_final_vscode_state_stops_before_any_apply_mutation() {
         &fixture.project_vscode,
         "preflight failure should preserve project VS Code bytes",
     );
+    assert_codex_exclusions_unchanged(&fixture, "VS Code preflight failure");
+    assert!(!fixture.process_marker.exists());
+}
+
+#[test]
+fn malformed_final_codex_state_stops_before_any_apply_mutation_without_value_output() {
+    let home = SyntheticHome::new();
+    let fixture = prepare_existing_journey(&home);
+    let malformed =
+        b"private = \"codex-malformed-private-value\"\n[mcp_servers.bad\ncommand = \"safe\"\n";
+    home.write_file(&home.codex_configuration(), malformed);
+
+    let output = run_failure(sync_command(&home, false));
+    let diagnostic = stderr(&output);
+
+    assert!(diagnostic.starts_with("error: cannot plan Codex sync: invalid Codex TOML near byte "));
+    assert!(diagnostic.ends_with("; no target files were changed\n"));
+    assert!(!diagnostic.contains("codex-malformed-private-value"));
+    assert_output_omits(&diagnostic, &fixture.private_values());
+    for (path, bytes, label) in [
+        (
+            home.claude_desktop_configuration(),
+            fixture.claude.as_slice(),
+            "Claude Desktop",
+        ),
+        (
+            home.cursor_configuration(),
+            fixture.cursor.as_slice(),
+            "Cursor",
+        ),
+        (
+            home.windsurf_configuration(),
+            fixture.windsurf.as_slice(),
+            "Windsurf",
+        ),
+        (
+            home.vscode_configuration(),
+            fixture.vscode.as_slice(),
+            "VS Code",
+        ),
+        (home.codex_configuration(), malformed.as_slice(), "Codex"),
+    ] {
+        assert_file_matches(
+            &path,
+            bytes,
+            &format!("Codex preflight failure should preserve {label} bytes"),
+        );
+        assert!(!backup_path(&path).exists());
+    }
+    assert_file_matches(
+        &home.canonical_configuration(),
+        &fixture.canonical,
+        "Codex preflight failure should preserve canonical bytes",
+    );
+    assert_file_matches(
+        &fixture.project_path,
+        PROJECT_CURSOR,
+        "Codex preflight failure should preserve project Cursor bytes",
+    );
+    assert_file_matches(
+        &fixture.project_vscode_path,
+        &fixture.project_vscode,
+        "Codex preflight failure should preserve project VS Code bytes",
+    );
+    assert_codex_exclusions_unchanged(&fixture, "Codex preflight failure");
     assert!(!fixture.process_marker.exists());
 }
 
@@ -888,10 +1238,12 @@ fn missing_or_malformed_canonical_state_fails_before_native_discovery() {
     let cursor = b"Cursor target must not be parsed before canonical validation\n";
     let windsurf = b"Windsurf target must not be parsed before canonical validation\n";
     let vscode = b"VS Code target must not be parsed before canonical validation\n";
+    let codex = b"Codex target must not be parsed before canonical validation\n";
     home.write_file(&home.claude_desktop_configuration(), claude);
     home.write_file(&home.cursor_configuration(), cursor);
     home.write_file(&home.windsurf_configuration(), windsurf);
     home.write_file(&home.vscode_configuration(), vscode);
+    home.write_file(&home.codex_configuration(), codex);
 
     let missing = stderr(&run_failure(sync_command(&home, true)));
     assert!(missing.contains("canonical configuration does not exist"));
@@ -924,10 +1276,16 @@ fn missing_or_malformed_canonical_state_fails_before_native_discovery() {
         vscode,
         "canonical validation failure should preserve VS Code bytes",
     );
+    assert_file_matches(
+        &home.codex_configuration(),
+        codex,
+        "canonical validation failure should preserve Codex bytes",
+    );
     assert!(!backup_path(&home.claude_desktop_configuration()).exists());
     assert!(!backup_path(&home.cursor_configuration()).exists());
     assert!(!backup_path(&home.windsurf_configuration()).exists());
     assert!(!backup_path(&home.vscode_configuration()).exists());
+    assert!(!backup_path(&home.codex_configuration()).exists());
 }
 
 #[test]
@@ -970,10 +1328,16 @@ fn an_unmanaged_cursor_name_collision_fails_the_complete_plan_before_apply() {
         &fixture.vscode,
         "collision failure should preserve VS Code bytes",
     );
+    assert_file_matches(
+        &home.codex_configuration(),
+        &fixture.codex,
+        "Cursor collision should preserve Codex bytes",
+    );
     assert!(!backup_path(&home.claude_desktop_configuration()).exists());
     assert!(!backup_path(&home.cursor_configuration()).exists());
     assert!(!backup_path(&home.windsurf_configuration()).exists());
     assert!(!backup_path(&home.vscode_configuration()).exists());
+    assert!(!backup_path(&home.codex_configuration()).exists());
     assert_file_matches(
         &fixture.project_path,
         PROJECT_CURSOR,
@@ -984,6 +1348,7 @@ fn an_unmanaged_cursor_name_collision_fails_the_complete_plan_before_apply() {
         &fixture.project_vscode,
         "collision failure should preserve project VS Code bytes",
     );
+    assert_codex_exclusions_unchanged(&fixture, "Cursor collision");
     assert!(!fixture.process_marker.exists());
 }
 
@@ -1027,11 +1392,17 @@ fn an_unmanaged_windsurf_name_collision_fails_the_complete_plan_before_apply() {
         &fixture.vscode,
         "Windsurf collision should preserve VS Code bytes",
     );
+    assert_file_matches(
+        &home.codex_configuration(),
+        &fixture.codex,
+        "Windsurf collision should preserve Codex bytes",
+    );
     for target in [
         home.claude_desktop_configuration(),
         home.cursor_configuration(),
         home.windsurf_configuration(),
         home.vscode_configuration(),
+        home.codex_configuration(),
     ] {
         assert!(!backup_path(&target).exists());
     }
@@ -1045,6 +1416,7 @@ fn an_unmanaged_windsurf_name_collision_fails_the_complete_plan_before_apply() {
         &fixture.project_vscode,
         "Windsurf collision should preserve project VS Code bytes",
     );
+    assert_codex_exclusions_unchanged(&fixture, "Windsurf collision");
     assert!(!fixture.process_marker.exists());
 }
 
@@ -1089,6 +1461,11 @@ fn an_unmanaged_vscode_name_collision_fails_the_complete_plan_before_apply() {
             fixture.vscode.as_slice(),
             "VS Code",
         ),
+        (
+            home.codex_configuration(),
+            fixture.codex.as_slice(),
+            "Codex",
+        ),
     ] {
         assert_file_matches(
             &path,
@@ -1102,6 +1479,75 @@ fn an_unmanaged_vscode_name_collision_fails_the_complete_plan_before_apply() {
         &fixture.project_vscode,
         "VS Code collision should preserve project VS Code bytes",
     );
+    assert_codex_exclusions_unchanged(&fixture, "VS Code collision");
+    assert!(!fixture.process_marker.exists());
+}
+
+#[test]
+fn an_unmanaged_codex_name_collision_fails_the_complete_plan_before_apply() {
+    let home = SyntheticHome::new();
+    let fixture = prepare_existing_journey(&home);
+    let mut canonical: Value =
+        serde_json::from_slice(&fixture.canonical).expect("canonical fixture should parse");
+    canonical["servers"]["mixed-transport"] = canonical["servers"]["added"].clone();
+    let mut canonical =
+        serde_json::to_vec_pretty(&canonical).expect("collision fixture should serialize");
+    canonical.push(b'\n');
+    home.write_file(&home.canonical_configuration(), &canonical);
+
+    let output = run_failure(sync_command(&home, false));
+    let diagnostic = stderr(&output);
+
+    assert!(diagnostic.contains(
+        "cannot render the validated Codex sync plan: desired local server \"mixed-transport\" collides with an unmanaged Codex server"
+    ));
+    assert!(diagnostic.ends_with("; no target files were changed\n"));
+    assert_output_omits(&diagnostic, &fixture.private_values());
+    for (path, bytes, label) in [
+        (
+            home.claude_desktop_configuration(),
+            fixture.claude.as_slice(),
+            "Claude Desktop",
+        ),
+        (
+            home.cursor_configuration(),
+            fixture.cursor.as_slice(),
+            "Cursor",
+        ),
+        (
+            home.windsurf_configuration(),
+            fixture.windsurf.as_slice(),
+            "Windsurf",
+        ),
+        (
+            home.vscode_configuration(),
+            fixture.vscode.as_slice(),
+            "VS Code",
+        ),
+        (
+            home.codex_configuration(),
+            fixture.codex.as_slice(),
+            "Codex",
+        ),
+    ] {
+        assert_file_matches(
+            &path,
+            bytes,
+            &format!("Codex collision should preserve {label} bytes"),
+        );
+        assert!(!backup_path(&path).exists());
+    }
+    assert_file_matches(
+        &fixture.project_path,
+        PROJECT_CURSOR,
+        "Codex collision should preserve project Cursor bytes",
+    );
+    assert_file_matches(
+        &fixture.project_vscode_path,
+        &fixture.project_vscode,
+        "Codex collision should preserve project VS Code bytes",
+    );
+    assert_codex_exclusions_unchanged(&fixture, "Codex collision");
     assert!(!fixture.process_marker.exists());
 }
 
@@ -1136,6 +1582,8 @@ fn a_second_target_permission_failure_rolls_back_the_first_target() {
     assert!(diagnostic.contains("Claude Desktop: rolled back after update"));
     assert!(diagnostic.contains("Cursor: update failed"));
     assert!(diagnostic.contains("Windsurf: not attempted after an earlier failure"));
+    assert!(diagnostic.contains("VS Code: not attempted after an earlier failure"));
+    assert!(diagnostic.contains("Codex: not attempted after an earlier failure"));
     assert!(diagnostic.contains("Permission denied"));
     assert_output_omits(&diagnostic, &fixture.private_values());
     assert_file_matches(
@@ -1157,6 +1605,18 @@ fn a_second_target_permission_failure_rolls_back_the_first_target() {
     );
     assert!(!backup_path(&home.windsurf_configuration()).exists());
     assert_file_matches(
+        &home.vscode_configuration(),
+        &fixture.vscode,
+        "permission failure should preserve VS Code bytes",
+    );
+    assert!(!backup_path(&home.vscode_configuration()).exists());
+    assert_file_matches(
+        &home.codex_configuration(),
+        &fixture.codex,
+        "permission failure should preserve Codex bytes",
+    );
+    assert!(!backup_path(&home.codex_configuration()).exists());
+    assert_file_matches(
         &fixture.project_path,
         PROJECT_CURSOR,
         "permission failure should preserve project Cursor bytes",
@@ -1166,5 +1626,6 @@ fn a_second_target_permission_failure_rolls_back_the_first_target() {
         &fixture.project_vscode,
         "permission failure should preserve project VS Code bytes",
     );
+    assert_codex_exclusions_unchanged(&fixture, "permission failure");
     assert!(!fixture.process_marker.exists());
 }

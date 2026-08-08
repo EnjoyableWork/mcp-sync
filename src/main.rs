@@ -5,6 +5,7 @@ use std::process::ExitCode;
 
 mod catalog;
 mod claude_desktop;
+mod codex;
 mod config;
 mod cursor;
 mod filesystem;

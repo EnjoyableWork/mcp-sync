@@ -171,8 +171,46 @@ fn init_imports_all_clients_without_executing_servers_or_touching_native_files()
         "inputs": [{"type": "promptString", "id": "synthetic-input"}],
         "sandbox": {"enabled": true}
     }));
-    let project_path = home.user_root().join("workspace/.cursor/mcp.json");
-    let project_bytes = b"{\"projectSentinel\":true}\n";
+    let codex = br#"# global Codex fixture comment
+model = "synthetic-model"
+
+[mcp_servers.epsilon]
+command = "epsilon-server"
+args = ["--epsilon"]
+cwd = "/synthetic/codex-unowned"
+
+[mcp_servers.epsilon.env]
+CODEX_TOKEN = "codex-synthetic-value"
+
+[mcp_servers.shared]
+command = "shared-server"
+args = ["--stdio"]
+enabled = false
+
+[mcp_servers.shared.env]
+MODE = "synthetic"
+
+[mcp_servers.remote-codex]
+url = "https://codex.invalid.example.test/mcp"
+auth = "oauth"
+http_headers = { Authorization = "Bearer codex-remote-synthetic-value" }
+
+[mcp_servers.mixed-codex]
+command = "codex-mixed-private-command"
+url = "https://codex.invalid.example.test/mixed"
+
+[mcp_servers.opaque-codex]
+enabled = false
+future_transport = "codex-future-private-value"
+"#;
+    let cursor_project_path = home.user_root().join("workspace/.cursor/mcp.json");
+    let cursor_project_bytes = b"{\"projectSentinel\":true}\n";
+    let codex_project_path = home.user_root().join("workspace/.codex/config.toml");
+    let codex_project_bytes = include_bytes!("fixtures/codex/project.toml");
+    let codex_profile_path = home.user_root().join(".codex/review.config.toml");
+    let codex_profile_bytes = b"model = \"profile-sentinel\"\n";
+    let codex_auth_path = home.user_root().join(".codex/auth.json");
+    let codex_auth_bytes = b"{\"credentialSentinel\":\"must-remain-private\"}\n";
     let excluded_vscode_bytes = b"not native default-profile VS Code configuration\n";
     let excluded_vscode_paths = [
         home.user_root().join("workspace/.vscode/mcp.json"),
@@ -193,7 +231,11 @@ fn init_imports_all_clients_without_executing_servers_or_touching_native_files()
     home.write_file(&home.cursor_configuration(), &cursor);
     home.write_file(&home.windsurf_configuration(), &windsurf);
     home.write_file(&home.vscode_configuration(), &vscode);
-    home.write_file(&project_path, project_bytes);
+    home.write_file(&home.codex_configuration(), codex);
+    home.write_file(&cursor_project_path, cursor_project_bytes);
+    home.write_file(&codex_project_path, codex_project_bytes);
+    home.write_file(&codex_profile_path, codex_profile_bytes);
+    home.write_file(&codex_auth_path, codex_auth_bytes);
     for path in &excluded_vscode_paths {
         home.write_file(path, excluded_vscode_bytes);
     }
@@ -201,10 +243,11 @@ fn init_imports_all_clients_without_executing_servers_or_touching_native_files()
     let output = stdout(&run_success(init_command(&home)));
     assert!(
         output
-            == "Initialized canonical configuration with 5 servers from 4 client configurations.\n\
+            == "Initialized canonical configuration with 6 servers from 5 client configurations.\n\
                 Skipped 1 unsupported Cursor entry: \"remote-only\".\n\
                 Skipped 1 unsupported Windsurf entry: \"remote-windsurf\".\n\
-                Skipped 2 unsupported VS Code entries: \"native-env\", \"remote-vscode\".\n",
+                Skipped 2 unsupported VS Code entries: \"native-env\", \"remote-vscode\".\n\
+                Skipped 3 unsupported Codex entries: \"mixed-codex\", \"opaque-codex\", \"remote-codex\".\n",
         "init success output should be exact and structural"
     );
 
@@ -238,6 +281,11 @@ fn init_imports_all_clients_without_executing_servers_or_touching_native_files()
                         "args": ["--delta"],
                         "env": {"VSCODE_TOKEN": "vscode-synthetic-value"}
                     },
+                    "epsilon": {
+                        "command": "epsilon-server",
+                        "args": ["--epsilon"],
+                        "env": {"CODEX_TOKEN": "codex-synthetic-value"}
+                    },
                     "shared": {
                         "command": "shared-server",
                         "args": ["--stdio"],
@@ -269,9 +317,29 @@ fn init_imports_all_clients_without_executing_servers_or_touching_native_files()
         "init should preserve VS Code bytes",
     );
     assert_file_matches(
-        &project_path,
-        project_bytes,
+        &home.codex_configuration(),
+        codex,
+        "init should preserve global Codex bytes",
+    );
+    assert_file_matches(
+        &cursor_project_path,
+        cursor_project_bytes,
         "init should preserve project Cursor bytes",
+    );
+    assert_file_matches(
+        &codex_project_path,
+        codex_project_bytes,
+        "init should preserve project Codex bytes",
+    );
+    assert_file_matches(
+        &codex_profile_path,
+        codex_profile_bytes,
+        "init should preserve Codex profile bytes",
+    );
+    assert_file_matches(
+        &codex_auth_path,
+        codex_auth_bytes,
+        "init should never access or mutate Codex credential bytes",
     );
     for path in &excluded_vscode_paths {
         assert_file_matches(
@@ -462,6 +530,66 @@ fn init_rejects_malformed_final_vscode_json_without_creating_canonical_state() {
 }
 
 #[test]
+fn init_rejects_malformed_codex_toml_without_exposing_values_or_mutating_any_layer() {
+    let home = SyntheticHome::new();
+    let claude = json_document(&json!({
+        "mcpServers": {"claude-only": {"command": "synthetic-claude-command"}}
+    }));
+    let vscode = json_document(&json!({
+        "servers": {"vscode-only": {"type": "stdio", "command": "synthetic-vscode-command"}}
+    }));
+    let malformed = b"private = \"must-not-appear\"\n[mcp_servers.fixture\ncommand = \"safe\"\n";
+    let project_path = home.user_root().join("workspace/.codex/config.toml");
+    let project_bytes = include_bytes!("fixtures/codex/project.toml");
+    let auth_path = home.user_root().join(".codex/auth.json");
+    let auth_bytes = b"{\"token\":\"credential-must-not-appear\"}\n";
+    home.write_file(&home.claude_desktop_configuration(), &claude);
+    home.write_file(&home.vscode_configuration(), &vscode);
+    home.write_file(&home.codex_configuration(), malformed);
+    home.write_file(&project_path, project_bytes);
+    home.write_file(&auth_path, auth_bytes);
+
+    let diagnostic = stderr(&run_failure(init_command(&home)));
+
+    assert!(
+        diagnostic
+            .starts_with("error: cannot import Codex configuration: invalid Codex TOML near byte ")
+    );
+    assert!(
+        diagnostic.ends_with("; fix the file or its permissions, then rerun `mcp-sync init`\n")
+    );
+    for private in ["must-not-appear", "credential-must-not-appear"] {
+        assert!(!diagnostic.contains(private));
+    }
+    assert!(!home.canonical_configuration().exists());
+    assert_file_matches(
+        &home.claude_desktop_configuration(),
+        &claude,
+        "malformed Codex input should preserve Claude Desktop bytes",
+    );
+    assert_file_matches(
+        &home.vscode_configuration(),
+        &vscode,
+        "malformed Codex input should preserve VS Code bytes",
+    );
+    assert_file_matches(
+        &home.codex_configuration(),
+        malformed,
+        "malformed Codex input should remain unchanged",
+    );
+    assert_file_matches(
+        &project_path,
+        project_bytes,
+        "malformed global input should preserve project Codex bytes",
+    );
+    assert_file_matches(
+        &auth_path,
+        auth_bytes,
+        "malformed global input should preserve Codex credential bytes",
+    );
+}
+
+#[test]
 fn init_rejects_a_local_collision_with_an_unmanaged_vscode_entry() {
     let home = SyntheticHome::new();
     let claude = json_document(&json!({
@@ -510,6 +638,62 @@ fn init_rejects_a_local_collision_with_an_unmanaged_vscode_entry() {
         &home.vscode_configuration(),
         &vscode,
         "collision handling should preserve VS Code bytes",
+    );
+}
+
+#[test]
+fn init_rejects_a_local_collision_with_an_unmanaged_codex_entry() {
+    let home = SyntheticHome::new();
+    let claude = json_document(&json!({
+        "mcpServers": {
+            "remote-collision": {
+                "command": "local-private-command",
+                "args": ["--local-private-argument"],
+                "env": {"TOKEN": "local-private-value"}
+            }
+        }
+    }));
+    let codex = br#"[mcp_servers.remote-collision]
+url = "https://codex.invalid.example.test/private"
+auth = "oauth"
+http_headers = { Authorization = "Bearer codex-private-value" }
+"#;
+    let project_path = home.user_root().join("workspace/.codex/config.toml");
+    let project_bytes = include_bytes!("fixtures/codex/project.toml");
+    home.write_file(&home.claude_desktop_configuration(), &claude);
+    home.write_file(&home.codex_configuration(), codex);
+    home.write_file(&project_path, project_bytes);
+
+    let diagnostic = stderr(&run_failure(init_command(&home)));
+
+    assert_eq!(
+        diagnostic,
+        "error: cannot initialize because server \"remote-collision\" is both a local Claude Desktop definition and an unsupported Codex entry; make the definitions identical, rename one, or remove one, then rerun `mcp-sync init`\n"
+    );
+    for private in [
+        "local-private-command",
+        "--local-private-argument",
+        "local-private-value",
+        "https://codex.invalid.example.test/private",
+        "codex-private-value",
+    ] {
+        assert!(!diagnostic.contains(private));
+    }
+    assert!(!home.canonical_configuration().exists());
+    assert_file_matches(
+        &home.claude_desktop_configuration(),
+        &claude,
+        "Codex collision handling should preserve Claude Desktop bytes",
+    );
+    assert_file_matches(
+        &home.codex_configuration(),
+        codex,
+        "Codex collision handling should preserve global Codex bytes",
+    );
+    assert_file_matches(
+        &project_path,
+        project_bytes,
+        "Codex collision handling should preserve project Codex bytes",
     );
 }
 

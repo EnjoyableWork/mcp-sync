@@ -158,6 +158,20 @@ fn add_target_only_server(
     fs::write(path, bytes).expect("the native fixture should be updated");
 }
 
+fn add_codex_target_only_server(path: &Path, command: &str, private_value: &str) {
+    let mut document = String::from_utf8(read(path)).expect("the Codex fixture should be UTF-8");
+    document.push_str(&format!(
+        "\n[mcp_servers.target-only]\ncommand = {}\nargs = [\"--target-only-private-argument\"]\ncwd = \"/synthetic/codex-target-only\"\n\n[mcp_servers.target-only.env]\nTARGET_ONLY_TOKEN = {}\n",
+        serde_json::to_string(command).expect("the synthetic command should quote as TOML"),
+        serde_json::to_string(private_value)
+            .expect("the synthetic environment value should quote as TOML")
+    ));
+    document
+        .parse::<toml_edit::DocumentMut>()
+        .expect("the updated Codex fixture should be valid TOML");
+    fs::write(path, document).expect("the Codex fixture should be updated");
+}
+
 #[test]
 fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
     let home = SyntheticHome::new();
@@ -259,13 +273,68 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         "sandbox": {"network": {"allowedDomains": ["vscode-unowned-private.invalid"]}},
         "vscodeMetadata": {"private": "vscode-unowned-private-value"}
     }));
-    let project_path = home.user_root().join("workspace/.cursor/mcp.json");
-    let project = b"{\"projectPrivateSentinel\":\"project-unowned-private-value\"}\n";
+    let quoted_imported_command =
+        serde_json::to_string(&imported_command).expect("the synthetic command should quote");
+    let codex = format!(
+        r#"# Codex global comment must survive.
+model = "codex-unowned-private-model" # unrelated inline comment
+future_root = {{ private = "codex-unowned-private-value" }}
+
+[mcp_servers.epsilon]
+command = "epsilon-private-command"
+args = ["--epsilon-private-argument"]
+cwd = "/synthetic/epsilon-unowned-private"
+
+[mcp_servers.epsilon.env]
+EPSILON_TOKEN = "epsilon-private-value"
+
+[mcp_servers.shared]
+command = {quoted_imported_command}
+args = ["--shared-imported-private-argument"]
+enabled = false
+startup_timeout_sec = 21
+
+[mcp_servers.shared.env]
+SHARED_TOKEN = "shared-imported-private-value"
+
+[mcp_servers.codex-remote-only]
+url = "https://codex-remote-private.invalid/mcp"
+bearer_token_env_var = "CODEX_REMOTE_TOKEN"
+http_headers = {{ Authorization = "Bearer codex-remote-private-value" }}
+
+[mcp_servers.codex-mixed-transport]
+command = "codex-mixed-private-command"
+url = "https://codex-mixed-private.invalid/mcp"
+args = ["--codex-mixed-private-argument"]
+
+[mcp_servers.codex-opaque]
+enabled = false
+future_transport = "codex-opaque-private-value"
+
+[plugins."golden@test".mcp_servers.hosted]
+enabled = true
+private = "codex-plugin-private-value"
+"#
+    )
+    .into_bytes();
+    let cursor_project_path = home.user_root().join("workspace/.cursor/mcp.json");
+    let cursor_project = b"{\"projectPrivateSentinel\":\"project-unowned-private-value\"}\n";
+    let codex_project_path = home.user_root().join("workspace/.codex/config.toml");
+    let codex_project =
+        b"[mcp_servers.project-only]\ncommand = \"codex-project-private-command\"\n";
+    let codex_profile_path = home.user_root().join(".codex/profiles/private.toml");
+    let codex_profile = b"profile_private = \"codex-profile-private-value\"\n";
+    let codex_auth_path = home.user_root().join(".codex/auth.json");
+    let codex_auth = b"{\"tokens\":{\"access_token\":\"codex-auth-private-value\"}}\n";
     home.write_file(&home.claude_desktop_configuration(), &claude);
     home.write_file(&home.cursor_configuration(), &cursor);
     home.write_file(&home.windsurf_configuration(), &windsurf);
     home.write_file(&home.vscode_configuration(), &vscode);
-    home.write_file(&project_path, project);
+    home.write_file(&home.codex_configuration(), &codex);
+    home.write_file(&cursor_project_path, cursor_project);
+    home.write_file(&codex_project_path, codex_project);
+    home.write_file(&codex_profile_path, codex_profile);
+    home.write_file(&codex_auth_path, codex_auth);
 
     let private_values = [
         imported_command.as_str(),
@@ -283,6 +352,9 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         "delta-private-command",
         "--delta-private-argument",
         "delta-private-value",
+        "epsilon-private-command",
+        "--epsilon-private-argument",
+        "epsilon-private-value",
         "--shared-imported-private-argument",
         "shared-imported-private-value",
         "--shared-updated-private-argument",
@@ -297,8 +369,15 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         "43117",
         "https://vscode-remote-private.invalid/mcp",
         "Bearer vscode-remote-private-value",
+        "https://codex-remote-private.invalid/mcp",
+        "Bearer codex-remote-private-value",
+        "codex-mixed-private-command",
+        "--codex-mixed-private-argument",
+        "https://codex-mixed-private.invalid/mcp",
+        "codex-opaque-private-value",
         "/synthetic/alpha-unowned-private",
         "/synthetic/beta-unowned-private.env",
+        "/synthetic/epsilon-unowned-private",
         "/synthetic/shared-unowned-private",
         "/synthetic/shared-unowned-private.env",
         "${userHome}/shared-unowned-private.env",
@@ -306,24 +385,32 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         "cursor-unowned-private-value",
         "windsurf-unowned-private-value",
         "vscode-unowned-private-value",
+        "codex-unowned-private-model",
+        "codex-unowned-private-value",
+        "codex-plugin-private-value",
         "vscode-unowned-private-input",
         "vscode-unowned-private.invalid",
         "project-unowned-private-value",
+        "codex-project-private-command",
+        "codex-profile-private-value",
+        "codex-auth-private-value",
         "claude-target-only-private-command",
         "cursor-target-only-private-command",
         "windsurf-target-only-private-command",
         "vscode-target-only-private-command",
+        "codex-target-only-private-command",
         "claude-target-only-private-value",
         "cursor-target-only-private-value",
         "windsurf-target-only-private-value",
         "vscode-target-only-private-value",
+        "codex-target-only-private-value",
         "target-only-unowned-private-value",
     ];
 
     let init_output = stdout(&run_success(cli_command(&home, &["init"])));
     assert!(
         init_output.starts_with(
-            "Initialized canonical configuration with 5 servers from 4 client configurations.\n"
+            "Initialized canonical configuration with 6 servers from 5 client configurations.\n"
         ),
         "init should report the deterministic imported shape"
     );
@@ -340,6 +427,12 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
             "Skipped 2 unsupported VS Code entries: \"vscode-native-env\", \"vscode-remote-only\"."
         ),
         "init should report unsupported VS Code structures by name"
+    );
+    assert!(
+        init_output.contains(
+            "Skipped 3 unsupported Codex entries: \"codex-mixed-transport\", \"codex-opaque\", \"codex-remote-only\"."
+        ),
+        "init should report unsupported Codex structures by name"
     );
     assert_private_values_absent(&[&init_output], &private_values);
     assert_file_matches(
@@ -363,9 +456,29 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         "init must preserve VS Code bytes",
     );
     assert_file_matches(
-        &project_path,
-        project,
+        &home.codex_configuration(),
+        &codex,
+        "init must preserve Codex bytes",
+    );
+    assert_file_matches(
+        &cursor_project_path,
+        cursor_project,
         "init must preserve project Cursor bytes",
+    );
+    assert_file_matches(
+        &codex_project_path,
+        codex_project,
+        "init must preserve project Codex bytes",
+    );
+    assert_file_matches(
+        &codex_profile_path,
+        codex_profile,
+        "init must preserve alternate Codex profile bytes",
+    );
+    assert_file_matches(
+        &codex_auth_path,
+        codex_auth,
+        "init must preserve Codex credential-store bytes",
     );
 
     let update_output = stdout(&run_success(add_command(
@@ -398,6 +511,7 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         "\"alpha\":",
         "\"beta\":",
         "\"delta\":",
+        "\"epsilon\":",
         "\"gamma\":",
         "\"shared\":",
     ];
@@ -445,6 +559,11 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         "vscode-target-only-private-command",
         "vscode-target-only-private-value",
     );
+    add_codex_target_only_server(
+        &home.codex_configuration(),
+        "codex-target-only-private-command",
+        "codex-target-only-private-value",
+    );
 
     let canonical_path = home.canonical_configuration();
     let canonical_backup = backup_path(&canonical_path);
@@ -452,32 +571,39 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
     let cursor_path = home.cursor_configuration();
     let windsurf_path = home.windsurf_configuration();
     let vscode_path = home.vscode_configuration();
+    let codex_path = home.codex_configuration();
     let claude_backup = backup_path(&claude_path);
     let cursor_backup = backup_path(&cursor_path);
     let windsurf_backup = backup_path(&windsurf_path);
     let vscode_backup = backup_path(&vscode_path);
+    let codex_backup = backup_path(&codex_path);
     let canonical_before_sync = read(&canonical_path);
     let canonical_backup_before_sync = read(&canonical_backup);
     let claude_before_sync = read(&claude_path);
     let cursor_before_sync = read(&cursor_path);
     let windsurf_before_sync = read(&windsurf_path);
     let vscode_before_sync = read(&vscode_path);
+    let codex_before_sync = read(&codex_path);
 
     let dry_output = stdout(&run_success(cli_command(&home, &["sync", "--dry-run"])));
     assert!(
-        dry_output.starts_with("Dry run validated 4 targets; no files changed.\n"),
-        "dry-run should validate the complete four-target plan"
+        dry_output.starts_with("Dry run validated 5 targets; no files changed.\n"),
+        "dry-run should validate the complete five-target plan"
     );
     assert!(
         dry_output.contains("Claude Desktop: would update with recoverable backup")
             && dry_output.contains("Cursor: would update with recoverable backup")
             && dry_output.contains("Windsurf: would update with recoverable backup")
             && dry_output.contains("VS Code: would update with recoverable backup")
+            && dry_output.contains("Codex: would update with recoverable backup")
             && dry_output.contains("preserve target-only \"target-only\"")
             && dry_output.contains("preserve unmanaged \"remote-only\"")
             && dry_output.contains("preserve unmanaged \"windsurf-remote-only\"")
             && dry_output.contains("preserve unmanaged \"vscode-native-env\"")
-            && dry_output.contains("preserve unmanaged \"vscode-remote-only\""),
+            && dry_output.contains("preserve unmanaged \"vscode-remote-only\"")
+            && dry_output.contains("preserve unmanaged \"codex-mixed-transport\"")
+            && dry_output.contains("preserve unmanaged \"codex-opaque\"")
+            && dry_output.contains("preserve unmanaged \"codex-remote-only\""),
         "dry-run should report every target and preservation outcome"
     );
     assert_private_values_absent(&[&dry_output], &private_values);
@@ -511,20 +637,42 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         &vscode_before_sync,
         "dry-run must preserve VS Code",
     );
+    assert_file_matches(
+        &codex_path,
+        &codex_before_sync,
+        "dry-run must preserve Codex",
+    );
+    assert_file_matches(
+        &codex_project_path,
+        codex_project,
+        "dry-run must preserve project Codex bytes",
+    );
+    assert_file_matches(
+        &codex_profile_path,
+        codex_profile,
+        "dry-run must preserve alternate Codex profile bytes",
+    );
+    assert_file_matches(
+        &codex_auth_path,
+        codex_auth,
+        "dry-run must preserve Codex credential-store bytes",
+    );
     assert!(
         !claude_backup.exists()
             && !cursor_backup.exists()
             && !windsurf_backup.exists()
             && !vscode_backup.exists()
+            && !codex_backup.exists()
     );
 
     let apply_output = stdout(&run_success(cli_command(&home, &["sync"])));
     assert!(
-        apply_output.starts_with("Sync completed for 4 targets.\n")
+        apply_output.starts_with("Sync completed for 5 targets.\n")
             && apply_output.contains("Claude Desktop: updated with recoverable backup")
             && apply_output.contains("Cursor: updated with recoverable backup")
             && apply_output.contains("Windsurf: updated with recoverable backup")
-            && apply_output.contains("VS Code: updated with recoverable backup"),
+            && apply_output.contains("VS Code: updated with recoverable backup")
+            && apply_output.contains("Codex: updated with recoverable backup"),
         "sync should report successful per-target application"
     );
     assert_private_values_absent(&[&apply_output], &private_values);
@@ -549,6 +697,11 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         "VS Code backup must contain exact pre-sync bytes",
     );
     assert_file_matches(
+        &codex_backup,
+        &codex_before_sync,
+        "Codex backup must contain exact pre-sync bytes",
+    );
+    assert_file_matches(
         &canonical_path,
         &canonical_before_sync,
         "sync must not rewrite canonical state",
@@ -559,9 +712,24 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         "sync must not rewrite the canonical backup",
     );
     assert_file_matches(
-        &project_path,
-        project,
+        &cursor_project_path,
+        cursor_project,
         "sync must preserve project Cursor bytes",
+    );
+    assert_file_matches(
+        &codex_project_path,
+        codex_project,
+        "sync must preserve project Codex bytes",
+    );
+    assert_file_matches(
+        &codex_profile_path,
+        codex_profile,
+        "sync must preserve alternate Codex profile bytes",
+    );
+    assert_file_matches(
+        &codex_auth_path,
+        codex_auth,
+        "sync must preserve Codex credential-store bytes",
     );
 
     let claude_after: Value =
@@ -572,6 +740,12 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         .expect("Windsurf output should be valid JSON");
     let vscode_after: Value =
         serde_json::from_slice(&read(&vscode_path)).expect("VS Code output should be valid JSON");
+    let codex_after_bytes = read(&codex_path);
+    let codex_after_text =
+        String::from_utf8(codex_after_bytes.clone()).expect("Codex output should be UTF-8");
+    let codex_after = codex_after_text
+        .parse::<toml_edit::DocumentMut>()
+        .expect("Codex output should be valid TOML");
     for target in [&claude_after, &cursor_after, &windsurf_after] {
         assert!(
             target["mcpServers"]["shared"]["command"].as_str() == Some(updated_command.as_str())
@@ -580,6 +754,7 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
                 && target["mcpServers"]["alpha"].is_object()
                 && target["mcpServers"]["beta"].is_object()
                 && target["mcpServers"]["delta"].is_object()
+                && target["mcpServers"]["epsilon"].is_object()
                 && target["mcpServers"]["gamma"].is_object(),
             "each native target should contain the complete desired managed definitions"
         );
@@ -622,6 +797,7 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
             && vscode_after["servers"]["alpha"].is_object()
             && vscode_after["servers"]["beta"].is_object()
             && vscode_after["servers"]["delta"].is_object()
+            && vscode_after["servers"]["epsilon"].is_object()
             && vscode_after["servers"]["gamma"].is_object(),
         "VS Code should contain the complete desired managed definitions"
     );
@@ -639,6 +815,39 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
                 == Some("vscode-unowned-private.invalid"),
         "VS Code root, local, unmanaged, and target-only native data should survive"
     );
+    let codex_servers = codex_after["mcp_servers"]
+        .as_table_like()
+        .expect("Codex should retain its server map");
+    assert!(
+        codex_after["mcp_servers"]["shared"]["command"].as_str() == Some(updated_command.as_str())
+            && codex_after["mcp_servers"]["added"]["command"].as_str()
+                == Some(added_command.as_str())
+            && ["alpha", "beta", "delta", "epsilon", "gamma"]
+                .into_iter()
+                .all(|name| codex_servers.contains_key(name)),
+        "Codex should contain the complete desired managed definitions"
+    );
+    assert!(
+        codex_after["model"].as_str() == Some("codex-unowned-private-model")
+            && codex_after["future_root"]["private"].as_str()
+                == Some("codex-unowned-private-value")
+            && codex_after["mcp_servers"]["shared"]["enabled"].as_bool() == Some(false)
+            && codex_after["mcp_servers"]["shared"]["startup_timeout_sec"].as_integer() == Some(21)
+            && codex_after["mcp_servers"]["codex-remote-only"]["http_headers"]["Authorization"]
+                .as_str()
+                == Some("Bearer codex-remote-private-value")
+            && codex_after["mcp_servers"]["codex-mixed-transport"]["url"].as_str()
+                == Some("https://codex-mixed-private.invalid/mcp")
+            && codex_after["mcp_servers"]["codex-opaque"]["future_transport"].as_str()
+                == Some("codex-opaque-private-value")
+            && codex_after["mcp_servers"]["target-only"]["env"]["TARGET_ONLY_TOKEN"].as_str()
+                == Some("codex-target-only-private-value")
+            && codex_after["plugins"]["golden@test"]["mcp_servers"]["hosted"]["private"].as_str()
+                == Some("codex-plugin-private-value")
+            && codex_after_text.contains("# Codex global comment must survive.")
+            && codex_after_text.contains("# unrelated inline comment"),
+        "Codex comments, root settings, unowned local fields, unmanaged entries, plug-ins, and target-only data should survive"
+    );
 
     let claude_after_bytes = read(&claude_path);
     let cursor_after_bytes = read(&cursor_path);
@@ -648,13 +857,14 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
     let cursor_backup_after = read(&cursor_backup);
     let windsurf_backup_after = read(&windsurf_backup);
     let vscode_backup_after = read(&vscode_backup);
+    let codex_backup_after = read(&codex_backup);
     let no_op_output = stdout(&run_success(cli_command(&home, &["sync"])));
     assert!(
         no_op_output
             .matches("unchanged; no write or backup")
             .count()
-            == 4,
-        "repeat sync should report four target no-ops"
+            == 5,
+        "repeat sync should report five target no-ops"
     );
     assert_private_values_absent(&[&no_op_output], &private_values);
     assert_file_matches(
@@ -678,6 +888,11 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         "repeat sync must preserve VS Code bytes",
     );
     assert_file_matches(
+        &codex_path,
+        &codex_after_bytes,
+        "repeat sync must preserve Codex bytes",
+    );
+    assert_file_matches(
         &claude_backup,
         &claude_backup_after,
         "repeat sync must preserve the Claude backup",
@@ -697,6 +912,26 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         &vscode_backup_after,
         "repeat sync must preserve the VS Code backup",
     );
+    assert_file_matches(
+        &codex_backup,
+        &codex_backup_after,
+        "repeat sync must preserve the Codex backup",
+    );
+    assert_file_matches(
+        &codex_project_path,
+        codex_project,
+        "repeat sync must preserve project Codex bytes",
+    );
+    assert_file_matches(
+        &codex_profile_path,
+        codex_profile,
+        "repeat sync must preserve alternate Codex profile bytes",
+    );
+    assert_file_matches(
+        &codex_auth_path,
+        codex_auth,
+        "repeat sync must preserve Codex credential-store bytes",
+    );
     for marker in [&imported_marker, &updated_marker, &added_marker] {
         assert!(
             !marker.exists(),
@@ -709,6 +944,7 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         &cursor_path,
         &windsurf_path,
         &vscode_path,
+        &codex_path,
     ] {
         assert_no_temporary_files(path);
     }
@@ -744,6 +980,16 @@ fn built_binary_import_is_deterministic_when_client_assignments_are_reversed() {
         "args": ["--shared-private-argument"],
         "env": {"SHARED_TOKEN": "shared-private-value"}
     });
+    let codex = br#"[mcp_servers.epsilon]
+command = "epsilon-private-command"
+args = ["--epsilon-private-argument"]
+env = { EPSILON_TOKEN = "epsilon-private-value" }
+
+[mcp_servers.shared]
+command = "shared-private-command"
+args = ["--shared-private-argument"]
+env = { SHARED_TOKEN = "shared-private-value" }
+"#;
     first.write_file(
         &first.claude_desktop_configuration(),
         json_document(&json!({"mcpServers": {"alpha": alpha, "shared": shared}})),
@@ -760,6 +1006,7 @@ fn built_binary_import_is_deterministic_when_client_assignments_are_reversed() {
         &first.vscode_configuration(),
         json_document(&json!({"servers": {"delta": delta, "shared": shared}})),
     );
+    first.write_file(&first.codex_configuration(), codex);
     second.write_file(
         &second.claude_desktop_configuration(),
         json_document(&json!({"mcpServers": {"delta": {
@@ -780,6 +1027,7 @@ fn built_binary_import_is_deterministic_when_client_assignments_are_reversed() {
         &second.vscode_configuration(),
         json_document(&json!({"servers": {"alpha": alpha, "shared": shared}})),
     );
+    second.write_file(&second.codex_configuration(), codex);
 
     let first_output = stdout(&run_success(cli_command(&first, &["init"])));
     let second_output = stdout(&run_success(cli_command(&second, &["init"])));
@@ -796,6 +1044,9 @@ fn built_binary_import_is_deterministic_when_client_assignments_are_reversed() {
         "delta-private-command",
         "--delta-private-argument",
         "delta-private-value",
+        "epsilon-private-command",
+        "--epsilon-private-argument",
+        "epsilon-private-value",
         "shared-private-command",
         "--shared-private-argument",
         "shared-private-value",
@@ -817,6 +1068,7 @@ fn built_binary_failure_matrix_is_nonzero_non_mutating_and_redacted() {
         home.write_file(&home.cursor_configuration(), native);
         home.write_file(&home.windsurf_configuration(), native);
         home.write_file(&home.vscode_configuration(), native);
+        home.write_file(&home.codex_configuration(), native);
         let diagnostic = stderr(&run_failure(cli_command(&home, &["sync", "--dry-run"])));
         assert!(
             diagnostic.contains("canonical configuration does not exist")
@@ -843,6 +1095,11 @@ fn built_binary_failure_matrix_is_nonzero_non_mutating_and_redacted() {
             &home.vscode_configuration(),
             native,
             "missing canonical failure must preserve VS Code",
+        );
+        assert_file_matches(
+            &home.codex_configuration(),
+            native,
+            "missing canonical failure must preserve Codex",
         );
     }
 
@@ -969,11 +1226,13 @@ fn built_binary_failure_matrix_is_nonzero_non_mutating_and_redacted() {
         }));
         let malformed_vscode =
             b"{\"servers\":{\"shared\":{\"type\":\"stdio\",\"command\":\"malformed-private-command\"";
+        let codex = b"[mcp_servers.shared]\ncommand = \"codex-current-private-command\"\nargs = [\"--codex-current-private-argument\"]\nenv = { TOKEN = \"codex-current-private-value\" }\n";
         home.write_file(&home.canonical_configuration(), &canonical);
         home.write_file(&home.claude_desktop_configuration(), &claude);
         home.write_file(&home.cursor_configuration(), &cursor);
         home.write_file(&home.windsurf_configuration(), &windsurf);
         home.write_file(&home.vscode_configuration(), malformed_vscode);
+        home.write_file(&home.codex_configuration(), codex);
         let diagnostic = stderr(&run_failure(cli_command(&home, &["sync"])));
         assert!(
             diagnostic.contains("cannot plan VS Code sync: invalid VS Code JSON:")
@@ -996,6 +1255,9 @@ fn built_binary_failure_matrix_is_nonzero_non_mutating_and_redacted() {
                 "--windsurf-current-private-argument",
                 "windsurf-current-private-value",
                 "malformed-private-command",
+                "codex-current-private-command",
+                "--codex-current-private-argument",
+                "codex-current-private-value",
             ],
         );
         assert_file_matches(
@@ -1018,10 +1280,16 @@ fn built_binary_failure_matrix_is_nonzero_non_mutating_and_redacted() {
             malformed_vscode,
             "preflight failure must preserve malformed VS Code",
         );
+        assert_file_matches(
+            &home.codex_configuration(),
+            codex,
+            "preflight failure must preserve Codex",
+        );
         assert!(!backup_path(&home.claude_desktop_configuration()).exists());
         assert!(!backup_path(&home.cursor_configuration()).exists());
         assert!(!backup_path(&home.windsurf_configuration()).exists());
         assert!(!backup_path(&home.vscode_configuration()).exists());
+        assert!(!backup_path(&home.codex_configuration()).exists());
     }
 
     {

@@ -1,0 +1,7 @@
+# Project-scoped sentinel: MCP-016 must never discover or mutate this file.
+[mcp_servers.project-only]
+command = "/synthetic/bin/project-only"
+args = ["--project"]
+
+[mcp_servers.project-only.env]
+PROJECT_TOKEN = "fixture-codex-project-secret"

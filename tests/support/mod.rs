@@ -122,6 +122,10 @@ impl SyntheticHome {
             .join("Library/Application Support/Code/User/mcp.json")
     }
 
+    pub fn codex_configuration(&self) -> PathBuf {
+        self.user_root.join(".codex/config.toml")
+    }
+
     pub fn write_file(&self, path: &Path, contents: impl AsRef<[u8]>) {
         assert!(
             path.starts_with(self.root.path()),

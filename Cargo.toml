@@ -16,6 +16,7 @@ clap = { version = "4.6.6", features = ["derive"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["arbitrary_precision"] }
 tempfile = "3.27.0"
+toml_edit = { version = "0.25.13", default-features = false, features = ["display", "parse"] }
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
