@@ -1,0 +1,226 @@
+name: Release preflight
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-preflight-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unix-artifacts:
+    name: ${{ matrix.platform }} ${{ matrix.architecture }} — package and installed restore
+    if: github.repository == 'EnjoyableWork/mcp-sync'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macOS
+            architecture: ARM64
+            runner: macos-15
+            rust_target: aarch64-apple-darwin
+          - platform: macOS
+            architecture: x64
+            runner: macos-15-intel
+            rust_target: x86_64-apple-darwin
+          - platform: GNU/Linux
+            architecture: ARM64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+          - platform: GNU/Linux
+            architecture: x64
+            runner: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify the native Rust host
+        env:
+          EXPECTED_RUST_HOST: ${{ matrix.rust_target }}
+        run: |
+          set -euo pipefail
+          actual_rust_host="$(rustc --version --verbose | sed -n 's/^host: //p')"
+          test "$actual_rust_host" = "$EXPECTED_RUST_HOST"
+
+      - name: Read the stable package version
+        id: version
+        run: |
+          set -euo pipefail
+          release_version="$(
+            cargo metadata --locked --no-deps --format-version 1 \
+              | jq -r '.packages[] | select(.name == "enjoyable-mcp-sync") | .version'
+          )"
+          [[ "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          printf 'version=%s\n' "$release_version" >> "$GITHUB_OUTPUT"
+
+      - name: Build the native release executable
+        run: cargo build --release --locked
+
+      - name: Package and smoke-test the archive
+        id: package
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RUST_TARGET: ${{ matrix.rust_target }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          archive_path="$(
+            scripts/package-release.sh \
+              "$RELEASE_VERSION" \
+              "$RUST_TARGET" \
+              target/release/mcp-sync \
+              release-assets
+          )"
+          scripts/smoke-archive.sh "$archive_path" "$RELEASE_VERSION"
+          printf 'archive=%s\n' "$(basename "$archive_path")" >> "$GITHUB_OUTPUT"
+
+      - name: Generate the target SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          file: release-assets/${{ steps.package.outputs.archive }}
+          format: spdx-json
+          output-file: release-assets/mcp-sync-v${{ steps.version.outputs.version }}-${{ matrix.rust_target }}.spdx.json
+          syft-version: v1.50.0
+          dependency-snapshot: false
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Validate the target SPDX SBOM
+        env:
+          SBOM_PATH: release-assets/mcp-sync-v${{ steps.version.outputs.version }}-${{ matrix.rust_target }}.spdx.json
+        run: |
+          jq -e '
+            .spdxVersion == "SPDX-2.3" and
+            (.documentNamespace | type == "string") and
+            (.packages | type == "array" and length > 0)
+          ' "$SBOM_PATH" >/dev/null
+
+      - name: Retain the unsigned preflight payload briefly
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: preflight-${{ matrix.rust_target }}
+          path: |
+            release-assets/${{ steps.package.outputs.archive }}
+            release-assets/mcp-sync-v${{ steps.version.outputs.version }}-${{ matrix.rust_target }}.spdx.json
+          if-no-files-found: error
+          retention-days: 1
+
+  windows-artifacts:
+    name: Windows ${{ matrix.architecture }} — package and installed restore
+    if: github.repository == 'EnjoyableWork/mcp-sync'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: ARM64
+            runner: windows-11-arm
+            rust_target: aarch64-pc-windows-msvc
+          - architecture: x64
+            runner: windows-2025
+            rust_target: x86_64-pc-windows-msvc
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify the native Windows MSVC Rust host
+        shell: pwsh
+        env:
+          EXPECTED_RUST_HOST: ${{ matrix.rust_target }}
+        run: |
+          $actualRustHost = (rustc --version --verbose | Select-String '^host: ').Line.Substring(6)
+          if ($actualRustHost -ne $env:EXPECTED_RUST_HOST) {
+            throw "Unexpected native Rust host."
+          }
+
+      - name: Read the stable package version
+        id: version
+        shell: pwsh
+        run: |
+          $metadata = cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Could not read Cargo metadata.'
+          }
+          $releaseVersion = ($metadata.packages | Where-Object name -eq 'enjoyable-mcp-sync').version
+          if ($releaseVersion -notmatch '^\d+\.\d+\.\d+$') {
+            throw 'Cargo package version is not a stable semantic version.'
+          }
+          "version=$releaseVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build the native release executable
+        shell: pwsh
+        run: cargo build --release --locked
+
+      - name: Package and smoke-test the archive
+        id: package
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RUST_TARGET: ${{ matrix.rust_target }}
+        run: |
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          $archivePath = & ./scripts/package-release.ps1 `
+            -Version $env:RELEASE_VERSION `
+            -Target $env:RUST_TARGET `
+            -Executable target/release/mcp-sync.exe `
+            -OutputDirectory release-assets
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Windows release packaging failed.'
+          }
+          & ./scripts/smoke-archive.ps1 `
+            -Archive $archivePath `
+            -ExpectedVersion $env:RELEASE_VERSION
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Windows release archive smoke failed.'
+          }
+          "archive=$([IO.Path]::GetFileName($archivePath))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Generate the target SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          file: release-assets/${{ steps.package.outputs.archive }}
+          format: spdx-json
+          output-file: release-assets/mcp-sync-v${{ steps.version.outputs.version }}-${{ matrix.rust_target }}.spdx.json
+          syft-version: v1.50.0
+          dependency-snapshot: false
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Validate the target SPDX SBOM
+        shell: pwsh
+        env:
+          SBOM_PATH: release-assets/mcp-sync-v${{ steps.version.outputs.version }}-${{ matrix.rust_target }}.spdx.json
+        run: |
+          $sbom = Get-Content -LiteralPath $env:SBOM_PATH -Raw | ConvertFrom-Json
+          if ($sbom.spdxVersion -ne 'SPDX-2.3' -or
+              [string]::IsNullOrWhiteSpace($sbom.documentNamespace) -or
+              $sbom.packages.Count -lt 1) {
+            throw 'Generated SBOM does not satisfy the release contract.'
+          }
+
+      - name: Retain the unsigned preflight payload briefly
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: preflight-${{ matrix.rust_target }}
+          path: |
+            release-assets/${{ steps.package.outputs.archive }}
+            release-assets/mcp-sync-v${{ steps.version.outputs.version }}-${{ matrix.rust_target }}.spdx.json
+          if-no-files-found: error
+          retention-days: 1

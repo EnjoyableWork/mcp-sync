@@ -16,7 +16,9 @@ if [[ ! -x "$smoke_executable" ]]; then
 fi
 
 smoke_executable=$(cd "$(dirname "$smoke_executable")" && pwd)/$(basename "$smoke_executable")
-smoke_root=$(mktemp -d)
+smoke_temp_parent="${TMPDIR:-/tmp}"
+smoke_root_prefix="${smoke_temp_parent%/}/mcp-sync-release-smoke."
+smoke_root=$(mktemp -d "${smoke_root_prefix}XXXXXX")
 smoke_home="$smoke_root/home"
 smoke_xdg="$smoke_root/xdg"
 smoke_local="$smoke_root/local"
@@ -24,7 +26,14 @@ smoke_roaming="$smoke_root/roaming"
 smoke_path=$PATH
 
 cleanup_smoke_root() {
-  rm -rf -- "$smoke_root"
+  if [[ "$smoke_root" != "$smoke_root_prefix"* ]]; then
+    echo "refusing to remove an unexpected installed-smoke path" >&2
+    return 1
+  fi
+
+  if [[ -d "$smoke_root" ]]; then
+    rm -rf -- "$smoke_root"
+  fi
 }
 trap cleanup_smoke_root EXIT
 

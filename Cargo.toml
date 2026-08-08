@@ -5,7 +5,24 @@ edition = "2024"
 description = "Synchronize local Model Context Protocol server configurations"
 license = "MIT"
 repository = "https://github.com/EnjoyableWork/mcp-sync"
+homepage = "https://github.com/EnjoyableWork/mcp-sync"
 readme = "README.md"
+keywords = ["mcp", "configuration", "cli", "developer-tools"]
+categories = ["command-line-utilities", "config"]
+publish = ["crates-io"]
+include = [
+    "/.github/workflows/release*.yml",
+    "/src/**",
+    "/tests/**",
+    "/examples/**",
+    "/scripts/**",
+    "/docs/release.md",
+    "/docs/releases/**",
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/LICENSE",
+    "/README.md",
+]
 
 [[bin]]
 name = "mcp-sync"

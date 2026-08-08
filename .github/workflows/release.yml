@@ -1,0 +1,721 @@
+name: Publish immutable release
+
+on:
+  push:
+    tags:
+      - v*
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate protected release authority
+    if: github.repository == 'EnjoyableWork/mcp-sync'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.contract.outputs.version }}
+
+    steps:
+      - name: Check out the protected tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate the tag, source, registry identity, and repository controls
+        id: contract
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_RULESET_NAME: Protect stable release tags
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "release tag must be a stable v-prefixed semantic version" >&2
+            exit 1
+          fi
+          release_version=${BASH_REMATCH[1]}
+
+          package_version="$(
+            cargo metadata --locked --no-deps --format-version 1 \
+              | jq -r '.packages[] | select(.name == "enjoyable-mcp-sync") | .version'
+          )"
+          if [[ "$release_version" != "$package_version" ]]; then
+            echo "release tag does not match the Cargo package version" >&2
+            exit 1
+          fi
+
+          if [[ "$(git cat-file -t "$GITHUB_REF_NAME")" != tag ]]; then
+            echo "stable releases require an intentional annotated tag" >&2
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          if [[ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]]; then
+            echo "stable release tag must identify the current main commit" >&2
+            exit 1
+          fi
+          if [[ "$(git rev-parse "$GITHUB_REF_NAME^{commit}")" != "$GITHUB_SHA" ]]; then
+            echo "release tag does not resolve to the triggering commit" >&2
+            exit 1
+          fi
+
+          immutable_enabled="$(
+            gh api "repos/$GITHUB_REPOSITORY/immutable-releases" \
+              -H 'X-GitHub-Api-Version: 2026-03-10' \
+              --jq '.enabled'
+          )"
+          if [[ "$immutable_enabled" != true ]]; then
+            echo "repository release immutability is not enabled" >&2
+            exit 1
+          fi
+
+          ruleset_id="$(
+            gh api "repos/$GITHUB_REPOSITORY/rulesets" \
+              -H 'X-GitHub-Api-Version: 2026-03-10' \
+              --jq ".[] | select(.name == \"$RELEASE_RULESET_NAME\") | .id"
+          )"
+          if [[ -z "$ruleset_id" || "$ruleset_id" == *$'\n'* ]]; then
+            echo "expected exactly one stable release tag ruleset" >&2
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/rulesets/$ruleset_id" \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            | jq -e '
+                .enforcement == "active" and
+                .target == "tag" and
+                .conditions.ref_name.include == ["refs/tags/v*"] and
+                ([.rules[].type] | sort) == (["creation", "deletion", "update"] | sort) and
+                (.bypass_actors | length) == 1 and
+                .bypass_actors[0].actor_type == "User" and
+                .bypass_actors[0].bypass_mode == "always"
+              ' >/dev/null
+
+          registry_response="$RUNNER_TEMP/enjoyable-mcp-sync-crates.json"
+          registry_status="$(
+            curl --silent --show-error \
+              --output "$registry_response" \
+              --write-out '%{http_code}' \
+              --header 'User-Agent: mcp-sync-release/0.1 (+https://github.com/EnjoyableWork/mcp-sync)' \
+              'https://crates.io/api/v1/crates/enjoyable-mcp-sync'
+          )"
+          case "$registry_status" in
+            404) ;;
+            200)
+              jq -e \
+                --arg version "$release_version" \
+                '.crate.repository == "https://github.com/EnjoyableWork/mcp-sync" and
+                 any(.versions[]; .num == $version)' \
+                "$registry_response" >/dev/null
+              ;;
+            *)
+              echo "crates.io package identity could not be verified" >&2
+              exit 1
+              ;;
+          esac
+
+          existing_release="$RUNNER_TEMP/existing-release.json"
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            >"$existing_release" 2>/dev/null; then
+            jq -e \
+              --arg tag "$GITHUB_REF_NAME" \
+              '.tag_name == $tag and (.draft == true or .immutable == true)' \
+              "$existing_release" >/dev/null
+          fi
+
+          printf 'version=%s\n' "$release_version" >> "$GITHUB_OUTPUT"
+
+      - name: Require every protected signing input
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
+          APPLE_NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          ARTIFACT_SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+        run: |
+          set -euo pipefail
+          required_inputs=(
+            MACOS_CERTIFICATE_P12_BASE64
+            MACOS_CERTIFICATE_PASSWORD
+            APPLE_NOTARY_KEY_P8_BASE64
+            APPLE_NOTARY_KEY_ID
+            APPLE_NOTARY_ISSUER_ID
+            AZURE_CLIENT_ID
+            AZURE_TENANT_ID
+            AZURE_SUBSCRIPTION_ID
+            ARTIFACT_SIGNING_ENDPOINT
+            ARTIFACT_SIGNING_ACCOUNT
+            ARTIFACT_SIGNING_PROFILE
+          )
+          for required_input in "${required_inputs[@]}"; do
+            if [[ -z "${!required_input:-}" ]]; then
+              printf 'protected release input %s is missing\n' "$required_input" >&2
+              exit 1
+            fi
+          done
+          if [[ "$ARTIFACT_SIGNING_ENDPOINT" != https://* ]]; then
+            echo "Artifact Signing endpoint must use HTTPS" >&2
+            exit 1
+          fi
+
+  macos:
+    name: macOS ${{ matrix.architecture }} — sign, notarize, package, attest
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: ARM64
+            runner: macos-15
+            rust_target: aarch64-apple-darwin
+          - architecture: x64
+            runner: macos-15-intel
+            rust_target: x86_64-apple-darwin
+    env:
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      RUST_TARGET: ${{ matrix.rust_target }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify the native macOS Rust host
+        run: |
+          set -euo pipefail
+          actual_rust_host="$(rustc --version --verbose | sed -n 's/^host: //p')"
+          test "$actual_rust_host" = "$RUST_TARGET"
+
+      - name: Build the native release executable
+        run: cargo build --release --locked
+
+      - name: Sign, notarize, and assess the exact release executable
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
+          APPLE_NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          certificate_path="$RUNNER_TEMP/mcp-sync-release-certificate.p12"
+          keychain_path="$RUNNER_TEMP/mcp-sync-release.keychain-db"
+          notary_key_path="$RUNNER_TEMP/mcp-sync-release-notary-key.p8"
+          notary_stage="$RUNNER_TEMP/mcp-sync-notary-$RUST_TARGET"
+          notary_zip="$RUNNER_TEMP/mcp-sync-notary-$RUST_TARGET.zip"
+          notary_result="$RUNNER_TEMP/mcp-sync-notary-$RUST_TARGET.json"
+          keychain_password="$(openssl rand -hex 32)"
+
+          printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | /usr/bin/base64 -D > "$certificate_path"
+          chmod 600 "$certificate_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" \
+            -k "$keychain_path" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign >/dev/null
+          security list-keychains -d user -s "$keychain_path"
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "$keychain_password" \
+            "$keychain_path" >/dev/null
+
+          identity_hashes="$(
+            security find-identity -v -p codesigning "$keychain_path" \
+              | sed -nE 's/^[[:space:]]*[0-9]+\) ([0-9A-F]{40}) "Developer ID Application:.*$/\1/p'
+          )"
+          identity_count="$(printf '%s\n' "$identity_hashes" | awk 'NF { count++ } END { print count + 0 }')"
+          if [[ "$identity_count" != 1 ]]; then
+            echo "expected exactly one Developer ID Application identity" >&2
+            exit 1
+          fi
+          signing_identity="$(printf '%s\n' "$identity_hashes" | awk 'NF { print; exit }')"
+
+          codesign \
+            --force \
+            --identifier com.enjoyablework.mcp-sync \
+            --options runtime \
+            --timestamp \
+            --sign "$signing_identity" \
+            target/release/mcp-sync
+          codesign --verify --deep --strict target/release/mcp-sync
+          codesign_details="$(codesign -d --verbose=4 target/release/mcp-sync 2>&1)"
+          grep -q '^Identifier=com.enjoyablework.mcp-sync$' <<<"$codesign_details"
+          grep -Eq '^CodeDirectory .*flags=.*runtime' <<<"$codesign_details"
+          grep -q '^Timestamp=' <<<"$codesign_details"
+
+          printf '%s' "$APPLE_NOTARY_KEY_P8_BASE64" | /usr/bin/base64 -D > "$notary_key_path"
+          chmod 600 "$notary_key_path"
+          mkdir -p "$notary_stage"
+          install -m 0755 target/release/mcp-sync "$notary_stage/mcp-sync"
+          install -m 0644 LICENSE README.md Cargo.lock "$notary_stage/"
+          ditto -c -k --sequesterRsrc --keepParent "$notary_stage" "$notary_zip"
+          xcrun notarytool submit "$notary_zip" \
+            --key "$notary_key_path" \
+            --key-id "$APPLE_NOTARY_KEY_ID" \
+            --issuer "$APPLE_NOTARY_ISSUER_ID" \
+            --wait \
+            --timeout 30m \
+            --output-format json > "$notary_result"
+          jq -e '.status == "Accepted"' "$notary_result" >/dev/null
+
+          if ! spctl --assess --type execute --verbose=4 target/release/mcp-sync >/dev/null 2>&1; then
+            echo "Gatekeeper rejected the notarized release executable" >&2
+            exit 1
+          fi
+
+      - name: Remove ephemeral Apple signing material
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/mcp-sync-release.keychain-db" >/dev/null 2>&1 || true
+          rm -f -- \
+            "$RUNNER_TEMP/mcp-sync-release-certificate.p12" \
+            "$RUNNER_TEMP/mcp-sync-release-notary-key.p8" \
+            "$RUNNER_TEMP/mcp-sync-notary-$RUST_TARGET.zip" \
+            "$RUNNER_TEMP/mcp-sync-notary-$RUST_TARGET.json"
+          rm -rf -- "$RUNNER_TEMP/mcp-sync-notary-$RUST_TARGET"
+
+      - name: Package and smoke-test the signed archive
+        id: package
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          archive_path="$(
+            scripts/package-release.sh \
+              "$RELEASE_VERSION" \
+              "$RUST_TARGET" \
+              target/release/mcp-sync \
+              release-assets
+          )"
+          scripts/smoke-archive.sh "$archive_path" "$RELEASE_VERSION"
+          printf 'archive=%s\n' "$(basename "$archive_path")" >> "$GITHUB_OUTPUT"
+
+      - name: Generate the target SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          file: release-assets/${{ steps.package.outputs.archive }}
+          format: spdx-json
+          output-file: release-assets/mcp-sync-v${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}.spdx.json
+          syft-version: v1.50.0
+          dependency-snapshot: false
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Validate the target SPDX SBOM
+        env:
+          SBOM_PATH: release-assets/mcp-sync-v${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}.spdx.json
+        run: |
+          jq -e '
+            .spdxVersion == "SPDX-2.3" and
+            (.documentNamespace | type == "string") and
+            (.packages | type == "array" and length > 0)
+          ' "$SBOM_PATH" >/dev/null
+
+      - name: Attest the signed archive
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/${{ steps.package.outputs.archive }}
+
+      - name: Attest the target SPDX SBOM
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/mcp-sync-v${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}.spdx.json
+
+      - name: Upload the signed release payload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ matrix.rust_target }}
+          path: |
+            release-assets/${{ steps.package.outputs.archive }}
+            release-assets/mcp-sync-v${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}.spdx.json
+          if-no-files-found: error
+          retention-days: 7
+
+  linux:
+    name: GNU/Linux ${{ matrix.architecture }} — package and attest
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: ARM64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+          - architecture: x64
+            runner: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+    env:
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      RUST_TARGET: ${{ matrix.rust_target }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify the native GNU/Linux Rust host
+        run: |
+          set -euo pipefail
+          actual_rust_host="$(rustc --version --verbose | sed -n 's/^host: //p')"
+          test "$actual_rust_host" = "$RUST_TARGET"
+
+      - name: Build the native release executable
+        run: cargo build --release --locked
+
+      - name: Package and smoke-test the archive
+        id: package
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          archive_path="$(
+            scripts/package-release.sh \
+              "$RELEASE_VERSION" \
+              "$RUST_TARGET" \
+              target/release/mcp-sync \
+              release-assets
+          )"
+          scripts/smoke-archive.sh "$archive_path" "$RELEASE_VERSION"
+          printf 'archive=%s\n' "$(basename "$archive_path")" >> "$GITHUB_OUTPUT"
+
+      - name: Generate the target SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          file: release-assets/${{ steps.package.outputs.archive }}
+          format: spdx-json
+          output-file: release-assets/mcp-sync-v${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}.spdx.json
+          syft-version: v1.50.0
+          dependency-snapshot: false
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Validate the target SPDX SBOM
+        env:
+          SBOM_PATH: release-assets/mcp-sync-v${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}.spdx.json
+        run: |
+          jq -e '
+            .spdxVersion == "SPDX-2.3" and
+            (.documentNamespace | type == "string") and
+            (.packages | type == "array" and length > 0)
+          ' "$SBOM_PATH" >/dev/null
+
+      - name: Attest the archive
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/${{ steps.package.outputs.archive }}
+
+      - name: Attest the target SPDX SBOM
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/mcp-sync-v${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}.spdx.json
+
+      - name: Upload the release payload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ matrix.rust_target }}
+          path: |
+            release-assets/${{ steps.package.outputs.archive }}
+            release-assets/mcp-sync-v${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}.spdx.json
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Windows ${{ matrix.architecture }} — sign, package, attest
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: ARM64
+            runner: windows-11-arm
+            rust_target: aarch64-pc-windows-msvc
+          - architecture: x64
+            runner: windows-2025
+            rust_target: x86_64-pc-windows-msvc
+    env:
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      RUST_TARGET: ${{ matrix.rust_target }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify the native Windows MSVC Rust host
+        shell: pwsh
+        run: |
+          $actualRustHost = (rustc --version --verbose | Select-String '^host: ').Line.Substring(6)
+          if ($actualRustHost -ne $env:RUST_TARGET) {
+            throw 'Unexpected native Rust host.'
+          }
+
+      - name: Build the native release executable
+        shell: pwsh
+        run: cargo build --release --locked
+
+      - name: Authenticate to Azure with release OIDC
+        uses: Azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Authenticode-sign and timestamp the executable
+        uses: Azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\target\release\mcp-sync.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          cache-dependencies: false
+          trace: false
+
+      - name: Verify the Public Trust Authenticode signature and timestamp
+        shell: pwsh
+        run: |
+          $signature = Get-AuthenticodeSignature -LiteralPath target/release/mcp-sync.exe
+          if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+            throw 'Authenticode signature is not valid.'
+          }
+          if ($null -eq $signature.SignerCertificate -or $null -eq $signature.TimeStamperCertificate) {
+            throw 'Authenticode signer or RFC3161 timestamp certificate is missing.'
+          }
+          $codeSigningOid = '1.3.6.1.5.5.7.3.3'
+          $enhancedKeyUsages = @($signature.SignerCertificate.EnhancedKeyUsageList | ForEach-Object ObjectId)
+          if ($codeSigningOid -notin $enhancedKeyUsages.Value) {
+            throw 'Authenticode certificate is not valid for code signing.'
+          }
+
+      - name: Package and smoke-test the signed archive
+        id: package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          $archivePath = & ./scripts/package-release.ps1 `
+            -Version $env:RELEASE_VERSION `
+            -Target $env:RUST_TARGET `
+            -Executable target/release/mcp-sync.exe `
+            -OutputDirectory release-assets
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Windows release packaging failed.'
+          }
+          & ./scripts/smoke-archive.ps1 `
+            -Archive $archivePath `
+            -ExpectedVersion $env:RELEASE_VERSION
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Windows release archive smoke failed.'
+          }
+          "archive=$([IO.Path]::GetFileName($archivePath))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Generate the target SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          file: release-assets/${{ steps.package.outputs.archive }}
+          format: spdx-json
+          output-file: release-assets/mcp-sync-v${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}.spdx.json
+          syft-version: v1.50.0
+          dependency-snapshot: false
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Validate the target SPDX SBOM
+        shell: pwsh
+        env:
+          SBOM_PATH: release-assets/mcp-sync-v${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}.spdx.json
+        run: |
+          $sbom = Get-Content -LiteralPath $env:SBOM_PATH -Raw | ConvertFrom-Json
+          if ($sbom.spdxVersion -ne 'SPDX-2.3' -or
+              [string]::IsNullOrWhiteSpace($sbom.documentNamespace) -or
+              $sbom.packages.Count -lt 1) {
+            throw 'Generated SBOM does not satisfy the release contract.'
+          }
+
+      - name: Attest the signed archive
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/${{ steps.package.outputs.archive }}
+
+      - name: Attest the target SPDX SBOM
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/mcp-sync-v${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}.spdx.json
+
+      - name: Upload the signed release payload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ matrix.rust_target }}
+          path: |
+            release-assets/${{ steps.package.outputs.archive }}
+            release-assets/mcp-sync-v${{ env.RELEASE_VERSION }}-${{ matrix.rust_target }}.spdx.json
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Verify complete payload and publish immutably
+    needs:
+      - validate
+      - macos
+      - linux
+      - windows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment:
+      name: release
+      url: https://github.com/EnjoyableWork/mcp-sync/releases/tag/${{ github.ref_name }}
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+
+    steps:
+      - name: Check out release verification sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download all native release payloads
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Require the exact payload and create SHA256SUMS
+        run: scripts/verify-release-assets.sh release-assets "$RELEASE_VERSION"
+
+      - name: Attest the checksum manifest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/SHA256SUMS
+
+      - name: Verify every build-provenance attestation
+        run: |
+          set -euo pipefail
+          for release_asset in release-assets/*; do
+            gh attestation verify "$release_asset" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+              --source-ref "$GITHUB_REF" \
+              --source-digest "$GITHUB_SHA" \
+              --format json >/dev/null
+          done
+
+      - name: Create or repair the draft release
+        id: draft
+        run: |
+          set -euo pipefail
+          release_state="$RUNNER_TEMP/release-state.json"
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            >"$release_state" 2>/dev/null; then
+            if [[ "$(jq -r '.immutable' "$release_state")" == true ]]; then
+              printf 'already_immutable=true\n' >> "$GITHUB_OUTPUT"
+            elif [[ "$(jq -r '.draft' "$release_state")" == true ]]; then
+              gh release edit "$GITHUB_REF_NAME" \
+                --title "mcp-sync v$RELEASE_VERSION" \
+                --notes-file "docs/releases/v$RELEASE_VERSION.md"
+              gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
+              printf 'already_immutable=false\n' >> "$GITHUB_OUTPUT"
+            else
+              echo "existing release is published without immutability" >&2
+              exit 1
+            fi
+          else
+            gh release create "$GITHUB_REF_NAME" release-assets/* \
+              --draft \
+              --verify-tag \
+              --title "mcp-sync v$RELEASE_VERSION" \
+              --notes-file "docs/releases/v$RELEASE_VERSION.md"
+            printf 'already_immutable=false\n' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify the exact draft payload bytes
+        run: |
+          set -euo pipefail
+          mkdir -p draft-download
+          gh release download "$GITHUB_REF_NAME" --dir draft-download
+          scripts/verify-published-release.sh draft-download "$RELEASE_VERSION"
+          for release_asset in release-assets/*; do
+            cmp --silent "$release_asset" "draft-download/$(basename "$release_asset")"
+          done
+
+      - name: Publish the verified draft
+        if: steps.draft.outputs.already_immutable != 'true'
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+
+      - name: Require immutable release state and release attestation
+        run: |
+          set -euo pipefail
+          immutable=false
+          for _ in {1..60}; do
+            immutable="$(
+              gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" \
+                -H 'X-GitHub-Api-Version: 2026-03-10' \
+                --jq '.immutable'
+            )"
+            if [[ "$immutable" == true ]] && \
+               gh release verify "$GITHUB_REF_NAME" --format json >/dev/null 2>&1; then
+              break
+            fi
+            sleep 5
+          done
+          if [[ "$immutable" != true ]]; then
+            echo "published GitHub Release did not become immutable" >&2
+            exit 1
+          fi
+          gh release verify "$GITHUB_REF_NAME" --format json >/dev/null
+
+      - name: Re-download and verify the immutable release
+        run: |
+          set -euo pipefail
+          mkdir -p immutable-download
+          gh release download "$GITHUB_REF_NAME" --dir immutable-download
+          scripts/verify-published-release.sh immutable-download "$RELEASE_VERSION"
+          for release_asset in release-assets/*; do
+            cmp --silent "$release_asset" "immutable-download/$(basename "$release_asset")"
+          done

@@ -1,0 +1,148 @@
+name: Authorize stable tag
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-authorization
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    name: Authorize the current main commit
+    if: github.repository == 'EnjoyableWork/mcp-sync'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release-control
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Check out the candidate commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require the exact current main commit and stable version
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo "stable tag authorization must be dispatched from main" >&2
+            exit 1
+          fi
+          current_main="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq '.sha')"
+          if [[ "$current_main" != "$GITHUB_SHA" ]]; then
+            echo "authorization commit is no longer the current main commit" >&2
+            exit 1
+          fi
+
+          release_version="$(
+            cargo metadata --locked --no-deps --format-version 1 \
+              | jq -r '.packages[] | select(.name == "enjoyable-mcp-sync") | .version'
+          )"
+          if [[ ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Cargo package version is not a stable semantic version" >&2
+            exit 1
+          fi
+          if [[ ! -f "docs/releases/v$release_version.md" ]]; then
+            echo "stable release notes are missing" >&2
+            exit 1
+          fi
+
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$release_version" >/dev/null 2>&1; then
+            echo "stable release tag already exists" >&2
+            exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$release_version" >/dev/null 2>&1; then
+            echo "stable GitHub Release already exists" >&2
+            exit 1
+          fi
+
+          printf 'version=%s\n' "$release_version" >> "$GITHUB_OUTPUT"
+
+      - name: Require current-main CI and release preflight evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          require_successful_run() {
+            local workflow_file=$1
+            local workflow_label=$2
+            local matching_run
+            matching_run="$(
+              gh run list \
+                --repo "$GITHUB_REPOSITORY" \
+                --workflow "$workflow_file" \
+                --branch main \
+                --event push \
+                --status completed \
+                --limit 20 \
+                --json headSha,conclusion,url \
+                --jq "map(select(.headSha == \"$GITHUB_SHA\" and .conclusion == \"success\"))[0].url // empty"
+            )"
+            if [[ -z "$matching_run" ]]; then
+              printf '%s has no successful push run for the candidate commit\n' "$workflow_label" >&2
+              exit 1
+            fi
+          }
+
+          require_successful_run ci.yml CI
+          require_successful_run release-preflight.yml 'Release preflight'
+
+      - name: Recheck immutable-release and stable-tag controls
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_RULESET_NAME: Protect stable release tags
+        run: |
+          set -euo pipefail
+          test "$(
+            gh api "repos/$GITHUB_REPOSITORY/immutable-releases" \
+              -H 'X-GitHub-Api-Version: 2026-03-10' \
+              --jq '.enabled'
+          )" = true
+
+          ruleset_id="$(
+            gh api "repos/$GITHUB_REPOSITORY/rulesets" \
+              -H 'X-GitHub-Api-Version: 2026-03-10' \
+              --jq ".[] | select(.name == \"$RELEASE_RULESET_NAME\") | .id"
+          )"
+          if [[ -z "$ruleset_id" || "$ruleset_id" == *$'\n'* ]]; then
+            echo "expected exactly one stable release tag ruleset" >&2
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/rulesets/$ruleset_id" \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            | jq -e '
+                .enforcement == "active" and
+                .target == "tag" and
+                .conditions.ref_name.include == ["refs/tags/v*"] and
+                ([.rules[].type] | sort) == (["creation", "deletion", "update"] | sort) and
+                (.bypass_actors | length) == 1 and
+                .bypass_actors[0].actor_type == "User" and
+                .bypass_actors[0].bypass_mode == "always"
+              ' >/dev/null
+
+      - name: Record the authorized manual tag operation
+        env:
+          RELEASE_VERSION: ${{ steps.candidate.outputs.version }}
+        run: |
+          {
+            echo '## Stable tag authorization'
+            echo
+            echo "- Version: \`$RELEASE_VERSION\`"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo '- CI: successful on this exact commit'
+            echo '- Six-target release preflight: successful on this exact commit'
+            echo '- Immutable releases and stable-tag ruleset: verified'
+            echo
+            echo 'The recorded named bypass actor may now create one annotated tag'
+            echo "\`v$RELEASE_VERSION\` at \`$GITHUB_SHA\` and push only that tag."
+            echo 'Actions deliberately has no tag-creation or bypass credential.'
+          } >> "$GITHUB_STEP_SUMMARY"

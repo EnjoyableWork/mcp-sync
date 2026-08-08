@@ -2,6 +2,15 @@
 
 set -euo pipefail
 
+release_script_directory="$(
+  cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+  pwd
+)"
+release_repository_root="$(
+  cd -- "$release_script_directory/.."
+  pwd
+)"
+
 if [[ $# -ne 4 ]]; then
   echo "usage: $0 <version> <Rust target> <mcp-sync executable> <output directory>" >&2
   exit 2
@@ -36,20 +45,39 @@ if [[ "$release_reported_version" != "mcp-sync $release_version" ]]; then
   exit 1
 fi
 
-mkdir -p "$release_output_directory"
+mkdir -p -- "$release_output_directory"
 release_output_directory=$(cd "$release_output_directory" && pwd)
-release_stage=$(mktemp -d)
+release_temp_parent="${TMPDIR:-/tmp}"
+release_stage_prefix="${release_temp_parent%/}/mcp-sync-release-package."
+release_stage=$(mktemp -d "${release_stage_prefix}XXXXXX")
+release_archive="mcp-sync-v${release_version}-${release_target}.tar.gz"
+release_archive_path="$release_output_directory/$release_archive"
+release_archive_temp=$(mktemp "$release_output_directory/.${release_archive}.XXXXXX")
 
 cleanup_release_stage() {
-  rm -rf -- "$release_stage"
+  if [[ "$release_stage" != "$release_stage_prefix"* ]]; then
+    echo "refusing to remove an unexpected release staging path" >&2
+    return 1
+  fi
+
+  if [[ -d "$release_stage" ]]; then
+    rm -rf -- "$release_stage"
+  fi
+  if [[ -f "$release_archive_temp" ]]; then
+    rm -f -- "$release_archive_temp"
+  fi
 }
 trap cleanup_release_stage EXIT
 
 install -m 0755 "$release_executable" "$release_stage/mcp-sync"
-install -m 0644 LICENSE README.md Cargo.lock "$release_stage/"
+install -m 0644 \
+  "$release_repository_root/LICENSE" \
+  "$release_repository_root/README.md" \
+  "$release_repository_root/Cargo.lock" \
+  "$release_stage/"
 
-release_archive="mcp-sync-v${release_version}-${release_target}.tar.gz"
-COPYFILE_DISABLE=1 tar -C "$release_stage" -czf "$release_output_directory/$release_archive" \
+COPYFILE_DISABLE=1 tar -C "$release_stage" -czf "$release_archive_temp" \
   mcp-sync LICENSE README.md Cargo.lock
+mv -f -- "$release_archive_temp" "$release_archive_path"
 
-printf '%s\n' "$release_output_directory/$release_archive"
+printf '%s\n' "$release_archive_path"
