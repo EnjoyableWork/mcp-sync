@@ -111,11 +111,13 @@ fn add_and_list_are_redacted_and_never_access_target_clients() {
     let claude_bytes = b"Claude target must not be read by add or list\n";
     let cursor_bytes = b"Cursor target must not be read by add or list\n";
     let windsurf_bytes = b"Windsurf target must not be read by add or list\n";
+    let vscode_bytes = b"VS Code target must not be read by add or list\n";
     let project_path = home.user_root().join("workspace/.cursor/mcp.json");
     let project_bytes = b"project target must remain outside every global operation\n";
     home.write_file(&home.claude_desktop_configuration(), claude_bytes);
     home.write_file(&home.cursor_configuration(), cursor_bytes);
     home.write_file(&home.windsurf_configuration(), windsurf_bytes);
+    home.write_file(&home.vscode_configuration(), vscode_bytes);
     home.write_file(&project_path, project_bytes);
     let process_marker = home.root().join("configured-server-was-started");
     let process_sentinel = home.root().join("synthetic-mcp-server");
@@ -242,6 +244,11 @@ fn add_and_list_are_redacted_and_never_access_target_clients() {
             .expect("the Windsurf sentinel should remain readable")
             == windsurf_bytes,
         "add and list must not touch global Windsurf state"
+    );
+    assert!(
+        fs::read(home.vscode_configuration()).expect("the VS Code sentinel should remain readable")
+            == vscode_bytes,
+        "add and list must not touch global VS Code state"
     );
     assert!(
         fs::read(project_path).expect("the project sentinel should remain readable")

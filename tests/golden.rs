@@ -133,10 +133,16 @@ fn process_sentinel(home: &SyntheticHome, name: &str, marker: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
-fn add_target_only_server(path: &Path, name: &str, command: &str, private_value: &str) {
+fn add_target_only_server(
+    path: &Path,
+    server_map_field: &str,
+    name: &str,
+    command: &str,
+    private_value: &str,
+) {
     let mut document: Value =
         serde_json::from_slice(&read(path)).expect("the native fixture should be valid JSON");
-    document["mcpServers"]
+    document[server_map_field]
         .as_object_mut()
         .expect("the native fixture should contain a server map")
         .insert(
@@ -223,11 +229,42 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         },
         "windsurfMetadata": {"private": "windsurf-unowned-private-value"}
     }));
+    let vscode = json_document(&json!({
+        "servers": {
+            "delta": {
+                "type": "stdio",
+                "command": "delta-private-command",
+                "args": ["--delta-private-argument"],
+                "env": {"DELTA_TOKEN": "delta-private-value"},
+                "cwd": "${workspaceFolder}"
+            },
+            "vscode-native-env": {
+                "type": "stdio",
+                "command": "vscode-native-private-command",
+                "env": {"OPTIONAL": null, "PORT": 43117}
+            },
+            "vscode-remote-only": {
+                "type": "http",
+                "url": "https://vscode-remote-private.invalid/mcp",
+                "headers": {"Authorization": "Bearer vscode-remote-private-value"}
+            },
+            "shared": {
+                "command": imported_command,
+                "args": ["--shared-imported-private-argument"],
+                "env": {"SHARED_TOKEN": "shared-imported-private-value"},
+                "envFile": "${userHome}/shared-unowned-private.env"
+            }
+        },
+        "inputs": [{"type": "promptString", "id": "vscode-unowned-private-input"}],
+        "sandbox": {"network": {"allowedDomains": ["vscode-unowned-private.invalid"]}},
+        "vscodeMetadata": {"private": "vscode-unowned-private-value"}
+    }));
     let project_path = home.user_root().join("workspace/.cursor/mcp.json");
     let project = b"{\"projectPrivateSentinel\":\"project-unowned-private-value\"}\n";
     home.write_file(&home.claude_desktop_configuration(), &claude);
     home.write_file(&home.cursor_configuration(), &cursor);
     home.write_file(&home.windsurf_configuration(), &windsurf);
+    home.write_file(&home.vscode_configuration(), &vscode);
     home.write_file(&project_path, project);
 
     let private_values = [
@@ -243,6 +280,9 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         "gamma-private-command",
         "--gamma-private-argument",
         "gamma-private-value",
+        "delta-private-command",
+        "--delta-private-argument",
+        "delta-private-value",
         "--shared-imported-private-argument",
         "shared-imported-private-value",
         "--shared-updated-private-argument",
@@ -253,27 +293,37 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         "Bearer remote-private-value",
         "https://windsurf-remote-private.invalid/mcp",
         "Bearer windsurf-remote-private-value",
+        "vscode-native-private-command",
+        "43117",
+        "https://vscode-remote-private.invalid/mcp",
+        "Bearer vscode-remote-private-value",
         "/synthetic/alpha-unowned-private",
         "/synthetic/beta-unowned-private.env",
         "/synthetic/shared-unowned-private",
         "/synthetic/shared-unowned-private.env",
+        "${userHome}/shared-unowned-private.env",
         "claude-unowned-private-value",
         "cursor-unowned-private-value",
         "windsurf-unowned-private-value",
+        "vscode-unowned-private-value",
+        "vscode-unowned-private-input",
+        "vscode-unowned-private.invalid",
         "project-unowned-private-value",
         "claude-target-only-private-command",
         "cursor-target-only-private-command",
         "windsurf-target-only-private-command",
+        "vscode-target-only-private-command",
         "claude-target-only-private-value",
         "cursor-target-only-private-value",
         "windsurf-target-only-private-value",
+        "vscode-target-only-private-value",
         "target-only-unowned-private-value",
     ];
 
     let init_output = stdout(&run_success(cli_command(&home, &["init"])));
     assert!(
         init_output.starts_with(
-            "Initialized canonical configuration with 4 servers from 3 client configurations.\n"
+            "Initialized canonical configuration with 5 servers from 4 client configurations.\n"
         ),
         "init should report the deterministic imported shape"
     );
@@ -284,6 +334,12 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
     assert!(
         init_output.contains("Skipped 1 unsupported Windsurf entry: \"windsurf-remote-only\"."),
         "init should report unsupported Windsurf structure by name"
+    );
+    assert!(
+        init_output.contains(
+            "Skipped 2 unsupported VS Code entries: \"vscode-native-env\", \"vscode-remote-only\"."
+        ),
+        "init should report unsupported VS Code structures by name"
     );
     assert_private_values_absent(&[&init_output], &private_values);
     assert_file_matches(
@@ -300,6 +356,11 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         &home.windsurf_configuration(),
         &windsurf,
         "init must preserve Windsurf bytes",
+    );
+    assert_file_matches(
+        &home.vscode_configuration(),
+        &vscode,
+        "init must preserve VS Code bytes",
     );
     assert_file_matches(
         &project_path,
@@ -336,6 +397,7 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         "\"added\":",
         "\"alpha\":",
         "\"beta\":",
+        "\"delta\":",
         "\"gamma\":",
         "\"shared\":",
     ];
@@ -357,21 +419,31 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
 
     add_target_only_server(
         &home.claude_desktop_configuration(),
+        "mcpServers",
         "target-only",
         "claude-target-only-private-command",
         "claude-target-only-private-value",
     );
     add_target_only_server(
         &home.cursor_configuration(),
+        "mcpServers",
         "target-only",
         "cursor-target-only-private-command",
         "cursor-target-only-private-value",
     );
     add_target_only_server(
         &home.windsurf_configuration(),
+        "mcpServers",
         "target-only",
         "windsurf-target-only-private-command",
         "windsurf-target-only-private-value",
+    );
+    add_target_only_server(
+        &home.vscode_configuration(),
+        "servers",
+        "target-only",
+        "vscode-target-only-private-command",
+        "vscode-target-only-private-value",
     );
 
     let canonical_path = home.canonical_configuration();
@@ -379,27 +451,33 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
     let claude_path = home.claude_desktop_configuration();
     let cursor_path = home.cursor_configuration();
     let windsurf_path = home.windsurf_configuration();
+    let vscode_path = home.vscode_configuration();
     let claude_backup = backup_path(&claude_path);
     let cursor_backup = backup_path(&cursor_path);
     let windsurf_backup = backup_path(&windsurf_path);
+    let vscode_backup = backup_path(&vscode_path);
     let canonical_before_sync = read(&canonical_path);
     let canonical_backup_before_sync = read(&canonical_backup);
     let claude_before_sync = read(&claude_path);
     let cursor_before_sync = read(&cursor_path);
     let windsurf_before_sync = read(&windsurf_path);
+    let vscode_before_sync = read(&vscode_path);
 
     let dry_output = stdout(&run_success(cli_command(&home, &["sync", "--dry-run"])));
     assert!(
-        dry_output.starts_with("Dry run validated 3 targets; no files changed.\n"),
-        "dry-run should validate the complete three-target plan"
+        dry_output.starts_with("Dry run validated 4 targets; no files changed.\n"),
+        "dry-run should validate the complete four-target plan"
     );
     assert!(
         dry_output.contains("Claude Desktop: would update with recoverable backup")
             && dry_output.contains("Cursor: would update with recoverable backup")
             && dry_output.contains("Windsurf: would update with recoverable backup")
+            && dry_output.contains("VS Code: would update with recoverable backup")
             && dry_output.contains("preserve target-only \"target-only\"")
             && dry_output.contains("preserve unmanaged \"remote-only\"")
-            && dry_output.contains("preserve unmanaged \"windsurf-remote-only\""),
+            && dry_output.contains("preserve unmanaged \"windsurf-remote-only\"")
+            && dry_output.contains("preserve unmanaged \"vscode-native-env\"")
+            && dry_output.contains("preserve unmanaged \"vscode-remote-only\""),
         "dry-run should report every target and preservation outcome"
     );
     assert_private_values_absent(&[&dry_output], &private_values);
@@ -428,14 +506,25 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         &windsurf_before_sync,
         "dry-run must preserve Windsurf",
     );
-    assert!(!claude_backup.exists() && !cursor_backup.exists() && !windsurf_backup.exists());
+    assert_file_matches(
+        &vscode_path,
+        &vscode_before_sync,
+        "dry-run must preserve VS Code",
+    );
+    assert!(
+        !claude_backup.exists()
+            && !cursor_backup.exists()
+            && !windsurf_backup.exists()
+            && !vscode_backup.exists()
+    );
 
     let apply_output = stdout(&run_success(cli_command(&home, &["sync"])));
     assert!(
-        apply_output.starts_with("Sync completed for 3 targets.\n")
+        apply_output.starts_with("Sync completed for 4 targets.\n")
             && apply_output.contains("Claude Desktop: updated with recoverable backup")
             && apply_output.contains("Cursor: updated with recoverable backup")
-            && apply_output.contains("Windsurf: updated with recoverable backup"),
+            && apply_output.contains("Windsurf: updated with recoverable backup")
+            && apply_output.contains("VS Code: updated with recoverable backup"),
         "sync should report successful per-target application"
     );
     assert_private_values_absent(&[&apply_output], &private_values);
@@ -453,6 +542,11 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         &windsurf_backup,
         &windsurf_before_sync,
         "Windsurf backup must contain exact pre-sync bytes",
+    );
+    assert_file_matches(
+        &vscode_backup,
+        &vscode_before_sync,
+        "VS Code backup must contain exact pre-sync bytes",
     );
     assert_file_matches(
         &canonical_path,
@@ -476,6 +570,8 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         serde_json::from_slice(&read(&cursor_path)).expect("Cursor output should be valid JSON");
     let windsurf_after: Value = serde_json::from_slice(&read(&windsurf_path))
         .expect("Windsurf output should be valid JSON");
+    let vscode_after: Value =
+        serde_json::from_slice(&read(&vscode_path)).expect("VS Code output should be valid JSON");
     for target in [&claude_after, &cursor_after, &windsurf_after] {
         assert!(
             target["mcpServers"]["shared"]["command"].as_str() == Some(updated_command.as_str())
@@ -483,6 +579,7 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
                     == Some(added_command.as_str())
                 && target["mcpServers"]["alpha"].is_object()
                 && target["mcpServers"]["beta"].is_object()
+                && target["mcpServers"]["delta"].is_object()
                 && target["mcpServers"]["gamma"].is_object(),
             "each native target should contain the complete desired managed definitions"
         );
@@ -518,20 +615,46 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
                 == Some("windsurf-target-only-private-value"),
         "Windsurf unowned, unmanaged, and target-only data should survive"
     );
+    assert!(
+        vscode_after["servers"]["shared"]["command"].as_str() == Some(updated_command.as_str())
+            && vscode_after["servers"]["added"]["command"].as_str() == Some(added_command.as_str())
+            && vscode_after["servers"]["added"]["type"].as_str() == Some("stdio")
+            && vscode_after["servers"]["alpha"].is_object()
+            && vscode_after["servers"]["beta"].is_object()
+            && vscode_after["servers"]["delta"].is_object()
+            && vscode_after["servers"]["gamma"].is_object(),
+        "VS Code should contain the complete desired managed definitions"
+    );
+    assert!(
+        vscode_after["vscodeMetadata"]["private"].as_str() == Some("vscode-unowned-private-value")
+            && vscode_after["servers"]["shared"]["envFile"].as_str()
+                == Some("${userHome}/shared-unowned-private.env")
+            && vscode_after["servers"]["vscode-remote-only"]["headers"]["Authorization"].as_str()
+                == Some("Bearer vscode-remote-private-value")
+            && vscode_after["servers"]["vscode-native-env"]["env"]["PORT"].as_u64() == Some(43117)
+            && vscode_after["servers"]["target-only"]["env"]["TARGET_ONLY_TOKEN"].as_str()
+                == Some("vscode-target-only-private-value")
+            && vscode_after["inputs"][0]["id"].as_str() == Some("vscode-unowned-private-input")
+            && vscode_after["sandbox"]["network"]["allowedDomains"][0].as_str()
+                == Some("vscode-unowned-private.invalid"),
+        "VS Code root, local, unmanaged, and target-only native data should survive"
+    );
 
     let claude_after_bytes = read(&claude_path);
     let cursor_after_bytes = read(&cursor_path);
     let windsurf_after_bytes = read(&windsurf_path);
+    let vscode_after_bytes = read(&vscode_path);
     let claude_backup_after = read(&claude_backup);
     let cursor_backup_after = read(&cursor_backup);
     let windsurf_backup_after = read(&windsurf_backup);
+    let vscode_backup_after = read(&vscode_backup);
     let no_op_output = stdout(&run_success(cli_command(&home, &["sync"])));
     assert!(
         no_op_output
             .matches("unchanged; no write or backup")
             .count()
-            == 3,
-        "repeat sync should report three target no-ops"
+            == 4,
+        "repeat sync should report four target no-ops"
     );
     assert_private_values_absent(&[&no_op_output], &private_values);
     assert_file_matches(
@@ -550,6 +673,11 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         "repeat sync must preserve Windsurf bytes",
     );
     assert_file_matches(
+        &vscode_path,
+        &vscode_after_bytes,
+        "repeat sync must preserve VS Code bytes",
+    );
+    assert_file_matches(
         &claude_backup,
         &claude_backup_after,
         "repeat sync must preserve the Claude backup",
@@ -564,13 +692,24 @@ fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
         &windsurf_backup_after,
         "repeat sync must preserve the Windsurf backup",
     );
+    assert_file_matches(
+        &vscode_backup,
+        &vscode_backup_after,
+        "repeat sync must preserve the VS Code backup",
+    );
     for marker in [&imported_marker, &updated_marker, &added_marker] {
         assert!(
             !marker.exists(),
             "configuration commands must never execute servers"
         );
     }
-    for path in [&canonical_path, &claude_path, &cursor_path, &windsurf_path] {
+    for path in [
+        &canonical_path,
+        &claude_path,
+        &cursor_path,
+        &windsurf_path,
+        &vscode_path,
+    ] {
         assert_no_temporary_files(path);
     }
 }
@@ -594,6 +733,12 @@ fn built_binary_import_is_deterministic_when_client_assignments_are_reversed() {
         "args": ["--gamma-private-argument"],
         "env": {"GAMMA_TOKEN": "gamma-private-value"}
     });
+    let delta = json!({
+        "type": "stdio",
+        "command": "delta-private-command",
+        "args": ["--delta-private-argument"],
+        "env": {"DELTA_TOKEN": "delta-private-value"}
+    });
     let shared = json!({
         "command": "shared-private-command",
         "args": ["--shared-private-argument"],
@@ -611,17 +756,29 @@ fn built_binary_import_is_deterministic_when_client_assignments_are_reversed() {
         &first.windsurf_configuration(),
         json_document(&json!({"mcpServers": {"gamma": gamma, "shared": shared}})),
     );
+    first.write_file(
+        &first.vscode_configuration(),
+        json_document(&json!({"servers": {"delta": delta, "shared": shared}})),
+    );
     second.write_file(
         &second.claude_desktop_configuration(),
-        json_document(&json!({"mcpServers": {"gamma": gamma, "shared": shared}})),
+        json_document(&json!({"mcpServers": {"delta": {
+            "command": "delta-private-command",
+            "args": ["--delta-private-argument"],
+            "env": {"DELTA_TOKEN": "delta-private-value"}
+        }, "shared": shared}})),
     );
     second.write_file(
         &second.cursor_configuration(),
-        json_document(&json!({"mcpServers": {"alpha": alpha, "shared": shared}})),
+        json_document(&json!({"mcpServers": {"gamma": gamma, "shared": shared}})),
     );
     second.write_file(
         &second.windsurf_configuration(),
         json_document(&json!({"mcpServers": {"beta": beta, "shared": shared}})),
+    );
+    second.write_file(
+        &second.vscode_configuration(),
+        json_document(&json!({"servers": {"alpha": alpha, "shared": shared}})),
     );
 
     let first_output = stdout(&run_success(cli_command(&first, &["init"])));
@@ -636,6 +793,9 @@ fn built_binary_import_is_deterministic_when_client_assignments_are_reversed() {
         "gamma-private-command",
         "--gamma-private-argument",
         "gamma-private-value",
+        "delta-private-command",
+        "--delta-private-argument",
+        "delta-private-value",
         "shared-private-command",
         "--shared-private-argument",
         "shared-private-value",
@@ -656,6 +816,7 @@ fn built_binary_failure_matrix_is_nonzero_non_mutating_and_redacted() {
         home.write_file(&home.claude_desktop_configuration(), native);
         home.write_file(&home.cursor_configuration(), native);
         home.write_file(&home.windsurf_configuration(), native);
+        home.write_file(&home.vscode_configuration(), native);
         let diagnostic = stderr(&run_failure(cli_command(&home, &["sync", "--dry-run"])));
         assert!(
             diagnostic.contains("canonical configuration does not exist")
@@ -677,6 +838,11 @@ fn built_binary_failure_matrix_is_nonzero_non_mutating_and_redacted() {
             &home.windsurf_configuration(),
             native,
             "missing canonical failure must preserve Windsurf",
+        );
+        assert_file_matches(
+            &home.vscode_configuration(),
+            native,
+            "missing canonical failure must preserve VS Code",
         );
     }
 
@@ -792,15 +958,25 @@ fn built_binary_failure_matrix_is_nonzero_non_mutating_and_redacted() {
                 }
             }
         }));
-        let malformed_windsurf =
-            b"{\"mcpServers\":{\"shared\":{\"command\":\"malformed-private-command\"";
+        let windsurf = json_document(&json!({
+            "mcpServers": {
+                "shared": {
+                    "command": "windsurf-current-private-command",
+                    "args": ["--windsurf-current-private-argument"],
+                    "env": {"TOKEN": "windsurf-current-private-value"}
+                }
+            }
+        }));
+        let malformed_vscode =
+            b"{\"servers\":{\"shared\":{\"type\":\"stdio\",\"command\":\"malformed-private-command\"";
         home.write_file(&home.canonical_configuration(), &canonical);
         home.write_file(&home.claude_desktop_configuration(), &claude);
         home.write_file(&home.cursor_configuration(), &cursor);
-        home.write_file(&home.windsurf_configuration(), malformed_windsurf);
+        home.write_file(&home.windsurf_configuration(), &windsurf);
+        home.write_file(&home.vscode_configuration(), malformed_vscode);
         let diagnostic = stderr(&run_failure(cli_command(&home, &["sync"])));
         assert!(
-            diagnostic.contains("cannot plan Windsurf sync: invalid Windsurf JSON:")
+            diagnostic.contains("cannot plan VS Code sync: invalid VS Code JSON:")
                 && diagnostic.ends_with("; no target files were changed\n"),
             "malformed later input should fail complete preflight"
         );
@@ -816,6 +992,9 @@ fn built_binary_failure_matrix_is_nonzero_non_mutating_and_redacted() {
                 "cursor-current-private-command",
                 "--cursor-current-private-argument",
                 "cursor-current-private-value",
+                "windsurf-current-private-command",
+                "--windsurf-current-private-argument",
+                "windsurf-current-private-value",
                 "malformed-private-command",
             ],
         );
@@ -831,12 +1010,18 @@ fn built_binary_failure_matrix_is_nonzero_non_mutating_and_redacted() {
         );
         assert_file_matches(
             &home.windsurf_configuration(),
-            malformed_windsurf,
+            &windsurf,
             "preflight failure must preserve Windsurf",
+        );
+        assert_file_matches(
+            &home.vscode_configuration(),
+            malformed_vscode,
+            "preflight failure must preserve malformed VS Code",
         );
         assert!(!backup_path(&home.claude_desktop_configuration()).exists());
         assert!(!backup_path(&home.cursor_configuration()).exists());
         assert!(!backup_path(&home.windsurf_configuration()).exists());
+        assert!(!backup_path(&home.vscode_configuration()).exists());
     }
 
     {

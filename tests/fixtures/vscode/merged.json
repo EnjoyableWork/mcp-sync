@@ -1,0 +1,106 @@
+{
+  "futureTopLevel": {
+    "nested": [
+      "preserve",
+      11,
+      true
+    ],
+    "preciseNumber": 1234567890123456789012345678901234567890
+  },
+  "inputs": [
+    {
+      "description": "Synthetic API key",
+      "id": "fixture-api-key",
+      "password": true,
+      "type": "promptString"
+    }
+  ],
+  "sandbox": {
+    "filesystem": {
+      "allowWrite": [
+        "${workspaceFolder}/generated"
+      ]
+    },
+    "network": {
+      "allowedDomains": [
+        "fixture.example.invalid"
+      ]
+    }
+  },
+  "servers": {
+    "added": {
+      "args": [
+        "--new"
+      ],
+      "command": "/synthetic/bin/added",
+      "env": {
+        "ADD_TOKEN": "fixture-vscode-added-secret"
+      },
+      "type": "stdio"
+    },
+    "numeric-env": {
+      "args": [
+        "--native"
+      ],
+      "command": "/synthetic/bin/native-env",
+      "env": {
+        "OPTIONAL": null,
+        "PORT": 3000
+      },
+      "futureOption": {
+        "preserve": true
+      },
+      "type": "stdio"
+    },
+    "remote-only": {
+      "headers": {
+        "Authorization": "Bearer fixture-vscode-remote-secret"
+      },
+      "oauth": {
+        "clientId": "fixture-client-id"
+      },
+      "type": "http",
+      "url": "https://vscode.example.invalid/mcp"
+    },
+    "target-only": {
+      "args": [
+        "--local"
+      ],
+      "command": "/synthetic/bin/local",
+      "cwd": "/synthetic/target-only",
+      "env": {
+        "LOCAL_TOKEN": "fixture-vscode-local-secret"
+      },
+      "type": "stdio"
+    },
+    "unchanged": {
+      "args": [
+        "--mode",
+        "safe"
+      ],
+      "command": "/synthetic/bin/unchanged",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "UNCHANGED_TOKEN": "fixture-vscode-unchanged-secret"
+      },
+      "sandboxEnabled": true,
+      "type": "stdio"
+    },
+    "updated": {
+      "args": [
+        "--new",
+        "two"
+      ],
+      "command": "/synthetic/bin/new",
+      "dev": {
+        "watch": "src/**/*.ts"
+      },
+      "env": {
+        "ADDED": "fixture-vscode-added-environment-secret",
+        "KEEP": "same",
+        "ROTATE": "fixture-vscode-new-secret"
+      },
+      "envFile": "${userHome}/.synthetic-vscode.env"
+    }
+  }
+}

@@ -11,7 +11,7 @@ Adding an MCP server—such as Postgres, GitHub, or Brave Search—to your local
 - **Claude Desktop:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Cursor:** `~/.cursor/mcp.json`
 - **Windsurf:** `~/.codeium/windsurf/mcp_config.json`
-- **VS Code (Cline/Roo/Copilot):** `~/.config/Code/User/globalStorage/.../settings.json`
+- **VS Code (native MCP / GitHub Copilot):** `~/Library/Application Support/Code/User/mcp.json`
 - **Codex (ChatGPT desktop app / Codex CLI / IDE extension):** `~/.codex/config.toml`
 
 This fragmentation leads to syntax errors, environment variable drift, broken credentials, and wasted setup time whenever a new server or API key is updated.
@@ -34,7 +34,7 @@ This fragmentation leads to syntax errors, environment variable drift, broken cr
                                       │
 ┌────────────────┐ ┌────────────┐ ┌────────────────┐ ┌───────────────┐ ┌────────────────┐
 │ Claude Desktop │ │ Cursor     │ │ Windsurf       │ │ VS Code       │ │ Codex          │
-│ config.json    │ │ mcp.json   │ │ mcp_config.json│ │ settings.json │ │ config.toml    │
+│ config.json    │ │ mcp.json   │ │ mcp_config.json│ │ mcp.json      │ │ config.toml    │
 └────────────────┘ └────────────┘ └────────────────┘ └───────────────┘ └────────────────┘
 ```
 
@@ -176,12 +176,16 @@ target.
 | Claude Desktop | macOS, Windows | `claude_desktop_config.json` |
 | Cursor | macOS, Linux, Windows | `mcp.json` |
 | Windsurf | macOS, Linux, Windows | `mcp_config.json` |
-| VS Code (Cline / Copilot) | macOS, Linux, Windows | `cline_mcp_settings.json` |
+| VS Code (native MCP / GitHub Copilot) | macOS, Linux, Windows | User-profile `mcp.json` |
 | Codex (ChatGPT desktop app / Codex CLI / IDE extension) | macOS, Linux, Windows | `~/.codex/config.toml` |
 
 The ChatGPT desktop app, Codex CLI, and Codex IDE extension share the same host
 configuration, so one Codex target keeps their MCP server definitions aligned
 while preserving unrelated Codex settings.
+
+The VS Code target uses the editor's native user-profile `mcp.json` `servers`
+shape. It is distinct from Cline, Roo Code, and other extensions that maintain
+their own configuration stores.
 
 ## 🏗️ Technical Architecture
 

@@ -54,44 +54,48 @@ consumer and an accepted decision in `PROJECT.md`.
 The implemented foundation is one Rust 2024 binary crate with a package named
 `enjoyable-mcp-sync` and an installed binary named `mcp-sync`. The CLI now
 supports help, version, create-only `init`, complete-definition canonical
-`add`, structurally redacted `list`, and three-target `sync --dry-run` / `sync`
+`add`, structurally redacted `list`, and four-target `sync --dry-run` / `sync`
 journeys. It also contains the strict canonical JSON v1 model, an injected
 macOS configuration-path resolver, a replaceable filesystem boundary with
 read, no-clobber creation, guarded replacement, and reversible transaction
 ports, and a pure deterministic reconciliation engine with structurally
-redacted plans. Fixture-backed global Claude Desktop, Cursor, and Windsurf
-macOS adapters discover and parse native JSON, then render plan-driven updates
-in memory while preserving unowned fields. The Windsurf adapter manages the
-documented legacy Cascade file at `~/.codeium/windsurf/mcp_config.json`; it does
-not claim Devin Local agent configuration. `init` deterministically imports
-compatible local definitions, reports structural conflicts without writing,
-skips named commandless Cursor and Windsurf entries that canonical v1 cannot
+redacted plans. Fixture-backed global Claude Desktop, Cursor, Windsurf, and VS
+Code macOS adapters discover and parse native JSON, then render plan-driven
+updates in memory while preserving unowned fields. The Windsurf adapter manages
+the documented legacy Cascade file at `~/.codeium/windsurf/mcp_config.json`; it
+does not claim Devin Local agent configuration. The VS Code adapter manages
+only the native default user-profile file at
+`~/Library/Application Support/Code/User/mcp.json`; it does not claim
+workspace, named-profile, remote, Insiders, portable, Cline, Roo Code, or Agent
+Host/Copilot CLI configuration. `init` deterministically imports compatible
+local definitions, reports structural conflicts without writing, skips named
+unmanaged Cursor, Windsurf, and VS Code entries that canonical v1 cannot
 represent, and creates only a previously missing canonical file through a
 same-directory temporary file. `add` validates one complete definition before
 reading canonical state, performs a deterministic add/update, skips semantic
 no-ops, and backs up then atomically replaces only the canonical regular file;
 `list` exposes names, counts, and escaped environment key names but no process
 values. `sync --dry-run` validates and structurally reports one fully rendered
-three-target plan without mutation; `sync` applies those exact bytes with no-op
+four-target plan without mutation; `sync` applies those exact bytes with no-op
 detection, recoverable backups, atomic replacement, per-target outcomes, and
 reverse-order rollback after a later failure. It preserves target-only and
-unowned native data, reports commandless Cursor and Windsurf entries without
-exposing their values, and never touches a project-level Cursor file. No
-implemented command starts configured server processes. A combined
-built-binary synthetic-home suite proves the complete configuration flow,
-deterministic three-client import, redaction, idempotence, native preservation,
-non-zero failures, and three-target transaction rollback.
+unowned native data, reports unmanaged native entries without exposing their
+values, and never touches project-level Cursor or VS Code files. No implemented
+command starts configured server processes. A combined built-binary
+synthetic-home suite proves the complete configuration flow, deterministic
+four-client import, redaction, idempotence, native preservation, non-zero
+failures, and four-target transaction rollback.
 Controlled current-stable Cursor and Claude Desktop smokes both accept the
 rendered global definitions and complete MCP initialization; the Claude journey
 uses a no-clobber backup and verified exact restore around its temporary native
 file. The source-checkout usage and recovery guide documents the current workflow,
 redaction boundary, one-slot backups, transaction recovery, guarded manual
 restoration, and current limitations without turning the README into a progress
-report. Windsurf support is fixture- and built-binary-verified against the
-documented native contract; it is not a current-client smoke claim. VS Code,
-Codex, other platforms, health/process behavior, restore UX, and distribution
-remain later-ticket scope. Use the existing Clap command tree as CLI behavior
-grows; do not introduce a second parser.
+report. Windsurf and VS Code support are fixture- and built-binary-verified
+against their documented native contracts; neither has a current-client smoke
+claim. Codex, other platforms, health/process behavior, restore UX, and
+distribution remain later-ticket scope. Use the existing Clap command tree as
+CLI behavior grows; do not introduce a second parser.
 
 “Extensible” currently means:
 
@@ -204,6 +208,16 @@ integrity and redaction as product requirements.
   `disabledTools`, and unknown data structurally, and reject a local canonical
   addition that collides with a commandless entry. Do not claim Devin Local
   agent support through this adapter.
+- Manage only VS Code's native default user-profile file at
+  `~/Library/Application Support/Code/User/mcp.json` on macOS. Never discover
+  or mutate workspace `.vscode/mcp.json` or `.mcp.json`, named profiles, remote
+  profiles, VS Code Insiders, portable installations, extension-owned Cline or
+  Roo Code stores, or Agent Host/Copilot CLI configuration through this
+  adapter. In root `servers`, own only `command`, `args`, and string-valued
+  `env` for compatible local STDIO entries; preserve root `inputs`, `sandbox`,
+  remote transports, numeric/null native environment values, and every unknown
+  field structurally, and reject a local canonical addition that collides with
+  any unmanaged entry.
 - Treat Codex as one TOML target shared by the ChatGPT desktop app, Codex CLI,
   and IDE extension. Preserve non-MCP settings and unsupported MCP fields
   structurally; never round-trip `~/.codex/config.toml` through a lossy JSON
