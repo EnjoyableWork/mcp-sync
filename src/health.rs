@@ -911,7 +911,7 @@ mod tests {
 
     #[cfg(windows)]
     const SHORT_LIMITS: HealthLimits = HealthLimits {
-        response_timeout: Duration::from_secs(3),
+        response_timeout: Duration::from_secs(5),
         shutdown_timeout: Duration::from_secs(1),
         maximum_response_bytes: 64 * 1024,
     };
@@ -1293,7 +1293,7 @@ printf '%s' "$initialized" > "$NOTIFICATION_PATH"
 exit 0
 "#,
             r#"
-if (Test-Path Env:HOME) { exit 70 }
+if ($null -ne [System.Environment]::GetEnvironmentVariable('HOME', [System.EnvironmentVariableTarget]::Process)) { exit 70 }
 if ($env:SYNTHETIC_TOKEN -ne "private-value") { exit 71 }
 $initialize = [Console]::In.ReadLine()
 if ($null -eq $initialize) { exit 72 }

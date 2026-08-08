@@ -172,7 +172,7 @@ fn built_binary_completes_initialize_and_initialized_with_redacted_output() {
     let private_environment = "synthetic-health-private-value";
     let script_contents = if cfg!(windows) {
         r#"
-if (Test-Path Env:HOME) { exit 40 }
+if ($null -ne [System.Environment]::GetEnvironmentVariable('HOME', [System.EnvironmentVariableTarget]::Process)) { exit 40 }
 if ($env:PRIVATE_ENVIRONMENT -ne "synthetic-health-private-value") { exit 41 }
 $initialize = [Console]::In.ReadLine()
 if ($null -eq $initialize) { exit 42 }
