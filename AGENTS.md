@@ -6,10 +6,9 @@
 reconciling that desired state into the native configuration files used by MCP
 clients.
 
-The repository has completed its source-checkout macOS M1 proof and GNU/Linux
-x64/ARM64 configuration proof. Windows source-checkout behavior is implemented
-under `MCP-019` and remains gated by native MSVC x64/ARM64 evidence; the
-repository remains pre-release. The README is a deliberate target-state
+The repository has completed its source-checkout macOS M1 proof plus native
+GNU/Linux and Windows MSVC x64/ARM64 configuration proof; the repository
+remains pre-release. The README is a deliberate target-state
 exception: it presents the
 intended finished product in confident public product language and should not
 be rewritten as a progress report. Everywhere else, do not describe a planned
@@ -118,11 +117,11 @@ transaction recovery, guarded manual restoration, and current limitations
 without turning the README into a progress report. All five Linux targets have
 deterministic path, fixture, built-binary behavior, and native x64/ARM64
 whole-suite CI coverage under `MCP-018`; there is no Linux current-client smoke
-claim. All five Windows paths, the copied-binary journey, and native PowerShell
-health fixtures are implemented under `MCP-019`; the platform claim remains
-gated by native MSVC x64/ARM64 CI. There is no Windows current-client smoke
-claim. Windsurf, VS Code, and Codex have no current-client smoke claim on any
-implemented platform. Restore UX and distribution remain later-ticket scope.
+claim. All five Windows paths, the copied-binary journey, native PowerShell
+health fixtures, and complete native MSVC x64/ARM64 whole-suite CI pass under
+`MCP-019`. There is no Windows current-client smoke claim. Windsurf, VS Code,
+and Codex have no current-client smoke claim on any implemented platform.
+Restore UX and distribution remain later-ticket scope.
 Use the existing Clap command tree as CLI behavior grows; do not introduce a
 second parser.
 

@@ -3,9 +3,9 @@
 This guide describes the currently implemented source-checkout behavior of
 `mcp-sync`: the completed M1 foundation, the global Windsurf, native VS Code,
 and global Codex adapters added by `MCP-014` through `MCP-016`, and the bounded
-STDIO initialize health boundary added by `MCP-017`, and the Linux path and
-behavior support added by `MCP-018`, plus the Windows implementation being
-verified by `MCP-019`. It is the operational companion to the
+STDIO initialize health boundary added by `MCP-017`, the Linux path and
+behavior support added by `MCP-018`, and the Windows source-checkout support
+completed by `MCP-019`. It is the operational companion to the
 [north-star README](../README.md), not a replacement for that product
 specification. Use it when building from source on macOS, GNU/Linux, or Windows
 and reconciling the five implemented global targets: Claude Desktop, Cursor,
@@ -17,7 +17,7 @@ Codex CLI, and Codex IDE extension.
 
 | Area | Currently implemented behavior |
 | --- | --- |
-| Platform | macOS and GNU/Linux x64/ARM64 source-checkout behavior; Windows MSVC x64/ARM64 implementation pending native CI evidence |
+| Platform | macOS plus native x64/ARM64 GNU/Linux and Windows MSVC source-checkout behavior |
 | Canonical format | Strict JSON schema version `1` for local STDIO servers |
 | Client targets | Global Claude Desktop, global Cursor, global Windsurf legacy Cascade configuration, native VS Code default user profile, and global Codex host configuration |
 | Commands | `init`, `add`, `list`, `test`, `sync --dry-run`, and `sync` |
@@ -512,12 +512,13 @@ and prune entries from backup absence.
 The following are delivery facts, not changes to the README's intended product
 promise:
 
-- The current implementation is verified on macOS and through the complete
-  [native GNU/Linux x64 and ARM64 pull-request CI gate](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240608728)
-  recorded for `MCP-018`. Windows paths, replacement/rollback fixtures,
-  copied-binary behavior, and PowerShell health fixtures are implemented under
-  `MCP-019` and await its native MSVC x64/ARM64 PR evidence. Usage remains from
-  a Rust source checkout.
+- The current implementation is verified on macOS and through complete native
+  x64/ARM64 pull-request CI gates for
+  [GNU/Linux](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240608728)
+  and [Windows MSVC](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31244565101),
+  recorded for `MCP-018` and `MCP-019`, respectively. The Windows gate includes
+  path, replacement, rollback, copied-binary, and PowerShell health behavior.
+  Usage remains from a Rust source checkout.
 - Only global Claude Desktop, global Cursor, Windsurf's global legacy Cascade
   JSON, VS Code's native default user-profile JSON, and global Codex TOML are
   managed. Linux has deterministic path, fixture, and built-binary behavior
