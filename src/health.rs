@@ -1298,8 +1298,11 @@ if ($env:SYNTHETIC_TOKEN -ne "private-value") { exit 71 }
 $initialize = [Console]::In.ReadLine()
 if ($null -eq $initialize) { exit 72 }
 [IO.File]::WriteAllText($env:REQUEST_PATH, $initialize)
-[Console]::Out.WriteLine('{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"fixture","version":"1.0"}}}')
-[Console]::Out.Flush()
+$response = '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"fixture","version":"1.0"}}}'
+$responseBytes = [System.Text.Encoding]::UTF8.GetBytes($response + "`n")
+$stdout = [Console]::OpenStandardOutput()
+$stdout.Write($responseBytes, 0, $responseBytes.Length)
+$stdout.Flush()
 $initialized = [Console]::In.ReadLine()
 if ($null -eq $initialized) { exit 73 }
 [IO.File]::WriteAllText($env:NOTIFICATION_PATH, $initialized)
@@ -1308,8 +1311,12 @@ exit 0
             environment,
         );
 
-        let protocol = run_initialize(&server, SHORT_LIMITS)
-            .expect("the operating-system handshake should succeed");
+        let protocol = run_initialize(&server, SHORT_LIMITS).unwrap_or_else(|error| {
+            panic!(
+                "the operating-system handshake should succeed: {error}; initialize request captured: {}",
+                request_path.exists()
+            )
+        });
 
         assert_eq!(protocol, NegotiatedProtocol::V2025_11_25);
         let request: Value = serde_json::from_slice(
@@ -1391,8 +1398,10 @@ while :; do :; done
 "#,
             r#"
 [IO.File]::WriteAllText($env:PID_PATH, [string]$PID)
-[Console]::Out.WriteLine('not-json-' + $env:PRIVATE_VALUE)
-[Console]::Out.Flush()
+$responseBytes = [System.Text.Encoding]::UTF8.GetBytes('not-json-' + $env:PRIVATE_VALUE + "`n")
+$stdout = [Console]::OpenStandardOutput()
+$stdout.Write($responseBytes, 0, $responseBytes.Length)
+$stdout.Flush()
 while ($true) { Start-Sleep -Milliseconds 10 }
 "#,
             BTreeMap::from([
@@ -1439,8 +1448,11 @@ while :; do :; done
 [IO.File]::WriteAllText($env:PID_PATH, [string]$PID)
 $initialize = [Console]::In.ReadLine()
 if ($null -eq $initialize) { exit 80 }
-[Console]::Out.WriteLine('{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{},"serverInfo":{"name":"fixture","version":"1.0"}}}')
-[Console]::Out.Flush()
+$response = '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{},"serverInfo":{"name":"fixture","version":"1.0"}}}'
+$responseBytes = [System.Text.Encoding]::UTF8.GetBytes($response + "`n")
+$stdout = [Console]::OpenStandardOutput()
+$stdout.Write($responseBytes, 0, $responseBytes.Length)
+$stdout.Flush()
 $initialized = [Console]::In.ReadLine()
 if ($null -eq $initialized) { exit 81 }
 while ($true) { Start-Sleep -Milliseconds 10 }

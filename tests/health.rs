@@ -177,8 +177,11 @@ if ($env:PRIVATE_ENVIRONMENT -ne "synthetic-health-private-value") { exit 41 }
 $initialize = [Console]::In.ReadLine()
 if ($null -eq $initialize) { exit 42 }
 [IO.File]::WriteAllText($env:REQUEST_PATH, $initialize)
-[Console]::Out.WriteLine('{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"synthetic-health-server","version":"1.0"}}}')
-[Console]::Out.Flush()
+$response = '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"synthetic-health-server","version":"1.0"}}}'
+$responseBytes = [System.Text.Encoding]::UTF8.GetBytes($response + "`n")
+$stdout = [Console]::OpenStandardOutput()
+$stdout.Write($responseBytes, 0, $responseBytes.Length)
+$stdout.Flush()
 $initialized = [Console]::In.ReadLine()
 if ($null -eq $initialized) { exit 43 }
 [IO.File]::WriteAllText($env:NOTIFICATION_PATH, $initialized)
@@ -332,8 +335,10 @@ fn built_binary_rejects_malformed_stdout_and_reaps_the_child_without_echoing_it(
 [IO.File]::WriteAllText($env:PID_PATH, [string]$PID)
 $initialize = [Console]::In.ReadLine()
 if ($null -eq $initialize) { exit 60 }
-[Console]::Out.WriteLine('not-json-' + $env:PRIVATE_STDOUT)
-[Console]::Out.Flush()
+$responseBytes = [System.Text.Encoding]::UTF8.GetBytes('not-json-' + $env:PRIVATE_STDOUT + "`n")
+$stdout = [Console]::OpenStandardOutput()
+$stdout.Write($responseBytes, 0, $responseBytes.Length)
+$stdout.Flush()
 while ($true) { Start-Sleep -Milliseconds 10 }
 "#
     } else {
@@ -387,8 +392,10 @@ $initialize = [Console]::In.ReadLine()
 if ($null -eq $initialize) { exit 70 }
 [Console]::Error.WriteLine($env:PRIVATE_STDERR)
 $response = '{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"' + $env:PRIVATE_RESPONSE + '","data":{"token":"' + $env:PRIVATE_RESPONSE + '"}}}'
-[Console]::Out.WriteLine($response)
-[Console]::Out.Flush()
+$responseBytes = [System.Text.Encoding]::UTF8.GetBytes($response + "`n")
+$stdout = [Console]::OpenStandardOutput()
+$stdout.Write($responseBytes, 0, $responseBytes.Length)
+$stdout.Flush()
 while ($true) { Start-Sleep -Milliseconds 10 }
 "#
     } else {
