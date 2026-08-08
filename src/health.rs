@@ -1176,13 +1176,15 @@ mod tests {
     }
 
     fn shell_server(
+        root: &Path,
+        name: &str,
         unix_script: &str,
         windows_script: &str,
         environment: BTreeMap<String, String>,
     ) -> CanonicalServer {
         #[cfg(unix)]
         {
-            let _ = windows_script;
+            let _ = (root, name, windows_script);
             CanonicalServer::new(
                 "/bin/sh",
                 vec!["-c".to_owned(), unix_script.to_owned()],
@@ -1193,6 +1195,9 @@ mod tests {
         #[cfg(windows)]
         {
             let _ = unix_script;
+            let script = root.join(format!("{name}.ps1"));
+            fs::write(&script, windows_script)
+                .expect("the Windows process fixture should be written");
             let mut environment = environment;
             environment.insert(
                 "SystemRoot".to_owned(),
@@ -1204,8 +1209,10 @@ mod tests {
                     "-NoLogo".to_owned(),
                     "-NoProfile".to_owned(),
                     "-NonInteractive".to_owned(),
-                    "-Command".to_owned(),
-                    windows_script.to_owned(),
+                    "-ExecutionPolicy".to_owned(),
+                    "Bypass".to_owned(),
+                    "-File".to_owned(),
+                    script.to_string_lossy().into_owned(),
                 ],
                 environment,
             )
@@ -1273,6 +1280,8 @@ mod tests {
             ("SYNTHETIC_TOKEN".to_owned(), "private-value".to_owned()),
         ]);
         let server = shell_server(
+            root.path(),
+            "handshake",
             r#"
 if [ "${HOME+x}" = x ]; then exit 70; fi
 if [ "$SYNTHETIC_TOKEN" != "private-value" ]; then exit 71; fi
@@ -1321,6 +1330,8 @@ exit 0
         let root = tempfile::tempdir().expect("temporary process root should be created");
         let pid_path = root.path().join("pid");
         let server = shell_server(
+            root.path(),
+            "silent",
             r#"
 printf '%s' "$$" > "$PID_PATH"
 while :; do :; done
@@ -1370,6 +1381,8 @@ while ($true) { Start-Sleep -Milliseconds 10 }
         let pid_path = root.path().join("pid");
         let private = "synthetic-private-stdout";
         let server = shell_server(
+            root.path(),
+            "malformed",
             r#"
 printf '%s' "$$" > "$PID_PATH"
 printf 'not-json-%s\n' "$PRIVATE_VALUE"
@@ -1411,6 +1424,8 @@ while ($true) { Start-Sleep -Milliseconds 10 }
         let root = tempfile::tempdir().expect("temporary process root should be created");
         let pid_path = root.path().join("pid");
         let server = shell_server(
+            root.path(),
+            "shutdown-resistant",
             r#"
 printf '%s' "$$" > "$PID_PATH"
 IFS= read -r initialize || exit 80
@@ -1455,6 +1470,7 @@ while ($true) { Start-Sleep -Milliseconds 10 }
     #[test]
     fn oversized_and_undelimited_messages_fail_without_unbounded_reads() {
         let _process_fixture = process_fixture_lock();
+        let root = tempfile::tempdir().expect("temporary process root should be created");
         // Keep stdin open until the client sends `initialize` so the fixture
         // exercises response framing instead of racing the request write.
         let oversized_payload = "x".repeat(129);
@@ -1464,6 +1480,8 @@ while ($true) { Start-Sleep -Milliseconds 10 }
             "$initialize = [Console]::In.ReadLine(); if ($null -eq $initialize) {{ exit 90 }}; [Console]::Out.WriteLine('{oversized_payload}')"
         );
         let oversized = shell_server(
+            root.path(),
+            "oversized",
             &oversized_unix_script,
             &oversized_windows_script,
             BTreeMap::<String, String>::new(),
@@ -1484,6 +1502,8 @@ while ($true) { Start-Sleep -Milliseconds 10 }
         );
 
         let undelimited = shell_server(
+            root.path(),
+            "undelimited",
             "IFS= read -r initialize || exit 91\nprintf '%s' '{\"jsonrpc\":\"2.0\"}'",
             "$initialize = [Console]::In.ReadLine(); if ($null -eq $initialize) { exit 91 }; [Console]::Out.Write('{\"jsonrpc\":\"2.0\"}')",
             BTreeMap::<String, String>::new(),
