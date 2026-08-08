@@ -1,6 +1,6 @@
 use crate::config::{CanonicalConfig, CanonicalServer, ConfigError, parse_unique_json_value};
 use crate::filesystem::{FileIoError, FileSystem};
-use crate::paths::MacOsConfigurationPaths;
+use crate::paths::ConfigurationPaths;
 use crate::reconciliation::{ReconciliationOutcomeKind, ReconciliationPlan};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -19,11 +19,11 @@ const COMMAND_FIELD: &str = "command";
 const ARGUMENTS_FIELD: &str = "args";
 const ENVIRONMENT_FIELD: &str = "env";
 
-/// The native VS Code default user-profile MCP target on macOS.
+/// The native VS Code default user-profile MCP target on macOS and Linux.
 ///
 /// Discovery resolves exactly
-/// `~/Library/Application Support/Code/User/mcp.json` through the injected
-/// application-support path. It intentionally does not discover workspace
+/// the platform user-data root through the injected paths. It intentionally
+/// does not discover workspace
 /// `.vscode/mcp.json`, named profiles, remote profiles, VS Code Insiders,
 /// portable installations, Cline or Roo extension storage, or Agent Host and
 /// Copilot CLI configuration. Discovery is read-only; a missing file is a
@@ -34,10 +34,10 @@ pub struct VsCodeAdapter {
 }
 
 impl VsCodeAdapter {
-    pub fn for_macos(paths: &MacOsConfigurationPaths) -> Self {
+    pub fn from_paths(paths: &ConfigurationPaths) -> Self {
         Self {
             configuration_path: paths
-                .application_support()
+                .user_data_home()
                 .join(CODE_DIRECTORY)
                 .join(USER_DIRECTORY)
                 .join(VSCODE_CONFIGURATION_FILE),
@@ -683,7 +683,7 @@ impl Error for VsCodeDocumentError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::paths::Environment;
+    use crate::paths::{Environment, Platform};
     use crate::reconciliation::{ReconciliationOutcomeKind, reconcile};
     use std::ffi::OsString;
 
@@ -719,14 +719,21 @@ mod tests {
         }
     }
 
-    fn adapter_fixture() -> (tempfile::TempDir, VsCodeAdapter) {
+    fn adapter_fixture_for(platform: Platform) -> (tempfile::TempDir, VsCodeAdapter) {
         let root = tempfile::tempdir().expect("temporary adapter fixture should be created");
-        let paths = MacOsConfigurationPaths::resolve(&FixtureEnvironment {
-            home: root.path().join("user"),
-        })
-        .expect("synthetic macOS paths should resolve");
-        let adapter = VsCodeAdapter::for_macos(&paths);
+        let paths = ConfigurationPaths::resolve_for(
+            platform,
+            &FixtureEnvironment {
+                home: root.path().join("user"),
+            },
+        )
+        .expect("synthetic platform paths should resolve");
+        let adapter = VsCodeAdapter::from_paths(&paths);
         (root, adapter)
+    }
+
+    fn adapter_fixture() -> (tempfile::TempDir, VsCodeAdapter) {
+        adapter_fixture_for(Platform::MacOs)
     }
 
     fn desired_config() -> CanonicalConfig {
@@ -750,6 +757,29 @@ mod tests {
             home.join("Library/Application Support/Code/User/profiles/profile/mcp.json"),
             home.join("Library/Application Support/Code - Insiders/User/mcp.json"),
             home.join("Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"),
+            home.join(".cline/data/settings/cline_mcp_settings.json"),
+            home.join(".copilot/mcp-config.json"),
+        ] {
+            assert_ne!(adapter.configuration_path(), excluded);
+        }
+    }
+
+    #[test]
+    fn linux_discovery_path_is_only_the_native_default_user_profile_contract() {
+        let (root, adapter) = adapter_fixture_for(Platform::Linux);
+        let home = root.path().join("user");
+
+        assert_eq!(
+            adapter.configuration_path(),
+            home.join(".config/Code/User/mcp.json")
+        );
+        assert!(adapter.configuration_path().starts_with(root.path()));
+        for excluded in [
+            home.join("workspace/.vscode/mcp.json"),
+            home.join("workspace/.mcp.json"),
+            home.join(".config/Code/User/profiles/profile/mcp.json"),
+            home.join(".config/Code - Insiders/User/mcp.json"),
+            home.join(".config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json"),
             home.join(".cline/data/settings/cline_mcp_settings.json"),
             home.join(".copilot/mcp-config.json"),
         ] {

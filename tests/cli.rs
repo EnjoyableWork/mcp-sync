@@ -42,5 +42,10 @@ fn version_uses_the_binary_name_and_package_version() {
 #[test]
 fn cli_processes_receive_only_synthetic_user_locations() {
     let synthetic_home = SyntheticHome::new();
+    assert_ne!(
+        synthetic_home.configuration_home(),
+        synthetic_home.user_root().join(".config"),
+        "the integration harness should exercise an explicit XDG override"
+    );
     synthetic_home.assert_command_is_isolated(&synthetic_home.command());
 }

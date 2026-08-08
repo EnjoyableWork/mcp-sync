@@ -7,7 +7,7 @@ use crate::cursor::{CursorAdapter, CursorAdapterError, CursorDiscovery, CursorDo
 use crate::filesystem::{
     ExpectedFile, FileIoError, FileMutationError, FileSystem, TransactionalFileUpdater, backup_path,
 };
-use crate::paths::MacOsConfigurationPaths;
+use crate::paths::ConfigurationPaths;
 use crate::reconciliation::{ReconciliationOutcome, ReconciliationPlan, ServerChanges, reconcile};
 use crate::vscode::{VsCodeAdapter, VsCodeAdapterError, VsCodeDiscovery, VsCodeDocument};
 use crate::windsurf::{WindsurfAdapter, WindsurfAdapterError, WindsurfDiscovery, WindsurfDocument};
@@ -23,36 +23,36 @@ use std::path::PathBuf;
 /// guarded apply. Its debug implementation reveals only paths, byte counts,
 /// and the already-redacted reconciliation structure.
 pub fn plan_sync(
-    paths: &MacOsConfigurationPaths,
+    paths: &ConfigurationPaths,
     filesystem: &impl FileSystem,
 ) -> Result<SyncPlan, SyncError> {
     let desired = load_canonical(paths, filesystem)?;
 
-    let claude_adapter = ClaudeDesktopAdapter::for_macos(paths);
+    let claude_adapter = ClaudeDesktopAdapter::from_paths(paths);
     let claude_discovery = claude_adapter
         .discover(filesystem)
         .map_err(|source| SyncError::DiscoverClaude { source })?;
     let claude = plan_claude(claude_adapter, claude_discovery, &desired)?;
 
-    let cursor_adapter = CursorAdapter::for_macos(paths);
+    let cursor_adapter = CursorAdapter::from_paths(paths);
     let cursor_discovery = cursor_adapter
         .discover(filesystem)
         .map_err(|source| SyncError::DiscoverCursor { source })?;
     let cursor = plan_cursor(cursor_adapter, cursor_discovery, &desired)?;
 
-    let windsurf_adapter = WindsurfAdapter::for_macos(paths);
+    let windsurf_adapter = WindsurfAdapter::from_paths(paths);
     let windsurf_discovery = windsurf_adapter
         .discover(filesystem)
         .map_err(|source| SyncError::DiscoverWindsurf { source })?;
     let windsurf = plan_windsurf(windsurf_adapter, windsurf_discovery, &desired)?;
 
-    let vscode_adapter = VsCodeAdapter::for_macos(paths);
+    let vscode_adapter = VsCodeAdapter::from_paths(paths);
     let vscode_discovery = vscode_adapter
         .discover(filesystem)
         .map_err(|source| SyncError::DiscoverVsCode { source })?;
     let vscode = plan_vscode(vscode_adapter, vscode_discovery, &desired)?;
 
-    let codex_adapter = CodexAdapter::for_macos(paths);
+    let codex_adapter = CodexAdapter::from_paths(paths);
     let codex_discovery = codex_adapter
         .discover(filesystem)
         .map_err(|source| SyncError::DiscoverCodex { source })?;
@@ -168,7 +168,7 @@ where
 }
 
 fn load_canonical(
-    paths: &MacOsConfigurationPaths,
+    paths: &ConfigurationPaths,
     filesystem: &impl FileSystem,
 ) -> Result<CanonicalConfig, SyncError> {
     let path = paths.canonical_configuration();
@@ -1023,7 +1023,7 @@ impl Error for SyncError {
 mod tests {
     use super::*;
     use crate::config::CanonicalServer;
-    use crate::paths::Environment;
+    use crate::paths::{Environment, Platform};
     use std::collections::BTreeMap;
     use std::ffi::OsString;
     use std::fs;
@@ -1037,8 +1037,8 @@ mod tests {
         }
     }
 
-    fn fixture_paths(root: &Path) -> MacOsConfigurationPaths {
-        MacOsConfigurationPaths::resolve(&FixtureEnvironment(root.join("user")))
+    fn fixture_paths(root: &Path) -> ConfigurationPaths {
+        ConfigurationPaths::resolve_for(Platform::MacOs, &FixtureEnvironment(root.join("user")))
             .expect("synthetic macOS paths should resolve")
     }
 
@@ -1186,12 +1186,7 @@ mod tests {
                 .join(".codeium/windsurf/mcp_config.json")
                 .exists()
         );
-        assert!(
-            !paths
-                .application_support()
-                .join("Code/User/mcp.json")
-                .exists()
-        );
+        assert!(!paths.user_data_home().join("Code/User/mcp.json").exists());
         assert!(!paths.user_home().join(".codex/config.toml").exists());
 
         let report = apply_sync(&plan, &crate::filesystem::OsFileSystem)
@@ -1206,16 +1201,11 @@ mod tests {
         );
         assert!(
             paths
-                .application_support()
+                .user_data_home()
                 .join("Claude/claude_desktop_config.json")
                 .is_file()
         );
-        assert!(
-            paths
-                .application_support()
-                .join("Code/User/mcp.json")
-                .is_file()
-        );
+        assert!(paths.user_data_home().join("Code/User/mcp.json").is_file());
         assert!(paths.user_home().join(".codex/config.toml").is_file());
 
         let settled = plan_sync(&paths, &crate::filesystem::OsFileSystem)
@@ -1233,19 +1223,19 @@ mod tests {
     fn apply_refuses_stale_planned_bytes_without_replanning_or_touching_later_targets() {
         let fixture = tempfile::tempdir().expect("temporary sync fixture should be created");
         let paths = fixture_paths(fixture.path());
-        let claude_path = ClaudeDesktopAdapter::for_macos(&paths)
+        let claude_path = ClaudeDesktopAdapter::from_paths(&paths)
             .configuration_path()
             .to_owned();
-        let cursor_path = CursorAdapter::for_macos(&paths)
+        let cursor_path = CursorAdapter::from_paths(&paths)
             .configuration_path()
             .to_owned();
-        let windsurf_path = WindsurfAdapter::for_macos(&paths)
+        let windsurf_path = WindsurfAdapter::from_paths(&paths)
             .configuration_path()
             .to_owned();
-        let vscode_path = VsCodeAdapter::for_macos(&paths)
+        let vscode_path = VsCodeAdapter::from_paths(&paths)
             .configuration_path()
             .to_owned();
-        let codex_path = CodexAdapter::for_macos(&paths)
+        let codex_path = CodexAdapter::from_paths(&paths)
             .configuration_path()
             .to_owned();
         for path in [
@@ -1382,19 +1372,19 @@ mod tests {
     fn five_update_plan() -> (tempfile::TempDir, SyncPlan) {
         let fixture = tempfile::tempdir().expect("temporary sync fixture should be created");
         let paths = fixture_paths(fixture.path());
-        let claude_path = ClaudeDesktopAdapter::for_macos(&paths)
+        let claude_path = ClaudeDesktopAdapter::from_paths(&paths)
             .configuration_path()
             .to_owned();
-        let cursor_path = CursorAdapter::for_macos(&paths)
+        let cursor_path = CursorAdapter::from_paths(&paths)
             .configuration_path()
             .to_owned();
-        let windsurf_path = WindsurfAdapter::for_macos(&paths)
+        let windsurf_path = WindsurfAdapter::from_paths(&paths)
             .configuration_path()
             .to_owned();
-        let vscode_path = VsCodeAdapter::for_macos(&paths)
+        let vscode_path = VsCodeAdapter::from_paths(&paths)
             .configuration_path()
             .to_owned();
-        let codex_path = CodexAdapter::for_macos(&paths)
+        let codex_path = CodexAdapter::from_paths(&paths)
             .configuration_path()
             .to_owned();
         for path in [

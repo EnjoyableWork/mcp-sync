@@ -29,9 +29,19 @@ jobs:
           arguments: --all-features --locked
 
   quality:
-    name: Format, Clippy, and test
-    runs-on: ubuntu-latest
+    name: Linux ${{ matrix.architecture }} — format, Clippy, and test
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x64
+            runner: ubuntu-24.04
+            rust_host: x86_64-unknown-linux-gnu
+          - architecture: ARM64
+            runner: ubuntu-24.04-arm
+            rust_host: aarch64-unknown-linux-gnu
 
     steps:
       - name: Check out source
@@ -44,6 +54,13 @@ jobs:
           rustup show active-toolchain
           rustc --version --verbose
           cargo --version
+
+      - name: Verify the native GNU/Linux Rust host
+        env:
+          EXPECTED_RUST_HOST: ${{ matrix.rust_host }}
+        run: |
+          actual_rust_host="$(rustc --version --verbose | sed -n 's/^host: //p')"
+          test "${actual_rust_host}" = "${EXPECTED_RUST_HOST}"
 
       - name: Run quality gates through a synthetic home
         run: ./scripts/check.sh

@@ -57,6 +57,7 @@ impl SyntheticHome {
             user_root.join("AppData/Local"),
             user_root.join("AppData/Roaming"),
             user_root.join("Library/Application Support"),
+            root.path().join("xdg-config"),
             root.path().join("runtime"),
             root.path().join("tmp"),
             root.path().join("xdg-config-dirs"),
@@ -101,12 +102,26 @@ impl SyntheticHome {
     }
 
     pub fn canonical_configuration(&self) -> PathBuf {
-        self.user_root.join(".config/mcp-sync/config.json")
+        self.configuration_home().join("mcp-sync/config.json")
+    }
+
+    pub fn configuration_home(&self) -> PathBuf {
+        self.root.path().join("xdg-config")
+    }
+
+    pub fn user_data_home(&self) -> PathBuf {
+        match std::env::consts::OS {
+            "macos" => self.user_root.join("Library/Application Support"),
+            "linux" => self.configuration_home(),
+            operating_system => {
+                panic!("unsupported integration-test operating system `{operating_system}`")
+            }
+        }
     }
 
     pub fn claude_desktop_configuration(&self) -> PathBuf {
-        self.user_root
-            .join("Library/Application Support/Claude/claude_desktop_config.json")
+        self.user_data_home()
+            .join("Claude/claude_desktop_config.json")
     }
 
     pub fn cursor_configuration(&self) -> PathBuf {
@@ -118,8 +133,7 @@ impl SyntheticHome {
     }
 
     pub fn vscode_configuration(&self) -> PathBuf {
-        self.user_root
-            .join("Library/Application Support/Code/User/mcp.json")
+        self.user_data_home().join("Code/User/mcp.json")
     }
 
     pub fn codex_configuration(&self) -> PathBuf {
@@ -184,7 +198,7 @@ impl SyntheticHome {
             ("USERPROFILE", self.user_root.clone()),
             ("XDG_CACHE_HOME", self.user_root.join(".cache")),
             ("XDG_CONFIG_DIRS", self.root.path().join("xdg-config-dirs")),
-            ("XDG_CONFIG_HOME", self.user_root.join(".config")),
+            ("XDG_CONFIG_HOME", self.configuration_home()),
             ("XDG_DATA_HOME", self.user_root.join(".local/share")),
             ("XDG_RUNTIME_DIR", self.root.path().join("runtime")),
             ("XDG_STATE_HOME", self.user_root.join(".local/state")),

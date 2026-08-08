@@ -1,6 +1,6 @@
 use crate::config::{CanonicalConfig, CanonicalServer, ConfigError, parse_unique_json_value};
 use crate::filesystem::{FileIoError, FileSystem};
-use crate::paths::MacOsConfigurationPaths;
+use crate::paths::ConfigurationPaths;
 use crate::reconciliation::{ReconciliationOutcomeKind, ReconciliationPlan};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -16,7 +16,7 @@ const COMMAND_FIELD: &str = "command";
 const ARGUMENTS_FIELD: &str = "args";
 const ENVIRONMENT_FIELD: &str = "env";
 
-/// The current Cursor global user configuration target on macOS.
+/// The current Cursor global user configuration target on macOS and Linux.
 ///
 /// Discovery resolves exactly `~/.cursor/mcp.json` through the injected home
 /// path. It has no project-root input and therefore cannot discover a
@@ -29,7 +29,7 @@ pub struct CursorAdapter {
 }
 
 impl CursorAdapter {
-    pub fn for_macos(paths: &MacOsConfigurationPaths) -> Self {
+    pub fn from_paths(paths: &ConfigurationPaths) -> Self {
         Self {
             configuration_path: paths
                 .user_home()
@@ -619,7 +619,7 @@ impl Error for CursorDocumentError {}
 mod tests {
     use super::*;
     use crate::filesystem::OsFileSystem;
-    use crate::paths::Environment;
+    use crate::paths::{Environment, Platform};
     use crate::reconciliation::{ReconciliationOutcomeKind, reconcile};
     use std::ffi::OsString;
     use std::fs;
@@ -657,14 +657,21 @@ mod tests {
         }
     }
 
-    fn adapter_fixture() -> (tempfile::TempDir, CursorAdapter) {
+    fn adapter_fixture_for(platform: Platform) -> (tempfile::TempDir, CursorAdapter) {
         let root = tempfile::tempdir().expect("temporary adapter fixture should be created");
-        let paths = MacOsConfigurationPaths::resolve(&FixtureEnvironment {
-            home: root.path().join("user"),
-        })
-        .expect("synthetic macOS paths should resolve");
-        let adapter = CursorAdapter::for_macos(&paths);
+        let paths = ConfigurationPaths::resolve_for(
+            platform,
+            &FixtureEnvironment {
+                home: root.path().join("user"),
+            },
+        )
+        .expect("synthetic platform paths should resolve");
+        let adapter = CursorAdapter::from_paths(&paths);
         (root, adapter)
+    }
+
+    fn adapter_fixture() -> (tempfile::TempDir, CursorAdapter) {
+        adapter_fixture_for(Platform::MacOs)
     }
 
     fn desired_config() -> CanonicalConfig {
@@ -675,6 +682,21 @@ mod tests {
     #[test]
     fn macos_discovery_path_matches_only_the_current_global_contract() {
         let (root, adapter) = adapter_fixture();
+
+        assert_eq!(
+            adapter.configuration_path(),
+            root.path().join("user/.cursor/mcp.json")
+        );
+        assert!(adapter.configuration_path().starts_with(root.path()));
+        assert_ne!(
+            adapter.configuration_path(),
+            root.path().join("user/project/.cursor/mcp.json")
+        );
+    }
+
+    #[test]
+    fn linux_discovery_path_matches_only_the_current_global_contract() {
+        let (root, adapter) = adapter_fixture_for(Platform::Linux);
 
         assert_eq!(
             adapter.configuration_path(),

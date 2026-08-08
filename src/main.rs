@@ -76,7 +76,7 @@ struct TestCommand {
 }
 
 fn run(command: Command) -> Result<CommandReport, ApplicationError> {
-    let paths = paths::MacOsConfigurationPaths::resolve(&paths::ProcessEnvironment)
+    let paths = paths::ConfigurationPaths::resolve(&paths::ProcessEnvironment)
         .map_err(ApplicationError::ResolvePaths)?;
 
     match command {

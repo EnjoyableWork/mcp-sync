@@ -22,26 +22,52 @@ impl Environment for ProcessEnvironment {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Platform {
+    MacOs,
+    Linux,
+}
+
+impl Platform {
+    fn current() -> Result<Self, PathResolutionError> {
+        match std::env::consts::OS {
+            "macos" => Ok(Self::MacOs),
+            "linux" => Ok(Self::Linux),
+            operating_system => Err(PathResolutionError::UnsupportedPlatform { operating_system }),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MacOsConfigurationPaths {
+pub struct ConfigurationPaths {
     user_home: PathBuf,
     configuration_home: PathBuf,
-    application_support: PathBuf,
+    user_data_home: PathBuf,
     canonical_configuration: PathBuf,
 }
 
-impl MacOsConfigurationPaths {
+impl ConfigurationPaths {
     pub fn resolve(environment: &impl Environment) -> Result<Self, PathResolutionError> {
+        Self::resolve_for(Platform::current()?, environment)
+    }
+
+    pub fn resolve_for(
+        platform: Platform,
+        environment: &impl Environment,
+    ) -> Result<Self, PathResolutionError> {
         let user_home = required_absolute_path(environment, HOME)?;
         let configuration_home = optional_absolute_path(environment, XDG_CONFIG_HOME)?
             .unwrap_or_else(|| user_home.join(".config"));
-        let application_support = user_home.join("Library/Application Support");
+        let user_data_home = match platform {
+            Platform::MacOs => user_home.join("Library/Application Support"),
+            Platform::Linux => configuration_home.clone(),
+        };
         let canonical_configuration = configuration_home.join("mcp-sync/config.json");
 
         Ok(Self {
             user_home,
             configuration_home,
-            application_support,
+            user_data_home,
             canonical_configuration,
         })
     }
@@ -55,8 +81,8 @@ impl MacOsConfigurationPaths {
         &self.configuration_home
     }
 
-    pub fn application_support(&self) -> &Path {
-        &self.application_support
+    pub fn user_data_home(&self) -> &Path {
+        &self.user_data_home
     }
 
     pub fn canonical_configuration(&self) -> &Path {
@@ -108,6 +134,7 @@ fn validate_absolute_path(
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PathResolutionError {
+    UnsupportedPlatform { operating_system: &'static str },
     MissingVariable { variable: &'static str },
     NonAbsoluteVariable { variable: &'static str },
     ParentTraversal { variable: &'static str },
@@ -116,6 +143,10 @@ pub enum PathResolutionError {
 impl fmt::Display for PathResolutionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnsupportedPlatform { operating_system } => write!(
+                formatter,
+                "unsupported operating system `{operating_system}`; mcp-sync currently supports macOS and Linux"
+            ),
             Self::MissingVariable { variable } => {
                 write!(formatter, "configuration path requires `{variable}`")
             }
@@ -137,7 +168,7 @@ impl std::error::Error for PathResolutionError {}
 
 #[cfg(test)]
 mod tests {
-    use super::{Environment, MacOsConfigurationPaths, PathResolutionError};
+    use super::{ConfigurationPaths, Environment, PathResolutionError, Platform};
     use std::collections::BTreeMap;
     use std::ffi::OsString;
     use std::path::{Path, PathBuf};
@@ -165,17 +196,22 @@ mod tests {
         }
     }
 
-    struct MacOsPathFixture {
+    struct PathFixture {
         root: tempfile::TempDir,
         user_home: PathBuf,
     }
 
-    impl MacOsPathFixture {
+    impl PathFixture {
         fn new() -> Self {
             let root = tempfile::tempdir().expect("temporary path fixture should be created");
             let user_home = root.path().join("user");
-            std::fs::create_dir_all(user_home.join("Library/Application Support"))
-                .expect("macOS fixture directories should be created");
+            for directory in [
+                user_home.join(".config"),
+                user_home.join("Library/Application Support"),
+            ] {
+                std::fs::create_dir_all(directory)
+                    .expect("platform fixture directories should be created");
+            }
 
             Self { root, user_home }
         }
@@ -195,9 +231,9 @@ mod tests {
 
     #[test]
     fn macos_defaults_resolve_under_the_injected_home() {
-        let fixture = MacOsPathFixture::new();
+        let fixture = PathFixture::new();
 
-        let paths = MacOsConfigurationPaths::resolve(&fixture.environment())
+        let paths = ConfigurationPaths::resolve_for(Platform::MacOs, &fixture.environment())
             .expect("synthetic macOS paths should resolve");
 
         assert_eq!(paths.user_home(), fixture.user_home);
@@ -206,7 +242,7 @@ mod tests {
             fixture.user_home.join(".config")
         );
         assert_eq!(
-            paths.application_support(),
+            paths.user_data_home(),
             fixture.user_home.join("Library/Application Support")
         );
         assert_eq!(
@@ -217,7 +253,35 @@ mod tests {
         for path in [
             paths.user_home(),
             paths.configuration_home(),
-            paths.application_support(),
+            paths.user_data_home(),
+            paths.canonical_configuration(),
+        ] {
+            fixture.assert_isolated(path);
+        }
+    }
+
+    #[test]
+    fn linux_defaults_resolve_under_the_injected_home() {
+        let fixture = PathFixture::new();
+
+        let paths = ConfigurationPaths::resolve_for(Platform::Linux, &fixture.environment())
+            .expect("synthetic Linux paths should resolve");
+
+        assert_eq!(paths.user_home(), fixture.user_home);
+        assert_eq!(
+            paths.configuration_home(),
+            fixture.user_home.join(".config")
+        );
+        assert_eq!(paths.user_data_home(), fixture.user_home.join(".config"));
+        assert_eq!(
+            paths.canonical_configuration(),
+            fixture.user_home.join(".config/mcp-sync/config.json")
+        );
+
+        for path in [
+            paths.user_home(),
+            paths.configuration_home(),
+            paths.user_data_home(),
             paths.canonical_configuration(),
         ] {
             fixture.assert_isolated(path);
@@ -226,13 +290,13 @@ mod tests {
 
     #[test]
     fn macos_honors_an_injected_xdg_configuration_home() {
-        let fixture = MacOsPathFixture::new();
+        let fixture = PathFixture::new();
         let xdg_configuration_home = fixture.root.path().join("xdg-config");
         let environment = fixture
             .environment()
             .with_path("XDG_CONFIG_HOME", &xdg_configuration_home);
 
-        let paths = MacOsConfigurationPaths::resolve(&environment)
+        let paths = ConfigurationPaths::resolve_for(Platform::MacOs, &environment)
             .expect("the XDG override should resolve");
 
         assert_eq!(paths.configuration_home(), xdg_configuration_home);
@@ -241,34 +305,57 @@ mod tests {
             fixture.root.path().join("xdg-config/mcp-sync/config.json")
         );
         assert_eq!(
-            paths.application_support(),
+            paths.user_data_home(),
             fixture.user_home.join("Library/Application Support")
         );
         fixture.assert_isolated(paths.canonical_configuration());
-        fixture.assert_isolated(paths.application_support());
+        fixture.assert_isolated(paths.user_data_home());
+    }
+
+    #[test]
+    fn linux_honors_an_injected_xdg_configuration_home_for_user_data() {
+        let fixture = PathFixture::new();
+        let xdg_configuration_home = fixture.root.path().join("xdg-config");
+        let environment = fixture
+            .environment()
+            .with_path("XDG_CONFIG_HOME", &xdg_configuration_home);
+
+        let paths = ConfigurationPaths::resolve_for(Platform::Linux, &environment)
+            .expect("the Linux XDG override should resolve");
+
+        assert_eq!(paths.configuration_home(), xdg_configuration_home);
+        assert_eq!(paths.user_data_home(), xdg_configuration_home);
+        assert_eq!(
+            paths.canonical_configuration(),
+            fixture.root.path().join("xdg-config/mcp-sync/config.json")
+        );
+        fixture.assert_isolated(paths.canonical_configuration());
+        fixture.assert_isolated(paths.user_data_home());
     }
 
     #[test]
     fn an_empty_xdg_configuration_home_uses_the_home_default() {
-        let fixture = MacOsPathFixture::new();
+        let fixture = PathFixture::new();
         let environment = fixture
             .environment()
             .with_value("XDG_CONFIG_HOME", OsString::new());
 
-        let paths = MacOsConfigurationPaths::resolve(&environment)
+        let paths = ConfigurationPaths::resolve_for(Platform::Linux, &environment)
             .expect("an empty XDG override should use the default");
 
         assert_eq!(
             paths.canonical_configuration(),
             fixture.user_home.join(".config/mcp-sync/config.json")
         );
+        assert_eq!(paths.user_data_home(), fixture.user_home.join(".config"));
         fixture.assert_isolated(paths.canonical_configuration());
     }
 
     #[test]
     fn missing_home_is_a_contextual_resolution_error() {
-        let error = MacOsConfigurationPaths::resolve(&FixtureEnvironment::default())
-            .expect_err("HOME should be required");
+        let error =
+            ConfigurationPaths::resolve_for(Platform::Linux, &FixtureEnvironment::default())
+                .expect_err("HOME should be required");
 
         assert_eq!(
             error,
@@ -279,7 +366,7 @@ mod tests {
 
     #[test]
     fn relative_environment_paths_are_rejected() {
-        let fixture = MacOsPathFixture::new();
+        let fixture = PathFixture::new();
         let cases = [
             (
                 FixtureEnvironment::default().with_path("HOME", "relative-home"),
@@ -294,7 +381,7 @@ mod tests {
         ];
 
         for (environment, variable) in cases {
-            let error = MacOsConfigurationPaths::resolve(&environment)
+            let error = ConfigurationPaths::resolve_for(Platform::Linux, &environment)
                 .expect_err("relative configuration paths should fail");
             assert_eq!(error, PathResolutionError::NonAbsoluteVariable { variable });
         }
@@ -302,11 +389,11 @@ mod tests {
 
     #[test]
     fn parent_traversal_in_environment_paths_is_rejected() {
-        let fixture = MacOsPathFixture::new();
+        let fixture = PathFixture::new();
         let traversing_home = fixture.root.path().join("user/../outside");
         let environment = FixtureEnvironment::default().with_path("HOME", traversing_home);
 
-        let error = MacOsConfigurationPaths::resolve(&environment)
+        let error = ConfigurationPaths::resolve_for(Platform::Linux, &environment)
             .expect_err("parent traversal should fail");
 
         assert_eq!(

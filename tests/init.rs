@@ -215,13 +215,11 @@ future_transport = "codex-future-private-value"
     let excluded_vscode_paths = [
         home.user_root().join("workspace/.vscode/mcp.json"),
         home.user_root().join("workspace/.mcp.json"),
-        home.user_root().join(
-            "Library/Application Support/Code/User/profiles/synthetic-profile/mcp.json",
-        ),
-        home.user_root()
-            .join("Library/Application Support/Code - Insiders/User/mcp.json"),
-        home.user_root().join(
-            "Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+        home.user_data_home()
+            .join("Code/User/profiles/synthetic-profile/mcp.json"),
+        home.user_data_home().join("Code - Insiders/User/mcp.json"),
+        home.user_data_home().join(
+            "Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
         ),
         home.user_root()
             .join(".cline/data/settings/cline_mcp_settings.json"),
@@ -417,7 +415,13 @@ fn init_reports_an_exact_redacted_conflict_and_mutates_nothing() {
     );
 
     assert!(!home.canonical_configuration().exists());
-    assert!(!home.user_root().join(".config/mcp-sync").exists());
+    assert!(
+        !home
+            .canonical_configuration()
+            .parent()
+            .expect("the canonical path should have a parent")
+            .exists()
+    );
     assert_file_matches(
         &home.claude_desktop_configuration(),
         &claude,

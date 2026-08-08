@@ -1,6 +1,6 @@
 use crate::config::{CanonicalConfig, CanonicalServer, ConfigError, parse_unique_json_value};
 use crate::filesystem::{FileIoError, FileSystem};
-use crate::paths::MacOsConfigurationPaths;
+use crate::paths::ConfigurationPaths;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use std::env;
@@ -29,7 +29,7 @@ const INITIALIZED_NOTIFICATION: &[u8] =
 /// Canonical process values cross into the process adapter but never enter the
 /// returned report, diagnostics, or debug output.
 pub fn test_server(
-    paths: &MacOsConfigurationPaths,
+    paths: &ConfigurationPaths,
     filesystem: &impl FileSystem,
     tester: &impl InitializeTester,
     name: &str,
@@ -891,7 +891,7 @@ mod tests {
     };
     use crate::config::CanonicalServer;
     use crate::filesystem::OsFileSystem;
-    use crate::paths::{Environment, MacOsConfigurationPaths};
+    use crate::paths::{ConfigurationPaths, Environment, Platform};
     use serde_json::Value;
     use std::cell::Cell;
     use std::collections::BTreeMap;
@@ -937,10 +937,13 @@ mod tests {
         }
     }
 
-    fn fixture_paths(root: &Path) -> MacOsConfigurationPaths {
-        MacOsConfigurationPaths::resolve(&FixtureEnvironment {
-            home: root.as_os_str().to_owned(),
-        })
+    fn fixture_paths(root: &Path) -> ConfigurationPaths {
+        ConfigurationPaths::resolve_for(
+            Platform::MacOs,
+            &FixtureEnvironment {
+                home: root.as_os_str().to_owned(),
+            },
+        )
         .expect("disposable paths should resolve")
     }
 
@@ -1327,8 +1330,11 @@ while :; do :; done
     #[cfg(unix)]
     #[test]
     fn oversized_and_undelimited_messages_fail_without_unbounded_reads() {
+        // Keep stdin open until the client sends `initialize` so the fixture
+        // exercises response framing instead of racing the request write.
         let oversized_payload = "x".repeat(129);
-        let oversized_script = format!("printf '%s\\n' '{oversized_payload}'");
+        let oversized_script =
+            format!("IFS= read -r initialize || exit 90\nprintf '%s\\n' '{oversized_payload}'");
         let oversized = shell_server(&oversized_script, BTreeMap::<String, String>::new());
         let small_limit = HealthLimits {
             response_timeout: Duration::from_millis(200),
@@ -1346,7 +1352,7 @@ while :; do :; done
         );
 
         let undelimited = shell_server(
-            "printf '%s' '{\"jsonrpc\":\"2.0\"}'",
+            "IFS= read -r initialize || exit 91\nprintf '%s' '{\"jsonrpc\":\"2.0\"}'",
             BTreeMap::<String, String>::new(),
         );
         assert!(matches!(

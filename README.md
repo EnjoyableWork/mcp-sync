@@ -6,13 +6,21 @@ Define your local MCP servers once. `mcp-sync` validates process health and auto
 
 ## ⚡ The Problem
 
-Adding an MCP server—such as Postgres, GitHub, or Brave Search—to your local AI toolchain currently requires manual editing across multiple isolated configuration files:
+Adding an MCP server—such as Postgres, GitHub, or Brave Search—to your local AI
+toolchain currently requires manual editing across multiple isolated
+configuration files. On macOS, the global files are:
 
 - **Claude Desktop:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Cursor:** `~/.cursor/mcp.json`
 - **Windsurf:** `~/.codeium/windsurf/mcp_config.json`
 - **VS Code (native MCP / GitHub Copilot):** `~/Library/Application Support/Code/User/mcp.json`
 - **Codex (ChatGPT desktop app / Codex CLI / IDE extension):** `~/.codex/config.toml`
+
+On Linux, Claude Desktop and VS Code use
+`$XDG_CONFIG_HOME/Claude/claude_desktop_config.json` and
+`$XDG_CONFIG_HOME/Code/User/mcp.json`, falling back to the corresponding paths
+under `~/.config` when `XDG_CONFIG_HOME` is unset or empty. Cursor, Windsurf,
+and Codex retain the home-relative paths shown above.
 
 This fragmentation leads to syntax errors, environment variable drift, broken credentials, and wasted setup time whenever a new server or API key is updated.
 
@@ -179,7 +187,7 @@ target.
 
 | Target client | Supported platforms | Configuration file managed |
 | --- | --- | --- |
-| Claude Desktop | macOS, Windows | `claude_desktop_config.json` |
+| Claude Desktop | macOS, Linux, Windows | `claude_desktop_config.json` |
 | Cursor | macOS, Linux, Windows | `mcp.json` |
 | Windsurf | macOS, Linux, Windows | `mcp_config.json` |
 | VS Code (native MCP / GitHub Copilot) | macOS, Linux, Windows | User-profile `mcp.json` |
@@ -226,13 +234,14 @@ cargo deny --all-features --locked check
 
 `./scripts/check.sh` is the canonical local quality gate. It runs deterministic
 formatting, Clippy, unit, and integration checks with the committed lockfile.
-Every command receives disposable `HOME`, XDG, macOS, and Windows-style user
-configuration roots, and the CLI integration harness clears inherited process
-state before supplying its own synthetic home. The dependency-policy command
-requires the CI-pinned `cargo-deny` 0.20.2 release; install that exact version
-with `cargo install --locked cargo-deny --version 0.20.2`. Its committed policy
-checks security advisories, licenses, duplicate or banned dependencies, and
-dependency sources.
+Every command receives disposable `HOME`, XDG, macOS application-support,
+Linux user-data, and Windows-style user configuration roots, and the CLI
+integration harness clears inherited process state before supplying its own
+synthetic home. The dependency-policy command requires the CI-pinned
+`cargo-deny` 0.20.2 release; install that exact version with
+`cargo install --locked cargo-deny --version 0.20.2`. Its committed policy checks
+security advisories, licenses, duplicate or banned dependencies, and dependency
+sources.
 
 Contributions are welcome! Feel free to submit a pull request:
 

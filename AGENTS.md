@@ -6,8 +6,9 @@
 reconciling that desired state into the native configuration files used by MCP
 clients.
 
-The repository has completed its source-checkout macOS M1 proof and remains
-pre-release. The README is a deliberate target-state exception: it presents the
+The repository has completed its source-checkout macOS M1 proof and GNU/Linux
+x64/ARM64 configuration proof, and remains pre-release. The README is a
+deliberate target-state exception: it presents the
 intended finished product in confident public product language and should not
 be rewritten as a progress report. Everywhere else, do not describe a planned
 command, client adapter, platform, safety property, or distribution channel as
@@ -56,20 +57,23 @@ The implemented foundation is one Rust 2024 binary crate with a package named
 supports help, version, create-only `init`, complete-definition canonical
 `add`, structurally redacted `list`, bounded named-server `test`, and
 five-target `sync --dry-run` / `sync` journeys. It also contains the strict
-canonical JSON v1 model, an injected
-macOS configuration-path resolver, a replaceable filesystem boundary with
+canonical JSON v1 model, an injected macOS/GNU/Linux configuration-path
+resolver, a replaceable filesystem boundary with
 read, no-clobber creation, guarded replacement, and reversible transaction
 ports, and a pure deterministic reconciliation engine with structurally
 redacted plans. Fixture-backed global Claude Desktop, Cursor, Windsurf, and VS
-Code macOS adapters discover and parse native JSON, while the global Codex
-adapter performs TOML-native structural edits; all five render plan-driven
-updates in memory while preserving unowned fields. The Windsurf adapter manages
-the documented legacy Cascade file at `~/.codeium/windsurf/mcp_config.json`; it
-does not claim Devin Local agent configuration. The VS Code adapter manages
-only the native default user-profile file at
-`~/Library/Application Support/Code/User/mcp.json`; it does not claim
-workspace, named-profile, remote, Insiders, portable, Cline, Roo Code, or Agent
-Host/Copilot CLI configuration. The Codex adapter manages only global
+Code adapters discover and parse native JSON on both platforms, while the
+global Codex adapter performs TOML-native structural edits; all five render
+plan-driven updates in memory while preserving unowned fields. Claude Desktop
+and VS Code use the macOS application-support root or Linux XDG configuration
+root; Cursor, Windsurf, and Codex retain their home-relative paths. The Windsurf
+adapter manages the documented legacy Cascade file at
+`~/.codeium/windsurf/mcp_config.json`; it does not claim Devin Local agent
+configuration. The VS Code adapter manages only the native default user-profile
+file at `~/Library/Application Support/Code/User/mcp.json` on macOS or
+`${XDG_CONFIG_HOME:-$HOME/.config}/Code/User/mcp.json` on Linux; it does not
+claim workspace, named-profile, remote, Insiders, portable, Cline, Roo Code, or
+Agent Host/Copilot CLI configuration. The Codex adapter manages only global
 `~/.codex/config.toml` for the host configuration shared by the ChatGPT desktop
 app, Codex CLI, and IDE extension. It owns only `command`, `args`, and `env` in
 unambiguous local STDIO entries, preserves every other TOML setting and entry,
@@ -100,17 +104,19 @@ combined built-binary synthetic-home suite proves the complete configuration
 flow, deterministic five-client import, health success and failure behavior,
 redaction, idempotence, native preservation, non-zero failures, and
 five-target transaction rollback.
-Controlled current-stable Cursor and Claude Desktop smokes both accept the
-rendered global definitions and complete MCP initialization; the Claude journey
-uses a no-clobber backup and verified exact restore around its temporary native
-file. The source-checkout usage and recovery guide documents the current workflow,
-redaction boundary, bounded health behavior, one-slot backups, transaction
-recovery, guarded manual restoration, and current limitations without turning
-the README into a progress report. Windsurf, VS Code, and Codex support are fixture- and built-binary-
-verified against their documented native contracts; none has a current-client
-smoke claim. Other platforms, restore UX, and distribution remain later-ticket
-scope. Use the existing Clap command tree as CLI behavior grows; do not
-introduce a second parser.
+Controlled current-stable Cursor and Claude Desktop smokes on macOS both accept
+the rendered global definitions and complete MCP initialization; the Claude
+journey uses a no-clobber backup and verified exact restore around its temporary
+native file. The source-checkout usage and recovery guide documents the current
+workflow, redaction boundary, bounded health behavior, one-slot backups,
+transaction recovery, guarded manual restoration, and current limitations
+without turning the README into a progress report. All five Linux targets have
+deterministic path, fixture, built-binary behavior, and native x64/ARM64
+whole-suite CI coverage under `MCP-018`; there is no Linux current-client smoke
+claim. Windsurf, VS Code, and Codex have no current-client smoke claim on either
+platform. Windows, restore UX, and distribution remain later-ticket scope. Use
+the existing Clap command tree as CLI behavior grows; do not introduce a second
+parser.
 
 “Extensible” currently means:
 
@@ -224,15 +230,16 @@ integrity and redaction as product requirements.
   addition that collides with a commandless entry. Do not claim Devin Local
   agent support through this adapter.
 - Manage only VS Code's native default user-profile file at
-  `~/Library/Application Support/Code/User/mcp.json` on macOS. Never discover
-  or mutate workspace `.vscode/mcp.json` or `.mcp.json`, named profiles, remote
-  profiles, VS Code Insiders, portable installations, extension-owned Cline or
-  Roo Code stores, or Agent Host/Copilot CLI configuration through this
-  adapter. In root `servers`, own only `command`, `args`, and string-valued
-  `env` for compatible local STDIO entries; preserve root `inputs`, `sandbox`,
-  remote transports, numeric/null native environment values, and every unknown
-  field structurally, and reject a local canonical addition that collides with
-  any unmanaged entry.
+  `~/Library/Application Support/Code/User/mcp.json` on macOS and
+  `${XDG_CONFIG_HOME:-$HOME/.config}/Code/User/mcp.json` on Linux. Never
+  discover or mutate workspace `.vscode/mcp.json` or `.mcp.json`, named
+  profiles, remote profiles, VS Code Insiders, portable installations,
+  extension-owned Cline or Roo Code stores, or Agent Host/Copilot CLI
+  configuration through this adapter. In root `servers`, own only `command`,
+  `args`, and string-valued `env` for compatible local STDIO entries; preserve
+  root `inputs`, `sandbox`, remote transports, numeric/null native environment
+  values, and every unknown field structurally, and reject a local canonical
+  addition that collides with any unmanaged entry.
 - Treat Codex as one TOML target shared by the ChatGPT desktop app, Codex CLI,
   and IDE extension. Manage only global `~/.codex/config.toml`; never discover
   or mutate trusted-project `.codex/config.toml` layers through this adapter,
