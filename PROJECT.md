@@ -9,11 +9,11 @@ lightweight enough to use before a hosted tracker is justified.
 | Document state | Active |
 | Product state | The source-checkout macOS and GNU/Linux implementation reconciles global Claude Desktop, Cursor, Windsurf legacy Cascade, native VS Code default user-profile, and global Codex host configuration, and exposes one bounded named-server STDIO initialize health boundary; deterministic fixtures and native x64/ARM64 GNU/Linux CI prove the five-target configuration behavior without weakening its safety boundaries; Claude Desktop and Cursor retain macOS current-client sync smoke evidence, no Linux target has a current-client smoke claim, and the repository remains pre-release |
 | Current milestone | M2 — City, in progress |
-| Overall status | `MCP-018` is `In progress` while its Linux x64 CI fixture race is corrected; `MCP-019` and every later main-story ticket remain `Proposed` |
-| Current focus | Restore deterministic x64 and ARM64 Linux CI evidence for `MCP-018`; do not begin Windows work |
+| Overall status | `MCP-018` is `Done`; only `MCP-019` is `Ready`, and every later main-story ticket remains `Proposed` |
+| Current focus | Keep `MCP-019` as the sole ready successor; do not begin Windows work until its exact goal is intentionally activated and its owner is clear |
 | Milestone target | Unscheduled; set after an owner and delivery capacity are known |
 | Last reviewed | 2026-08-08 |
-| Next review trigger | Completion or blocking of the `MCP-018` CI correction |
+| Next review trigger | Start, completion, or blocking of `MCP-019`, or any change to the supported-client boundary |
 
 ## Document roles
 
@@ -877,14 +877,18 @@ safety rule:
   to inject every user root; its import, catalog, health, dry-run, apply, no-op,
   preservation, redaction, permission, and reverse-order rollback journeys are
   unchanged.
-- The [CI quality matrix](.github/workflows/ci.yml) uses native
-  `ubuntu-24.04` x64 and `ubuntu-24.04-arm` ARM64 runners, asserts the exact Rust
-  host triple, and runs the complete [`scripts/check.sh`](scripts/check.sh)
-  synthetic-home gate on each architecture. The successful
-  [`MCP-018` CI run](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31239949393)
-  proves both native jobs plus dependency policy. This is GNU libc
-  source-checkout behavior evidence, not release packaging, Alpine/musl
-  support, or a Linux current-client smoke claim.
+- The bounded-response fixture reads the initialize line before emitting an
+  oversized or undelimited response, so it tests framing limits without racing
+  process exit against the request write. The [CI quality
+  matrix](.github/workflows/ci.yml) uses native `ubuntu-24.04` x64 and
+  `ubuntu-24.04-arm` ARM64 runners, asserts the exact Rust host triple, and runs
+  the complete [`scripts/check.sh`](scripts/check.sh) synthetic-home gate on
+  each architecture. The successful
+  [`MCP-018` push run](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240607296)
+  and [pull-request run](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240608728)
+  prove both native jobs plus dependency policy under both event paths. This is
+  GNU libc source-checkout behavior evidence, not release packaging,
+  Alpine/musl support, or a Linux current-client smoke claim.
 
 ### Proven synthetic M1 journey and failure matrix
 
@@ -1008,7 +1012,7 @@ promise.
 | D-05 | Two-client import and conflict reporting | M1 | Codex | 2026-08-07 | Done | [Initialization use case](src/init.rs), [CLI command](src/main.rs), [global Claude Desktop adapter](src/claude_desktop.rs), [global Cursor adapter](src/cursor.rs), [create-only filesystem boundary](src/filesystem.rs), and [built-binary journeys](tests/init.rs) |
 | D-06 | Redacted plan and safe multi-target apply | M1 | Codex | 2026-08-07 | Done | [Plan-once sync use case and focused transaction tests](src/sync.rs), [reversible exact-byte filesystem boundary and recovery tests](src/filesystem.rs), [seven isolated built-binary sync journeys](tests/sync.rs), [wired CLI](src/main.rs), and [public sync contract](README.md) |
 | D-07 | Complete M1 CLI journey and user guide | M1 | Codex | 2026-08-07 | Done | The combined [golden built-binary journey and failure matrix](tests/golden.rs), command-specific journeys, audited [README contract](README.md), refreshed [controlled current-stable two-client smoke](#controlled-current-client-evidence), and tested [M1 usage and recovery guide](docs/m1-usage-and-recovery.md) complete the M1 journey |
-| D-08 | Five-client, cross-platform support matrix | M2 | Codex | Unscheduled | In progress | All five global macOS and Linux targets pass deterministic fixture and built-binary import/sync coverage: four JSON adapters plus the TOML-native Codex adapter. The [successful native x64/ARM64 whole-suite CI run](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31239949393) completes `MCP-018`; no Linux current-client smoke claim is made. Windsurf, native default-profile VS Code, and Codex have no current-client smoke claim on either implemented platform; Windows and the accepted six-target release matrix remain sequenced |
+| D-08 | Five-client, cross-platform support matrix | M2 | Codex | Unscheduled | In progress | All five global macOS and Linux targets pass deterministic fixture and built-binary import/sync coverage: four JSON adapters plus the TOML-native Codex adapter. Successful native x64/ARM64 whole-suite [push](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240607296) and [pull-request](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240608728) CI runs complete `MCP-018`; no Linux current-client smoke claim is made. Windsurf, native default-profile VS Code, and Codex have no current-client smoke claim on either implemented platform; Windows and the accepted six-target release matrix remain sequenced |
 | D-09 | Bounded STDIO health testing | M2 | Codex | 2026-08-07 | Done | [Bounded initialize use case, replaceable process boundary, structural protocol parser, and 11 focused tests](src/health.rs), [five synthetic-home built-binary success and failure journeys](tests/health.rs), [Clap wiring](src/main.rs), and [source-checkout health contract](docs/m1-usage-and-recovery.md) |
 | D-10 | Accessible release channels and recovery runbook | M2 | Unassigned | Unscheduled | Proposed | Six signed or platform-appropriate binaries, immutable GitHub Release, SHA-256 manifest, SPDX SBOMs, attestations, Homebrew, WinGet, Cargo, per-target install smoke tests, and restore exercise |
 
@@ -1041,8 +1045,8 @@ predecessor, so only the first incomplete row can become `Ready`.
 | MCP-015 | Add the VS Code target adapter and define extension-shape boundaries | M2 | P1 | Codex | Done | `MCP-014` | [Native default user-profile discovery, strict parsing, plan-driven bounded rendering, and 17 focused tests](src/vscode.rs), [exact current/desired/merged fixtures](tests/fixtures/vscode), [four-client initialization and exclusion journeys](tests/init.rs), and [four-target plan/apply, preflight, collision, and reverse-rollback journeys](tests/sync.rs) extend the [combined golden flow](tests/golden.rs) while preserving root, local, unmanaged, target-only, project, profile, and extension-owned data. Stable-toolchain locked build, format, warning-free Clippy, all 181 tests through synthetic homes, `cargo deny`, fixture, redaction, README-alignment, and documentation checks pass; the native default-profile-only boundary and absence of a current-client smoke claim are explicit |
 | MCP-016 | Add the Codex adapter for the shared ChatGPT desktop, Codex CLI, and IDE host configuration | M2 | P1 | Codex | Done | `MCP-015` | [Global-only TOML discovery, structural parsing/rendering, and 18 focused tests](src/codex.rs), [exact current/desired/merged plus project-isolation fixtures](tests/fixtures/codex), [five-client initialization and exclusion journeys](tests/init.rs), and [five-target plan/apply, preflight, collision, exact backup/no-op, and reverse-rollback journeys](tests/sync.rs) extend the [combined golden flow](tests/golden.rs) while preserving comments, formatting, unrelated settings, unowned local fields, remote/OAuth/mixed/opaque entries, project layers, alternate files, and credential stores without JSON conversion. The explicit `toml_edit` parse/display dependency is recorded in [Cargo.toml](Cargo.toml) and [Cargo.lock](Cargo.lock), and the [source-checkout recovery guide](docs/m1-usage-and-recovery.md) includes a tested fail-closed TOML restore procedure. Stable-toolchain locked build, synthetic-home format, warning-free Clippy, all 205 tests, `cargo deny`, dependency review, fixture, redaction, README-alignment, recovery, and documentation checks pass; the global-only boundary and absence of a current-client smoke claim are explicit |
 | MCP-017 | Add bounded MCP STDIO initialize health testing | M2 | P1 | Codex | Done | `MCP-016` | [Bounded initialize orchestration, replaceable operating-system process boundary, duplicate-safe protocol validation, typed redacted failures, and 11 focused tests](src/health.rs), [five built-binary handshake, timeout, malformed-output, server-error, spawn-failure, redaction, and direct-child reap journeys](tests/health.rs), [single-command Clap wiring](src/main.rs), [public contract](README.md), [operational contract](docs/m1-usage-and-recovery.md), and `DEC-029`. The response is bounded to five seconds and 1 MiB, shutdown to 500 milliseconds before forced reap, and only canonical environment plus a fallback `PATH` reaches the child. Static process-boundary inspection confirms only `test` can spawn; the existing built-binary `init` and `sync` sentinels remain green. Stable-toolchain locked build, synthetic-home format, warning-free Clippy, all 221 tests, `cargo deny`, help, protocol, process cleanup, redaction, README-alignment, and documentation checks pass; no stateless `2026-07-28`, remote transport, later operation, current-server smoke, or platform-expansion claim is made |
-| MCP-018 | Add Linux path and behavior support | M2 | P1 | Codex | In progress | `MCP-017` | The [platform-neutral resolver and eight path tests](src/paths.rs), exact Linux path fixtures in all five target adapters, distinct-XDG [built-binary harness](tests/support/mod.rs), and [native x64/ARM64 CI matrix](.github/workflows/ci.yml) cover the complete source-checkout configuration and bounded-health behavior on GNU/Linux. A scheduling race found in the bounded-response shell fixture must be corrected and the native matrix rerun before completion evidence is final. Windows, musl/Alpine, release packaging, and Linux current-client smoke remain explicitly unclaimed |
-| MCP-019 | Add Windows path and replacement behavior support | M2 | P1 | Unassigned | Proposed | `MCP-018` | Native Windows MSVC x64 and ARM64 CI, path, backup, replacement, rollback, and portable-package tests pass |
+| MCP-018 | Add Linux path and behavior support | M2 | P1 | Codex | Done | `MCP-017` | The [platform-neutral resolver and eight path tests](src/paths.rs), exact Linux path fixtures in all five target adapters, distinct-XDG [built-binary harness](tests/support/mod.rs), request-sequenced [bounded-response regression](src/health.rs), and [native x64/ARM64 CI matrix](.github/workflows/ci.yml) prove the complete source-checkout configuration and bounded-health behavior on GNU/Linux. Both the [push](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240607296) and [pull-request](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240608728) event paths pass exact-host x64 and ARM64 jobs with all 228 tests, formatting, warning-free Clippy, and dependency policy. The focused regression also passed 100 consecutive local runs. Local macOS and native ARM64 gates, portable JSON/TOML recovery exercises, redaction, documentation, and diff checks pass. Windows, musl/Alpine, release packaging, and Linux current-client smoke remain explicitly unclaimed |
+| MCP-019 | Add Windows path and replacement behavior support | M2 | P1 | Unassigned | Ready | `MCP-018` | Native Windows MSVC x64 and ARM64 CI, path, backup, replacement, rollback, and portable-package tests pass |
 | MCP-020 | Add explicit restore and backup-retention UX | M2 | P1 | Unassigned | Proposed | `MCP-019` | Restore journey and retention rules documented and tested |
 | MCP-021 | Publish accessible, provenance-linked release channels | M2 | P1 | Unassigned | Proposed | `MCP-020` | `DEC-024` passes in full: all six artifacts build and smoke-test natively, macOS and Windows trust checks pass, the immutable release contains checksums, per-target SPDX SBOMs, and attestations, and the exact same `v0.1.0` installs through GitHub Releases, Homebrew, WinGet, and Cargo under the accepted identifiers |
 
@@ -1139,12 +1143,15 @@ must satisfy the side-quest rules before it is marked `Ready`.
 
 ### Immediate focus
 
-1. Complete the focused `MCP-018` health-fixture race correction and obtain
-   fresh, successful native GNU/Linux x64 and ARM64 CI evidence.
-2. Keep `MCP-019` and every later ticket `Proposed` until `MCP-018` again passes
-   the ticket-done gate with durable evidence.
+1. `MCP-018` is complete with deterministic five-client Linux path and
+   built-binary coverage plus successful native GNU/Linux x64 and ARM64 CI on
+   both push and pull-request event paths.
+2. Only `MCP-019` is `Ready`. Assign an owner and reconcile its exact
+   goal-catalog objective before moving it to `In progress`; keep `MCP-020` and
+   every later ticket `Proposed`.
 3. Preserve every configuration, process, protocol, redaction, backup, and
-   rollback invariant; do not begin Windows work as part of this correction.
+   rollback invariant when Windows work is intentionally started; do not begin
+   it as part of `MCP-018` completion.
 
 ## Decision log
 

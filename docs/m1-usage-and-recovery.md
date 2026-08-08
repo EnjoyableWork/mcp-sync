@@ -496,7 +496,7 @@ The following are delivery facts, not changes to the README's intended product
 promise:
 
 - The current implementation is verified on macOS and through the complete
-  [native GNU/Linux x64 and ARM64 CI gate](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31239949393)
+  [native GNU/Linux x64 and ARM64 pull-request CI gate](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240608728)
   recorded for `MCP-018`; usage remains from a Rust source checkout.
 - Only global Claude Desktop, global Cursor, Windsurf's global legacy Cascade
   JSON, VS Code's native default user-profile JSON, and global Codex TOML are
