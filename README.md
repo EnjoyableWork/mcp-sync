@@ -146,8 +146,14 @@ Verify that the server boots cleanly via STDIO and responds to an MCP `initializ
 
 ```bash
 mcp-sync test postgres
-# Output: ✔ Connecting via STDIO... Connected! (Protocol Version: 2024-11-05)
+# Server "postgres" initialized successfully via STDIO (protocol version 2025-11-25).
 ```
+
+Only `test` starts the selected configured process. It validates a bounded,
+newline-delimited JSON-RPC initialize exchange, reports protocol structure
+without echoing process or server-output values, and always closes or
+terminates the child before returning. `init` and `sync` remain configuration
+operations and never start configured servers.
 
 ### 5. Sync configuration across all clients
 
