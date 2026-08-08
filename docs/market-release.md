@@ -87,8 +87,11 @@ must still:
 
 1. sign in to crates.io through the intended publisher account, verify its
    email address, recheck that `enjoyable-mcp-sync` remains available, create a
-   scope-minimized first-publication token, and store it only in Cargo's
-   credential store on the controlled publisher host;
+   short-lived first-publication token with only the `publish-new` endpoint
+   scope, and store it only in Cargo's credential store on the controlled
+   publisher host. A crate-name scope cannot be selected before the crate
+   exists; do not add `publish-update`, ownership, yank, or trusted-publisher
+   administration to this one-use credential;
 2. ensure public repository `EnjoyableWork/homebrew-tap` exists and give the
    release identity only the write access needed for `Formula/mcp-sync.rb`.
    Store its repository-scoped write deploy key as
@@ -98,7 +101,8 @@ must still:
    one annotated `v0.1.0` tag it authorizes.
 
 Never place a token value in a command argument, ticket, tracked file, or
-workflow log.
+workflow log. Revoke every first-publication token after the published registry
+bytes are verified.
 
 ## GitHub Release publication
 
