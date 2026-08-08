@@ -1327,16 +1327,23 @@ while :; do :; done
     #[cfg(unix)]
     #[test]
     fn oversized_and_undelimited_messages_fail_without_unbounded_reads() {
-        let oversized = shell_server("printf '%04096d\\n' 0", BTreeMap::<String, String>::new());
+        let oversized_payload = "x".repeat(129);
+        let oversized_script = format!("printf '%s\\n' '{oversized_payload}'");
+        let oversized = shell_server(&oversized_script, BTreeMap::<String, String>::new());
         let small_limit = HealthLimits {
             response_timeout: Duration::from_millis(200),
             shutdown_timeout: Duration::from_millis(200),
             maximum_response_bytes: 128,
         };
-        assert!(matches!(
-            run_initialize(&oversized, small_limit),
-            Err(InitializeError::ResponseTooLarge { maximum: 128 })
-        ));
+        let oversized_error = run_initialize(&oversized, small_limit)
+            .expect_err("a response one byte above the limit should fail");
+        assert!(
+            matches!(
+                oversized_error,
+                InitializeError::ResponseTooLarge { maximum: 128 }
+            ),
+            "unexpected oversized-response failure: {oversized_error}"
+        );
 
         let undelimited = shell_server(
             "printf '%s' '{\"jsonrpc\":\"2.0\"}'",
