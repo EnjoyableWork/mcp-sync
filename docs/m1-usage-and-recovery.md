@@ -1,11 +1,11 @@
 # Source-checkout usage and recovery guide
 
 This guide describes the currently implemented source-checkout behavior of
-`mcp-sync`: the completed M1 foundation plus the global Windsurf, native VS
-Code, and global Codex adapters added by `MCP-014` through `MCP-016`. It is the
-operational companion to the
-[north-star README](../README.md), not a replacement for that product
-specification. Use it when building from source on macOS and reconciling the
+`mcp-sync`: the completed M1 foundation, the global Windsurf, native VS Code,
+and global Codex adapters added by `MCP-014` through `MCP-016`, and the bounded
+STDIO initialize health boundary added by `MCP-017`. It is the operational
+companion to the [north-star README](../README.md), not a replacement for that
+product specification. Use it when building from source on macOS and reconciling the
 five implemented global targets: Claude Desktop, Cursor, Windsurf's legacy
 Cascade configuration, VS Code's native default user profile, and the global
 Codex host configuration shared by the ChatGPT desktop app, Codex CLI, and
@@ -18,14 +18,14 @@ Codex IDE extension.
 | Platform | macOS |
 | Canonical format | Strict JSON schema version `1` for local STDIO servers |
 | Client targets | Global Claude Desktop, global Cursor, global Windsurf legacy Cascade configuration, native VS Code default user profile, and global Codex host configuration |
-| Commands | `init`, `add`, `list`, `sync --dry-run`, and `sync` |
-| Safety | Structural redaction, plan-first validation, atomic replacement, recoverable backups, no-op detection, and reverse-order transaction rollback |
+| Commands | `init`, `add`, `list`, `test`, `sync --dry-run`, and `sync` |
+| Safety | Structural redaction, bounded health-process execution, plan-first validation, atomic replacement, recoverable backups, no-op detection, and reverse-order transaction rollback |
 | Installation | Build and run from a source checkout |
 
-`init`, `sync --dry-run`, and `sync` are configuration operations. They never
-start a configured MCP server. Health testing, additional platforms, packaged
-installation, explicit prune behavior, and a built-in restore command remain
-later work tracked in
+Only `test` starts the one named canonical server. `init`, `sync --dry-run`,
+and `sync` remain configuration operations and never start a configured MCP
+server. Additional platforms, packaged installation, explicit prune behavior,
+and a built-in restore command remain later work tracked in
 [PROJECT.md](../PROJECT.md).
 
 ## Build and verify the checkout
@@ -134,6 +134,52 @@ After a successful import, inspect the redacted catalog:
 
 `list` shows escaped server names, argument counts, and escaped environment key
 names. It does not show commands, argument contents, or environment values.
+
+## Test one canonical STDIO server
+
+Run the explicit health boundary only after reviewing the selected definition:
+
+```bash
+./target/debug/mcp-sync test project-files
+```
+
+`test` validates canonical state, resolves exactly one named definition, and
+executes its literal command and ordered arguments directly without a shell.
+The child environment is cleared, then receives the canonical `env` entries
+and only the caller's `PATH` when canonical state does not provide one. Child
+stdin and stdout are dedicated protocol pipes; child stderr is discarded and
+never treated as protocol or copied to terminal output.
+
+The current handshake contract follows the final session-based
+[MCP 2025-11-25 lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle)
+and [newline-delimited STDIO transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports):
+
+- `mcp-sync` sends one JSON-RPC `2.0` `initialize` request with numeric ID `1`,
+  empty client capabilities, its package identity, and protocol version
+  `2025-11-25`;
+- one newline-delimited response is bounded to 1 MiB and five seconds;
+- the response must be duplicate-free JSON, match the JSON-RPC version and
+  request ID, contain either a structurally valid error or result, and provide
+  object `capabilities`, string server identity fields, and a supported
+  negotiated protocol version;
+- negotiated `2025-11-25`, `2025-06-18`, `2025-03-26`, and `2024-11-05`
+  handshake versions are accepted; and
+- after a valid result, `mcp-sync` sends `notifications/initialized`, closes
+  stdin, allows 500 milliseconds for clean exit, then force-terminates and
+  reaps a child that does not stop.
+
+A timeout, malformed or oversized message, mismatched response, server error,
+failed notification, or unclean shutdown returns non-zero. Diagnostics report
+only the named server, protocol categories, fixed limits, and operating-system
+error categories. They never echo commands, arguments, environment values,
+raw stdout, raw stderr, JSON-RPC error messages, error data, or unchecked
+protocol-version text. Cleanup runs on every success and failure path; a
+cleanup failure is combined with the original failure instead of being hidden.
+
+This command deliberately implements the initialize-based compatibility
+boundary required by `MCP-017`. It does not claim validation of the stateless
+`2026-07-28` protocol, remote HTTP transports, tools, resources, prompts,
+OAuth, or server behavior after initialization.
 
 ## Add or replace one canonical definition
 
@@ -416,8 +462,10 @@ promise:
 - Canonical schema v1 represents local STDIO definitions with `command`,
   ordered `args`, and literal `env` only. Remote transports, OAuth, working
   directories, and secret references are not canonical capabilities yet.
-- There is no `mcp-sync test` command. `init` and `sync` never execute server
-  commands; bounded MCP health testing is later work.
+- `mcp-sync test <name>` validates one bounded initialize exchange for a
+  canonical local STDIO server. It does not test remote transports, later
+  protocol operations, or the stateless `2026-07-28` protocol. `init` and
+  `sync` never execute server commands.
 - Target-only definitions are drift and are never deleted. There is no prune
   command.
 - Backups use one adjacent slot. There is no retention policy, backup history,

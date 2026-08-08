@@ -54,8 +54,9 @@ consumer and an accepted decision in `PROJECT.md`.
 The implemented foundation is one Rust 2024 binary crate with a package named
 `enjoyable-mcp-sync` and an installed binary named `mcp-sync`. The CLI now
 supports help, version, create-only `init`, complete-definition canonical
-`add`, structurally redacted `list`, and five-target `sync --dry-run` / `sync`
-journeys. It also contains the strict canonical JSON v1 model, an injected
+`add`, structurally redacted `list`, bounded named-server `test`, and
+five-target `sync --dry-run` / `sync` journeys. It also contains the strict
+canonical JSON v1 model, an injected
 macOS configuration-path resolver, a replaceable filesystem boundary with
 read, no-clobber creation, guarded replacement, and reversible transaction
 ports, and a pure deterministic reconciliation engine with structurally
@@ -86,22 +87,30 @@ five-target plan without mutation; `sync` applies those exact bytes with no-op
 detection, recoverable backups, atomic replacement, per-target outcomes, and
 reverse-order rollback after a later failure. It preserves target-only and
 unowned native data, reports unmanaged native entries without exposing their
-values, and never touches project-level Cursor, VS Code, or Codex files. No
-implemented command starts configured server processes. A combined built-binary
-synthetic-home suite proves the complete configuration flow, deterministic
-five-client import, redaction, idempotence, native preservation, non-zero
-failures, and five-target transaction rollback.
+values, and never touches project-level Cursor, VS Code, or Codex files. Only
+`test` starts the selected configured process. It performs a five-second,
+1-MiB-bounded newline-delimited MCP `initialize` exchange, validates the
+JSON-RPC envelope and negotiated handshake version, sends
+`notifications/initialized`, then closes or force-terminates and reaps the
+child within the shutdown bound. Its process environment contains only
+canonical entries plus an inherited `PATH` when canonical state omits one;
+raw stdout, stderr, commands, arguments, environment values, and server error
+data never reach diagnostics. `init` and `sync` remain configuration-only. A
+combined built-binary synthetic-home suite proves the complete configuration
+flow, deterministic five-client import, health success and failure behavior,
+redaction, idempotence, native preservation, non-zero failures, and
+five-target transaction rollback.
 Controlled current-stable Cursor and Claude Desktop smokes both accept the
 rendered global definitions and complete MCP initialization; the Claude journey
 uses a no-clobber backup and verified exact restore around its temporary native
 file. The source-checkout usage and recovery guide documents the current workflow,
-redaction boundary, one-slot backups, transaction recovery, guarded manual
-restoration, and current limitations without turning the README into a progress
-report. Windsurf, VS Code, and Codex support are fixture- and built-binary-
+redaction boundary, bounded health behavior, one-slot backups, transaction
+recovery, guarded manual restoration, and current limitations without turning
+the README into a progress report. Windsurf, VS Code, and Codex support are fixture- and built-binary-
 verified against their documented native contracts; none has a current-client
-smoke claim. Other platforms, health/process behavior, restore UX, and
-distribution remain later-ticket scope. Use the existing Clap command tree as
-CLI behavior grows; do not introduce a second parser.
+smoke claim. Other platforms, restore UX, and distribution remain later-ticket
+scope. Use the existing Clap command tree as CLI behavior grows; do not
+introduce a second parser.
 
 “Extensible” currently means:
 

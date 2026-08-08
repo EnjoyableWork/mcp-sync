@@ -9,6 +9,7 @@ mod codex;
 mod config;
 mod cursor;
 mod filesystem;
+mod health;
 mod init;
 mod paths;
 mod reconciliation;
@@ -32,6 +33,8 @@ enum Command {
     Add(AddCommand),
     /// List canonical servers without exposing commands, arguments, or values.
     List,
+    /// Test one canonical server through a bounded MCP STDIO initialize exchange.
+    Test(TestCommand),
     /// Reconcile canonical servers into every supported target.
     Sync(SyncCommand),
 }
@@ -66,6 +69,12 @@ struct SyncCommand {
     dry_run: bool,
 }
 
+#[derive(Args)]
+struct TestCommand {
+    /// Canonical name of the server definition to test.
+    name: String,
+}
+
 fn run(command: Command) -> Result<CommandReport, ApplicationError> {
     let paths = paths::MacOsConfigurationPaths::resolve(&paths::ProcessEnvironment)
         .map_err(ApplicationError::ResolvePaths)?;
@@ -89,6 +98,14 @@ fn run(command: Command) -> Result<CommandReport, ApplicationError> {
         Command::List => catalog::list_servers(&paths, &filesystem::OsFileSystem)
             .map(CommandReport::List)
             .map_err(ApplicationError::Catalog),
+        Command::Test(command) => health::test_server(
+            &paths,
+            &filesystem::OsFileSystem,
+            &health::OsInitializeTester,
+            &command.name,
+        )
+        .map(CommandReport::Test)
+        .map_err(ApplicationError::Health),
         Command::Sync(command) => {
             let plan = sync::plan_sync(&paths, &filesystem::OsFileSystem)
                 .map_err(ApplicationError::Sync)?;
@@ -107,6 +124,7 @@ enum CommandReport {
     Init(init::InitReport),
     Add(catalog::AddReport),
     List(catalog::ListReport),
+    Test(health::HealthReport),
     Sync(sync::SyncReport),
 }
 
@@ -116,6 +134,7 @@ impl fmt::Display for CommandReport {
             Self::Init(report) => report.fmt(formatter),
             Self::Add(report) => report.fmt(formatter),
             Self::List(report) => report.fmt(formatter),
+            Self::Test(report) => report.fmt(formatter),
             Self::Sync(report) => report.fmt(formatter),
         }
     }
@@ -139,6 +158,7 @@ enum ApplicationError {
     ResolvePaths(paths::PathResolutionError),
     Init(init::InitError),
     Catalog(catalog::CatalogError),
+    Health(health::HealthError),
     Sync(sync::SyncError),
 }
 
@@ -148,6 +168,7 @@ impl fmt::Display for ApplicationError {
             Self::ResolvePaths(error) => error.fmt(formatter),
             Self::Init(error) => error.fmt(formatter),
             Self::Catalog(error) => error.fmt(formatter),
+            Self::Health(error) => error.fmt(formatter),
             Self::Sync(error) => error.fmt(formatter),
         }
     }
@@ -159,6 +180,7 @@ impl Error for ApplicationError {
             Self::ResolvePaths(error) => Some(error),
             Self::Init(error) => Some(error),
             Self::Catalog(error) => Some(error),
+            Self::Health(error) => Some(error),
             Self::Sync(error) => Some(error),
         }
     }
