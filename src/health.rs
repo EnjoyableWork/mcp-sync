@@ -1330,8 +1330,11 @@ while :; do :; done
     #[cfg(unix)]
     #[test]
     fn oversized_and_undelimited_messages_fail_without_unbounded_reads() {
+        // Keep stdin open until the client sends `initialize` so the fixture
+        // exercises response framing instead of racing the request write.
         let oversized_payload = "x".repeat(129);
-        let oversized_script = format!("printf '%s\\n' '{oversized_payload}'");
+        let oversized_script =
+            format!("IFS= read -r initialize || exit 90\nprintf '%s\\n' '{oversized_payload}'");
         let oversized = shell_server(&oversized_script, BTreeMap::<String, String>::new());
         let small_limit = HealthLimits {
             response_timeout: Duration::from_millis(200),
@@ -1349,7 +1352,7 @@ while :; do :; done
         );
 
         let undelimited = shell_server(
-            "printf '%s' '{\"jsonrpc\":\"2.0\"}'",
+            "IFS= read -r initialize || exit 91\nprintf '%s' '{\"jsonrpc\":\"2.0\"}'",
             BTreeMap::<String, String>::new(),
         );
         assert!(matches!(
