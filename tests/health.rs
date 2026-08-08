@@ -47,6 +47,15 @@ fn write_server(
     script: &Path,
     environment: BTreeMap<String, String>,
 ) -> String {
+    #[cfg(windows)]
+    let environment = {
+        let mut environment = environment;
+        environment.insert(
+            "SystemRoot".to_owned(),
+            std::env::var("SystemRoot").expect("Windows should define SystemRoot"),
+        );
+        environment
+    };
     let (command, arguments) = server_launch(script);
     let mut servers = serde_json::Map::new();
     servers.insert(

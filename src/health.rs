@@ -1184,6 +1184,11 @@ mod tests {
         #[cfg(windows)]
         {
             let _ = unix_script;
+            let mut environment = environment;
+            environment.insert(
+                "SystemRoot".to_owned(),
+                std::env::var("SystemRoot").expect("Windows should define SystemRoot"),
+            );
             CanonicalServer::new(
                 powershell_path().to_string_lossy().into_owned(),
                 vec![

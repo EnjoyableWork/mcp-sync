@@ -990,11 +990,8 @@ mod tests {
             } if error_path == &path
         ));
 
-        let blocking_file = fixture.path().join("not-a-directory");
-        std::fs::write(&blocking_file, b"blocking fixture\n")
-            .expect("the blocking fixture should be created");
-        let nested = blocking_file.join("snapshot.json");
-        let inspection = ensure_snapshot_unchanged(&nested, &FileSnapshot::Missing)
+        let invalid = fixture.path().join("invalid\0snapshot.json");
+        let inspection = ensure_snapshot_unchanged(&invalid, &FileSnapshot::Missing)
             .expect_err("inspection errors other than not-found must not look like absence");
         assert!(matches!(
             inspection,
@@ -1015,11 +1012,8 @@ mod tests {
             FileMutationError::Io(ref source) if source.kind() == io::ErrorKind::NotFound
         ));
 
-        let blocking_file = fixture.path().join("not-a-directory");
-        std::fs::write(&blocking_file, b"blocking fixture\n")
-            .expect("the blocking fixture should be created");
-        let nested = blocking_file.join("optional.json");
-        let invalid = ensure_regular_file(&nested, false)
+        let invalid_path = fixture.path().join("invalid\0optional.json");
+        let invalid = ensure_regular_file(&invalid_path, false)
             .expect_err("optional paths must preserve non-not-found inspection failures");
         assert!(matches!(
             invalid,
