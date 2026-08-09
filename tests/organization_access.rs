@@ -176,14 +176,14 @@ fn private_evidence_preparation_outputs_only_aggregate_false_by_default_fields()
 }
 
 #[test]
-fn mcp_034_tracker_is_done_and_only_mcp_035_is_ready_without_public_claims() {
+fn mcp_034_tracker_is_done_and_mcp_035_is_the_only_active_ticket() {
     let project = repository_file("PROJECT.md");
     let readme = repository_file("README.md");
 
     assert!(project.contains("`MCP-034`'s explicitly authorized live changes"));
     assert!(project.contains("| MCP-034 | Establish organization access, credential, and ownership recovery policy | M3 | P1 | Codex | Done |"));
-    assert!(project.contains("| MCP-035 | Self-assess, publish, and showcase the zero-cost enterprise assurance baseline | M3 | P1 | Unassigned | Ready |"));
-    assert!(project.contains("`MCP-035` is the only `Ready` main-story successor"));
+    assert!(project.contains("| MCP-035 | Self-assess, publish, and showcase the zero-cost enterprise assurance baseline | M3 | P1 | Codex | In progress |"));
+    assert!(project.contains("`MCP-035` is the only active main-story ticket"));
     assert!(!readme.contains("OSPS-AC-01.01"));
     assert!(!readme.contains("OSPS-AC-02.01"));
 }

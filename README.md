@@ -246,6 +246,21 @@ their own configuration stores.
 └───────────────────┘               └──────────────────────────┘
 ```
 
+## 🔐 Security and Trust
+
+[![OpenSSF Baseline](https://www.bestpractices.dev/projects/14014/baseline)](https://www.bestpractices.dev/projects/14014)
+
+On 2026-08-09, all 24 OpenSSF OSPS Baseline `v2026.02.19` Level 1 controls were
+recorded `Met` in the official public [`baseline-1`
+assessment](https://www.bestpractices.dev/en/projects/14014/baseline-1). This is
+a maintainer self-certification, not OSPS Level 2 or 3, independent
+certification, regulatory compliance, or an OpenSSF endorsement.
+
+The [security-assurance record](docs/security-assurance.md) links the evidence,
+scope, limitations, assessment date, and revalidation triggers. It separately
+limits its SLSA v1.0 Build Level 2 statement to seven verified `v0.1.0` GitHub
+Release assets rather than every release, channel, or project practice.
+
 ## 🤝 Contributing
 
 To build and verify `mcp-sync` from a source checkout:
