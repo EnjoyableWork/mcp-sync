@@ -80,12 +80,57 @@ gh release verify "$distribution_authentication_tag" \
   --repo "$distribution_authentication_repository" \
   --format json >/dev/null
 while IFS= read -r -d '' distribution_authentication_asset; do
-  gh attestation verify "$distribution_authentication_asset" \
-    --repo "$distribution_authentication_repository" \
-    --signer-workflow "$distribution_authentication_repository/.github/workflows/source-linux-release.yml" \
-    --source-ref "refs/tags/$distribution_authentication_tag" \
-    --source-digest "$distribution_authentication_commit" \
-    --format json >/dev/null
+  distribution_authentication_asset_name=${distribution_authentication_asset##*/}
+  distribution_authentication_attestation="$(
+    gh attestation verify "$distribution_authentication_asset" \
+      --repo "$distribution_authentication_repository" \
+      --signer-workflow "$distribution_authentication_repository/.github/workflows/source-linux-release.yml" \
+      --source-ref "refs/tags/$distribution_authentication_tag" \
+      --source-digest "$distribution_authentication_commit" \
+      --format json
+  )"
+  jq -e \
+    --arg asset "$distribution_authentication_asset_name" \
+    --arg repository "$distribution_authentication_repository" \
+    --arg source_ref "refs/tags/$distribution_authentication_tag" \
+    --arg source_digest "$distribution_authentication_commit" '
+      type == "array" and length > 0 and
+      any(.[];
+        .verificationResult.statement._type ==
+          "https://in-toto.io/Statement/v1" and
+        .verificationResult.statement.predicateType ==
+          "https://slsa.dev/provenance/v1" and
+        any(.verificationResult.statement.subject[];
+          .name == $asset and
+          (.digest.sha256 | type == "string" and
+           test("^[0-9a-f]{64}$"))) and
+        .verificationResult.statement.predicate.buildDefinition.buildType ==
+          "https://actions.github.io/buildtypes/workflow/v1" and
+        .verificationResult.statement.predicate.buildDefinition.externalParameters.workflow.repository ==
+          ("https://github.com/" + $repository) and
+        .verificationResult.statement.predicate.buildDefinition.externalParameters.workflow.path ==
+          ".github/workflows/source-linux-release.yml" and
+        .verificationResult.statement.predicate.buildDefinition.externalParameters.workflow.ref ==
+          $source_ref and
+        .verificationResult.statement.predicate.buildDefinition.internalParameters.github.runner_environment ==
+          "github-hosted" and
+        any(.verificationResult.statement.predicate.buildDefinition.resolvedDependencies[];
+          .digest.gitCommit == $source_digest) and
+        .verificationResult.signature.certificate.issuer ==
+          "https://token.actions.githubusercontent.com" and
+        .verificationResult.signature.certificate.runnerEnvironment ==
+          "github-hosted" and
+        .verificationResult.signature.certificate.githubWorkflowRepository ==
+          $repository and
+        .verificationResult.signature.certificate.githubWorkflowRef ==
+          $source_ref and
+        .verificationResult.signature.certificate.githubWorkflowSHA ==
+          $source_digest and
+        .verificationResult.signature.certificate.sourceRepositoryRef ==
+          $source_ref and
+        .verificationResult.signature.certificate.sourceRepositoryDigest ==
+          $source_digest)
+    ' <<<"$distribution_authentication_attestation" >/dev/null
 done < <(find "$distribution_authentication_assets" -maxdepth 1 -type f -print0)
 
 distribution_authentication_crates_metadata="$distribution_authentication_temp/crates.json"
@@ -119,5 +164,5 @@ cmp --silent \
   "$distribution_authentication_assets/mcp-sync.rb" \
   "$distribution_authentication_formula"
 
-printf 'Verified immutable release and build attestations plus byte-identical HTTPS Cargo and Homebrew distribution for %s.\n' \
+printf 'Verified immutable release and SLSA v1.0 Build Level 2 provenance plus byte-identical HTTPS Cargo and Homebrew distribution for %s.\n' \
   "$distribution_authentication_tag"
