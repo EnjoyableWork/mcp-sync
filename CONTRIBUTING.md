@@ -95,6 +95,18 @@ Add the narrowest useful regression test for changed behavior. A defect that
 could lose configuration, expose sensitive data, mishandle conflicts, or break
 rollback requires a focused regression test.
 
+Dependency updates are grouped weekly by ecosystem. Review Dependabot changes
+like any other contribution: inspect manifest, lockfile, workflow, action-pin,
+and upstream release-note changes before relying on green CI. Every external
+action must use a reviewed full commit SHA plus an update hint and remain
+within [the selected-action policy](.github/actions-policy.json).
+
+Do not commit generated executables, packages, archives, SBOM output, or other
+binary build artifacts. Release scripts create those outside source history.
+The `Dependency policy` check scans tracked Git blobs and rejects both known
+artifact extensions and binary content; see
+[the repository supply-chain contract](docs/repository-supply-chain.md).
+
 Run the native quality gate for your platform:
 
 ```bash

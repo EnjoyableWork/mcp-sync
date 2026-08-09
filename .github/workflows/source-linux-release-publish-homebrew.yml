@@ -12,13 +12,41 @@ on:
 permissions: {}
 
 concurrency:
-  group: source-linux-release-publish-homebrew-${{ inputs.version }}
+  group: source-linux-release-publish-homebrew
   cancel-in-progress: false
 
 jobs:
+  validate:
+    name: Validate the requested release before protected access
+    if: github.repository == 'EnjoyableWork/mcp-sync'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      release_version: ${{ steps.contract.outputs.release_version }}
+
+    steps:
+      - name: Accept only the immutable release or exact recovery ref
+        id: contract
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+          RECOVERY_REF: refs/tags/v-mcp-029-homebrew-recovery-1
+          RELEASE_REF: refs/tags/v0.1.0
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$REQUESTED_VERSION" != 0.1.0 ]] ||
+            [[ "$DISPATCH_REF" != "$RELEASE_REF" && "$DISPATCH_REF" != "$RECOVERY_REF" ]]; then
+            echo "Homebrew publication accepts only the v0.1.0 tag or its exact protected recovery tag" >&2
+            exit 1
+          fi
+          printf 'release_version=%s\n' "$REQUESTED_VERSION" >>"$GITHUB_OUTPUT"
+
   publish:
     name: Publish the exact attested formula to the organization tap
-    if: github.repository == 'EnjoyableWork/mcp-sync'
+    needs: validate
+    if: needs.validate.result == 'success' && github.repository == 'EnjoyableWork/mcp-sync'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment:
@@ -30,7 +58,7 @@ jobs:
       contents: read
     env:
       HOMEBREW_RECOVERY_TAG: v-mcp-029-homebrew-recovery-1
-      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
 
     steps:
       - name: Check out the immutable release tag
@@ -38,7 +66,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: v${{ inputs.version }}
+          ref: v${{ needs.validate.outputs.release_version }}
 
       - name: Require the immutable release and exact crates.io package
         env:
