@@ -60,6 +60,10 @@ usage obstacles and proposed changes, prepare a checkout, test a change, and
 submit a pull request. The structured bug and feature forms are the maintained
 entry points, and public issue comments carry the resulting discussion.
 
+[`SUPPORT.md`](../SUPPORT.md) provides the GitHub-recognized support entry point
+and routes users to the same structured forms, current usage and recovery
+guidance, private security path, and conduct contract.
+
 Support is best effort. Only the latest public release receives security fixes;
 development snapshots are not supported releases. Client-specific behavior
 outside the documented `mcp-sync` ownership boundary normally belongs with the
@@ -136,10 +140,14 @@ Run the credential-free public verifier after a default-branch change:
 ./scripts/verify-public-project-contract.sh EnjoyableWork/mcp-sync 0.1.0
 ```
 
-The verifier checks GitHub community-profile recognition, HTTPS-only official
-URI files, both repository licenses, the exact immutable release asset set,
-license presence in every software archive, crates.io byte identity, and the
-published tap formula. Focused repository tests enforce the local contract.
+The verifier requires 100% GitHub community health and exact default-branch
+publication of all three YAML issue forms plus their chooser configuration.
+GitHub's community-profile API leaves `files.issue_template` null for YAML issue
+forms even when they contribute to a 100% profile, so the verifier does not
+misinterpret that API field as a form failure. It also checks HTTPS-only
+official URI files, both repository licenses, the exact immutable release asset
+set, license presence in every software archive, crates.io byte identity, and
+the published tap formula. Focused repository tests enforce the local contract.
 
 Reverify this document when a repository or official channel changes, a
 community template moves, GitHub changes community-profile recognition, a

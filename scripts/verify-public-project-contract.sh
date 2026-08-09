@@ -51,9 +51,34 @@ jq -e '
     .files.license.name == "MIT License" and
     .files.code_of_conduct_file != null and
     .files.contributing != null and
-    .files.issue_template != null and
     .files.pull_request_template != null
   ' <<<"$public_contract_community" >/dev/null
+
+# GitHub's community-profile API leaves files.issue_template null for YAML issue
+# forms. Require 100% community health above, then verify the exact published
+# default-branch form inventory directly instead of treating that null as a
+# missing-template signal.
+public_contract_issue_templates="$({
+  public_contract_get_json \
+    "https://api.github.com/repos/$public_contract_repository/contents/.github/ISSUE_TEMPLATE"
+})"
+jq -e '
+    ([.[].name] | sort) ==
+      (["01-bug-report.yml", "02-feature-request.yml", "03-conduct-contact.yml", "config.yml"] | sort) and
+    all(.[];
+      .type == "file" and
+      (.download_url | startswith("https://")))
+  ' <<<"$public_contract_issue_templates" >/dev/null
+
+public_contract_support="$({
+  public_contract_get_json \
+    "https://api.github.com/repos/$public_contract_repository/contents/SUPPORT.md"
+})"
+jq -e '
+    .name == "SUPPORT.md" and
+    .type == "file" and
+    (.download_url | startswith("https://"))
+  ' <<<"$public_contract_support" >/dev/null
 
 for public_contract_public_repository in \
   "$public_contract_repository" \
@@ -95,6 +120,7 @@ public_contract_local_uri_files=(
   "$public_contract_repository_root/SECURITY.md"
   "$public_contract_repository_root/CONTRIBUTING.md"
   "$public_contract_repository_root/CODE_OF_CONDUCT.md"
+  "$public_contract_repository_root/SUPPORT.md"
   "$public_contract_repository_root/PROJECT.md"
   "$public_contract_repository_root/Cargo.toml"
   "$public_contract_repository_root/docs/"*.md

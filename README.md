@@ -282,6 +282,7 @@ usage obstacle or proposed change, or opening a pull request. It defines the
 public support boundary, redaction rules, setup and test workflow, contribution
 licensing, and the separate no-CLA and no-DCO choices.
 
+Best-effort user help and routing are summarized in [SUPPORT.md](SUPPORT.md).
 Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
 Suspected vulnerabilities must use the private route in
 [SECURITY.md](SECURITY.md), never a public issue or pull request. The

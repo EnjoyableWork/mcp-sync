@@ -212,6 +212,7 @@ fn repository_security_evidence_keeps_paid_and_later_ticket_scope_explicit() {
 fn contribution_and_conduct_guidance_define_safe_public_routes() {
     let contributing = repository_file("CONTRIBUTING.md");
     let conduct = repository_file("CODE_OF_CONDUCT.md");
+    let support = repository_file("SUPPORT.md");
 
     for required_contract in [
         "## Choose the right public path",
@@ -258,6 +259,7 @@ fn contribution_and_conduct_guidance_define_safe_public_routes() {
     for (name, document) in [
         ("CONTRIBUTING.md", contributing.as_str()),
         ("CODE_OF_CONDUCT.md", conduct.as_str()),
+        ("SUPPORT.md", support.as_str()),
     ] {
         assert_official_channels_exclude_insecure_transports(name, document);
         for forbidden_claim in [
@@ -270,6 +272,22 @@ fn contribution_and_conduct_guidance_define_safe_public_routes() {
                 "{name} must not publish the assurance claim {forbidden_claim}"
             );
         }
+    }
+
+    for required_contract in [
+        "# mcp-sync support",
+        "best-effort basis",
+        "bug form",
+        "feature and usage-obstacle form",
+        "Only the latest public release",
+        "synthetic, redacted values",
+        "GitHub private vulnerability reporting",
+        "detail-free public contact request",
+    ] {
+        assert!(
+            support.contains(required_contract),
+            "support policy should define {required_contract}"
+        );
     }
 }
 
@@ -420,8 +438,12 @@ fn public_project_contract_verifier_is_credential_free_and_exact() {
         ".health_percentage == 100",
         ".files.code_of_conduct_file != null",
         ".files.contributing != null",
-        ".files.issue_template != null",
         ".files.pull_request_template != null",
+        "contents/.github/ISSUE_TEMPLATE",
+        "01-bug-report.yml",
+        "02-feature-request.yml",
+        "03-conduct-contact.yml",
+        "contents/SUPPORT.md",
         "$public_contract_tap_repository/license",
         ".license.spdx_id == \"MIT\"",
         "(http://|git://|ftp://|ssh://|git@)",
@@ -444,6 +466,11 @@ fn public_project_contract_verifier_is_credential_free_and_exact() {
             "public project verifier must not depend on {forbidden_contract}"
         );
     }
+
+    assert!(
+        !verifier.contains(".files.issue_template != null"),
+        "GitHub does not expose YAML issue forms through that community-profile field"
+    );
 }
 
 #[test]
