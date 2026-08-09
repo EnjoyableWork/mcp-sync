@@ -6,7 +6,8 @@ usage obstacle.
 
 Participation in project spaces is governed by the
 [Code of Conduct](CODE_OF_CONDUCT.md). This guide is the public contribution
-and support contract for the project.
+contract for the project; [SUPPORT.md](SUPPORT.md) is the concise user-support
+entry point.
 
 ## Choose the right public path
 
