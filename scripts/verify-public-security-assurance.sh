@@ -203,7 +203,7 @@ for security_assurance_control in "${security_assurance_controls[@]}"; do
 done
 
 for security_assurance_required_claim in \
-  "OpenSSF OSPS Baseline \`v2026.02.19\` Level 1" \
+  "Security (OSPS) Baseline [\`v2026.02.19\` Level 1" \
   'This is a maintainer self-assessment, not an independent certification' \
   'SLSA v1.0 Build Level 2 artifact statement' \
   'Reassess the complete baseline at least annually'; do
