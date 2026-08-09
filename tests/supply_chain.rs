@@ -208,12 +208,13 @@ fn untrusted_workflows_are_read_only_secretless_and_not_privileged() {
         if workflow.contains("  pull_request:") {
             for forbidden in [
                 "secrets.",
-                "actions: write",
-                "attestations: write",
-                "contents: write",
-                "deployments: write",
-                "id-token: write",
-                "packages: write",
+                "secrets[",
+                "secrets:",
+                "environment:",
+                "run-id:",
+                "github-token:",
+                ": write",
+                "permissions: write-all",
             ] {
                 assert!(
                     !workflow.contains(forbidden),
@@ -329,6 +330,7 @@ fn tracked_artifact_gate_has_acceptance_and_rejection_evidence() {
 #[test]
 fn operator_verifiers_encode_live_policy_and_authenticated_distribution() {
     let operator = repository_file("scripts/verify-repository-supply-chain-controls.sh");
+    let workflow = repository_file("scripts/verify-workflow-supply-chain.sh");
     let distribution = repository_file("scripts/verify-distribution-authentication.sh");
     let evidence = repository_file("docs/repository-supply-chain.md");
 
@@ -355,6 +357,19 @@ fn operator_verifiers_encode_live_policy_and_authenticated_distribution() {
         );
     }
     assert!(!operator.contains("secrets."));
+
+    for required in [
+        "permissions:.*write",
+        "secrets(\\.|\\[)",
+        "environment:",
+        "run-id:",
+        "github-token:",
+    ] {
+        assert!(
+            workflow.contains(required),
+            "workflow verifier should reject {required} in pull-request workflows"
+        );
+    }
 
     for required in [
         ".immutable == true",

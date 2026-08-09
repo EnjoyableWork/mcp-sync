@@ -189,6 +189,13 @@ The exact-main operator verifier then passed all live settings, upstream action,
 tracked-artifact, and authenticated-distribution checks without inspecting a
 secret value.
 
+Final [PR #39](https://github.com/EnjoyableWork/mcp-sync/pull/39) closes a
+completion-audit gap in future-drift detection: a pull-request workflow is
+rejected for any write permission, dot or bracket secret access, a reusable
+workflow secret map, protected-environment access, or cross-run artifact
+credentials. This is broader than enumerating only currently used permission
+names and keeps the read-only, secretless fork boundary true as workflows grow.
+
 An intentionally invalid `1.2.3` manual request provides the negative-path
 record. Its [workflow run](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31304302717)
 failed in the unprivileged validator, skipped the protected publish job, and

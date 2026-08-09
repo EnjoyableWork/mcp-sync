@@ -48,16 +48,20 @@ while IFS= read -r -d '' workflow_supply_chain_file; do
   fi
 
   if grep -qE '^  pull_request:' "$workflow_supply_chain_file"; then
+    if grep -qE \
+      '^[[:space:]]*permissions:.*write|^[[:space:]]+[A-Za-z0-9_-]+:[[:space:]]*write([[:space:]#]|$)' \
+      "$workflow_supply_chain_file"; then
+      echo "pull-request workflow contains write authority: $workflow_supply_chain_file" >&2
+      exit 1
+    fi
     for workflow_supply_chain_forbidden in \
-      'secrets\.' \
-      'actions: write' \
-      'attestations: write' \
-      'contents: write' \
-      'deployments: write' \
-      'id-token: write' \
-      'packages: write'; do
+      'secrets(\.|\[)' \
+      '^[[:space:]]+secrets:' \
+      '^[[:space:]]+environment:' \
+      '^[[:space:]]+run-id:' \
+      '^[[:space:]]+github-token:'; do
       if grep -qE "$workflow_supply_chain_forbidden" "$workflow_supply_chain_file"; then
-        echo "pull-request workflow contains privileged authority: $workflow_supply_chain_file" >&2
+        echo "pull-request workflow contains privileged credentials or cross-run assets: $workflow_supply_chain_file" >&2
         exit 1
       fi
     done
