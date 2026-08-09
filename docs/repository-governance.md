@@ -94,6 +94,37 @@ protected. A direct update, force push, and deletion of that branch must each
 be rejected before the administrator removes only the disposable selector and
 deletes the branch normally.
 
+## MCP-030 verification record
+
+The control was activated and exercised on 2026-08-09:
+
+- Public ruleset [`20601003`](https://api.github.com/repos/EnjoyableWork/mcp-sync/rulesets/20601003)
+  is active, selects only `~DEFAULT_BRANCH`, contains exactly the four accepted
+  rules and five app-bound checks, and reports no bypass actors.
+- A direct update to `main` was rejected with `GH013`; administrator-visible
+  rule suite `3609610550` records the failed pull-request and required-check
+  evaluations, and `main` remained at its original commit.
+- On disposable `mcp-030-ruleset-drill`, a fast-forward direct update, a force
+  push, and deletion were rejected by administrator-visible rule suites
+  `3609600890`, `3609601135`, and `3609601321`. The ref remained unchanged
+  after every rejected operation.
+- The emergency-administration drill removed only the disposable selector from
+  the still-active rule. Both verifiers then passed, the disposable branch was
+  deleted normally, and `main` remained unchanged throughout.
+- SHA-256 fingerprints of the accepted stable-tag, `release`, and
+  `release-control` settings matched exactly before and after the drill:
+  `b91e5df98ca37397800c4383ff5e248ba36fc0451ccb851a612ee71a9b219ea5`,
+  `fb060808cfa726c38867464b9dd3f903ad70c58478ba130a4871125f8cd3df04`,
+  and `938cfe6507e16813470a309c1746b8318dbb3dc128db4122482fcdf5ec9bfb1d`.
+- [PR #33](https://github.com/EnjoyableWork/mcp-sync/pull/33) is the normal
+  protected path for this change. Its final merged state, app-bound check
+  rollup, zero-approval merge, and resolved-conversation state are the durable
+  normal-path record.
+- The implementation head passed [CI](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31295984170),
+  the retained [six-target release preflight](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31295984167),
+  and the [source and GNU/Linux preflight](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31295984173)
+  before the final evidence-only update.
+
 ## Assurance mapping and review triggers
 
 The active pull-request rule and rejected direct-update path provide evidence
