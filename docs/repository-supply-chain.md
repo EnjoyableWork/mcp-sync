@@ -157,6 +157,24 @@ Re-run the operator verifier after an action, workflow, dependency-update
 policy, GitHub Actions policy, fork policy, CodeQL setup, release pipeline,
 official distribution channel, or repository-artifact policy change.
 
+## Live control record
+
+Authenticated read-only API verification on 2026-08-09 confirms that
+`EnjoyableWork/mcp-sync` has Actions enabled with `allowed_actions` set to
+`selected` and `sha_pinning_required` set to `true`. The selected-action state
+matches `.github/actions-policy.json`: both broad allowance flags are `false`
+and only the ten reviewed patterns are present. Default workflow permission is
+`read`, workflows cannot approve pull requests, public-fork execution requires
+approval for first-time contributors, and CodeQL default setup remains enabled
+for Rust and Actions.
+
+GitHub's repository API rejects preloading selected patterns while
+`allowed_actions` is `all`. Activation therefore set selected/full-SHA mode and
+then immediately installed the exact inventory. The brief intermediate state
+allowed only GitHub-owned actions with full SHAs, so it was narrower than the
+starting state and did not expose another action, credential, or asset. Final
+state was read back and compared structurally before CI was retriggered.
+
 ## OpenSSF OSPS Baseline evidence mapping
 
 This is evidence for five Level 1 controls in the
