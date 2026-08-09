@@ -206,6 +206,7 @@ fn public_assurance_verifier_checks_the_official_badge_and_exact_main() {
         ".bestpractices.json",
         "type == \"object\" and length == 52",
         "| Pass |",
+        "Security (OSPS) Baseline [\\`v2026.02.19\\` Level 1",
         "| M3 | Trusted project — enterprise assurance and adoption ",
     ] {
         assert!(
