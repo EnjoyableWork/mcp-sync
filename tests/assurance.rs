@@ -120,7 +120,7 @@ fn achieved_badge_and_readme_claim_link_to_the_exact_public_assessment() {
     for document in [&readme, &assurance] {
         assert!(document.contains(badge));
     }
-    assert!(readme.contains("## 🔐 Security and Trust"));
+    assert!(readme.contains("## Security and trust"));
     assert!(readme.contains("https://www.bestpractices.dev/en/projects/14014/baseline-1"));
     assert!(readme.contains("all 24 OpenSSF OSPS Baseline `v2026.02.19` Level 1 controls"));
     assert!(readme.contains("maintainer self-certification"));
