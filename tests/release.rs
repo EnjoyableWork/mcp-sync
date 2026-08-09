@@ -48,6 +48,31 @@ fn assert_actions_are_commit_pinned(workflow: &str) {
     }
 }
 
+fn assert_crates_io_requests_identify_the_client(workflow: &str, user_agent: &str) {
+    let lines: Vec<_> = workflow.lines().collect();
+    let mut request_count = 0;
+
+    for (index, line) in lines.iter().enumerate() {
+        if !line.contains("https://crates.io/api/v1/crates") {
+            continue;
+        }
+        request_count += 1;
+        let request_start = index.saturating_sub(6);
+        assert!(
+            lines[request_start..index]
+                .iter()
+                .any(|candidate| candidate.contains(user_agent)),
+            "crates.io request on line {} must identify the client with {user_agent}",
+            index + 1
+        );
+    }
+
+    assert!(
+        request_count > 0,
+        "workflow should contain a crates.io request"
+    );
+}
+
 #[test]
 fn release_preflight_covers_every_native_artifact_without_credentials() {
     let workflow = repository_file(".github/workflows/release-preflight.yml");
@@ -318,6 +343,10 @@ fn source_linux_channel_verifier_is_read_only_and_covers_every_represented_insta
     ] {
         assert!(!workflow.contains(forbidden_contract));
     }
+    assert_crates_io_requests_identify_the_client(
+        &workflow,
+        "User-Agent: mcp-sync-source-linux-channel-verifier/0.1",
+    );
     assert_actions_are_commit_pinned(&workflow);
 }
 
@@ -328,7 +357,10 @@ fn source_linux_homebrew_publisher_uses_only_the_tap_scoped_release_secret() {
     for required_contract in [
         "workflow_dispatch:",
         "refs/tags/v$RELEASE_VERSION",
+        "v-mcp-029-homebrew-recovery-1",
+        "refs/tags/$HOMEBREW_RECOVERY_TAG",
         "environment:\n      name: release",
+        "actions: read",
         ".immutable == true",
         "scripts/verify-published-source-linux-release.sh",
         "gh release verify",
@@ -342,6 +374,10 @@ fn source_linux_homebrew_publisher_uses_only_the_tap_scoped_release_secret() {
         "SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU",
         "git -C \"$tap_checkout\" push origin HEAD:refs/heads/main",
         "refusing to replace a different published mcp-sync formula",
+        "require_successful_run ci.yml CI",
+        "source-linux-release-preflight.yml",
+        "release-preflight.yml",
+        "scripts/verify-public-stable-tag-ruleset.sh",
     ] {
         assert!(
             workflow.contains(required_contract),
@@ -365,6 +401,10 @@ fn source_linux_homebrew_publisher_uses_only_the_tap_scoped_release_secret() {
             "Homebrew publisher must not contain {forbidden_contract}"
         );
     }
+    assert_crates_io_requests_identify_the_client(
+        &workflow,
+        "User-Agent: mcp-sync-homebrew-publisher/0.1",
+    );
     assert_actions_are_commit_pinned(&workflow);
 }
 
