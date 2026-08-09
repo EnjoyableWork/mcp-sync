@@ -202,9 +202,8 @@ fn repository_security_evidence_keeps_paid_and_later_ticket_scope_explicit() {
 
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     assert!(
-        !root.join(".github/dependabot.yml").exists()
-            && !root.join(".github/dependabot.yaml").exists(),
-        "dependency version-update configuration remains MCP-033 scope"
+        root.join(".github/dependabot.yml").is_file(),
+        "MCP-033 should supply the scheduled dependency-update configuration"
     );
 }
 

@@ -2,6 +2,41 @@
 /target/
 *.rs.bk
 
+# Generated packages and executable release artifacts belong in temporary
+# release directories, never in source control.
+/release-assets/
+/generated-release-channels*/
+/generated-source-linux-release-channels*/
+*.7z
+*.a
+*.bin
+*.cab
+*.class
+*.crate
+*.deb
+*.dll
+*.dmg
+*.dylib
+*.exe
+*.gz
+*.jar
+*.msi
+*.o
+*.obj
+*.pdb
+*.pkg
+*.pyc
+*.rar
+*.rpm
+*.so
+*.tar
+*.tgz
+*.wasm
+*.whl
+*.xz
+*.zip
+*.zst
+
 # Local environment files
 .env
 .env.*

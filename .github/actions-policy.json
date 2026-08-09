@@ -1,0 +1,25 @@
+{
+  "github_owned_allowed": false,
+  "verified_allowed": false,
+  "patterns_allowed": [
+    "Azure/artifact-signing-action@*",
+    "Azure/login@*",
+    "EmbarkStudios/cargo-deny-action@*",
+    "Homebrew/actions/setup-homebrew@*",
+    "actions/attest-build-provenance@*",
+    "actions/attest@*",
+    "actions/checkout@*",
+    "actions/download-artifact@*",
+    "actions/upload-artifact@*",
+    "anchore/sbom-action@*"
+  ],
+  "reviewed_transitive_actions": [
+    {
+      "action": "actions/attest",
+      "parent_action": "actions/attest-build-provenance",
+      "parent_sha": "4d101475d8b20a2381f78447822ac1eab6504dd8",
+      "sha": "508db95dd578ae2727ebd6217d5ba78e4fbda05d",
+      "update_hint": "v4.2.1"
+    }
+  ]
+}

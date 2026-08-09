@@ -28,7 +28,7 @@ accepted repository-level baseline was verified on 2026-08-09:
 | Control | Accepted state |
 | --- | --- |
 | Dependency graph and Dependabot alerts | Enabled; GitHub recognizes the committed Cargo dependency inventory and exposes its SBOM export to authorized verification. |
-| Dependabot security updates | Enabled. Security-fix pull requests are in scope; scheduled version-update configuration and `.github/dependabot.yml` remain `MCP-033` scope. |
+| Dependabot security updates | Enabled. Security-fix pull requests remain independent of the weekly grouped Cargo and GitHub Actions version updates now defined by `.github/dependabot.yml` under `MCP-033`. |
 | CodeQL | [Default setup](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/configure-code-scanning/configure-code-scanning?learn=code_security_actions) is configured with the default query suite for Rust and GitHub Actions. GitHub owns the generated workflow and scans protected-branch pushes, eligible pull requests, and the default schedule. |
 | Secret scanning | [Provider-pattern scanning](https://docs.github.com/en/code-security/how-tos/secure-your-secrets/detect-secret-leaks/enable-secret-scanning) is enabled. Finding contents remain only in GitHub's restricted security views. |
 | Push protection | Enabled for supported provider patterns. A recognized secret is blocked before storage unless a contributor deliberately uses GitHub's recorded bypass path. |
