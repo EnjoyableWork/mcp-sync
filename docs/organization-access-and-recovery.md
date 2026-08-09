@@ -13,10 +13,14 @@ the private instructions used during an exercise.
 defaults, no organization- or repository-level Actions secrets, and one
 protected-environment credential backed by one tap-only write deploy key. It
 also found one organization owner, no teams, default repository permission of
-`read`, member repository creation enabled, and installed-application access
-that still requires a private least-privilege review. These gaps are recorded
-rather than treated as completed controls. No organization setting or access
-grant was changed by that audit.
+`read`, and member repository creation enabled. After explicit owner approval,
+the same-day operator change set default permission to `none` and disabled all
+member repository creation; an immediate authenticated read-back verified both
+values. The owner also accepted the single-owner recovery exception and
+confirmed completion of the private installed-application review and recovery
+exercise. The exact secure-method-only setting confirmation, successful
+exercise result, private aggregate evidence, and complete live verifier remain
+ticket gates, so no OSPS control is claimed yet.
 
 ## Authentication and collaborator access policy
 
