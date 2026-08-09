@@ -175,6 +175,36 @@ allowed only GitHub-owned actions with full SHAs, so it was narrower than the
 starting state and did not expose another action, credential, or asset. Final
 state was read back and compared structurally before CI was retriggered.
 
+Protected [PR #38](https://github.com/EnjoyableWork/mcp-sync/pull/38) merged
+normally as exact `main` commit
+[`d934d38`](https://github.com/EnjoyableWork/mcp-sync/commit/d934d38edd40a4c38bacfd79994221548882e79a).
+That commit passes [CI](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31304197031),
+[CodeQL](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31304196954),
+the retained [six-target release preflight](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31304196996),
+the complete [source and GNU/Linux preflight](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31304197063),
+and GitHub's two accepted Dependabot configuration evaluations for
+[Cargo](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31304200669)
+and [GitHub Actions](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31304199968).
+The exact-main operator verifier then passed all live settings, upstream action,
+tracked-artifact, and authenticated-distribution checks without inspecting a
+secret value.
+
+Final [PR #39](https://github.com/EnjoyableWork/mcp-sync/pull/39) closes a
+completion-audit gap in future-drift detection: a pull-request workflow is
+rejected for any write permission, dot or bracket secret access, a reusable
+workflow secret map, protected-environment access, or cross-run artifact
+credentials. This is broader than enumerating only currently used permission
+names and keeps the read-only, secretless fork boundary true as workflows grow.
+
+An intentionally invalid `1.2.3` manual request provides the negative-path
+record. Its [workflow run](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31304302717)
+failed in the unprivileged validator, skipped the protected publish job, and
+created no `release` deployment. The ordered set of four pre-existing release
+deployment identifiers had the same SHA-256 fingerprint
+`bd51aa991323f0c8c8c51c14d13a739a183a265fb9aad4860d342b9c9233afb2`
+before and after the exercise. No release asset, tag, crate, formula, protected
+credential, or environment policy was changed.
+
 ## OpenSSF OSPS Baseline evidence mapping
 
 This is evidence for five Level 1 controls in the
