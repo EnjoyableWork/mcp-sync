@@ -108,6 +108,7 @@ jobs:
           registry_package="$RUNNER_TEMP/enjoyable-mcp-sync-$RELEASE_VERSION.crate"
           curl --fail --silent --show-error --location --retry 5 \
             --output "$registry_package" \
+            --header 'User-Agent: mcp-sync-source-linux-channel-verifier/0.1 (+https://github.com/EnjoyableWork/mcp-sync)' \
             "https://crates.io/api/v1/crates/enjoyable-mcp-sync/$RELEASE_VERSION/download"
           cmp --silent \
             "$release_assets/enjoyable-mcp-sync-$RELEASE_VERSION.crate" \

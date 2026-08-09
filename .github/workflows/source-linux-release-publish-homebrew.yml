@@ -25,9 +25,11 @@ jobs:
       name: release
       url: https://github.com/EnjoyableWork/homebrew-tap/blob/main/Formula/mcp-sync.rb
     permissions:
+      actions: read
       attestations: read
       contents: read
     env:
+      HOMEBREW_RECOVERY_TAG: v-mcp-029-homebrew-recovery-1
       RELEASE_VERSION: ${{ inputs.version }}
 
     steps:
@@ -44,14 +46,67 @@ jobs:
         run: |
           set -euo pipefail
 
+          release_tag="v$RELEASE_VERSION"
+          release_ref="refs/tags/$release_tag"
+          recovery_ref="refs/tags/$HOMEBREW_RECOVERY_TAG"
           if [[ "$RELEASE_VERSION" != 0.1.0 ]] ||
-            [[ "$GITHUB_REF" != "refs/tags/v$RELEASE_VERSION" ]]; then
-            echo "Homebrew publication accepts only a dispatch from the v0.1.0 tag" >&2
+            [[ "$GITHUB_REF" != "$release_ref" && "$GITHUB_REF" != "$recovery_ref" ]]; then
+            echo "Homebrew publication accepts only the v0.1.0 tag or its exact protected recovery tag" >&2
             exit 1
           fi
-          if [[ "$(git cat-file -t "v$RELEASE_VERSION")" != tag ]]; then
+          if [[ "$(git cat-file -t "$release_tag")" != tag ]]; then
             echo "Homebrew publication requires the annotated release tag" >&2
             exit 1
+          fi
+          release_commit="$(git rev-parse "$release_tag^{commit}")"
+          if [[ "$GITHUB_REF" == "$release_ref" ]]; then
+            test "$release_commit" = "$GITHUB_SHA"
+          else
+            recovery_ref_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$HOMEBREW_RECOVERY_TAG"
+            )"
+            test "$(jq -r '.object.type' <<<"$recovery_ref_json")" = tag
+            recovery_tag_object="$(jq -r '.object.sha' <<<"$recovery_ref_json")"
+            recovery_tag_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/git/tags/$recovery_tag_object"
+            )"
+            test "$(jq -r '.object.type' <<<"$recovery_tag_json")" = commit
+            recovery_commit="$(jq -r '.object.sha' <<<"$recovery_tag_json")"
+            test "$recovery_commit" = "$GITHUB_SHA"
+
+            current_main="$(
+              gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq '.sha'
+            )"
+            test "$current_main" = "$GITHUB_SHA"
+
+            require_successful_run() {
+              local workflow_file=$1
+              local workflow_label=$2
+              local matching_run
+              matching_run="$(
+                gh run list \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --workflow "$workflow_file" \
+                  --branch main \
+                  --event push \
+                  --status completed \
+                  --limit 20 \
+                  --json headSha,conclusion,url \
+                  --jq "map(select(.headSha == \"$GITHUB_SHA\" and .conclusion == \"success\"))[0].url // empty"
+              )"
+              if [[ -z "$matching_run" ]]; then
+                printf '%s has no successful push run for the recovery commit\n' \
+                  "$workflow_label" >&2
+                exit 1
+              fi
+            }
+
+            require_successful_run ci.yml CI
+            require_successful_run \
+              source-linux-release-preflight.yml \
+              'Source and GNU/Linux release preflight'
+            require_successful_run release-preflight.yml 'Release preflight'
+            scripts/verify-public-stable-tag-ruleset.sh "$GITHUB_REPOSITORY"
           fi
           package_version="$(
             cargo metadata --locked --no-deps --format-version 1 \
@@ -77,8 +132,6 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --format json >/dev/null
 
-          release_commit="$(git rev-parse "v$RELEASE_VERSION^{commit}")"
-          test "$release_commit" = "$GITHUB_SHA"
           for release_asset in "$release_assets"/*; do
             gh attestation verify "$release_asset" \
               --repo "$GITHUB_REPOSITORY" \
@@ -102,6 +155,7 @@ jobs:
           registry_package="$RUNNER_TEMP/enjoyable-mcp-sync-$RELEASE_VERSION.crate"
           curl --fail --silent --show-error --location --retry 5 \
             --output "$registry_package" \
+            --header 'User-Agent: mcp-sync-homebrew-publisher/0.1 (+https://github.com/EnjoyableWork/mcp-sync)' \
             "https://crates.io/api/v1/crates/enjoyable-mcp-sync/$RELEASE_VERSION/download"
           cmp --silent \
             "$release_assets/enjoyable-mcp-sync-$RELEASE_VERSION.crate" \
@@ -174,6 +228,8 @@ jobs:
             echo '## Homebrew formula publication'
             echo
             echo "- Version: \`$RELEASE_VERSION\`"
+            echo "- Canonical release tag: \`v$RELEASE_VERSION\`"
+            echo "- Protected dispatch ref: \`$GITHUB_REF\`"
             echo "- Tap commit: \`$tap_commit\`"
             echo '- Source: exact attested formula from the immutable GitHub Release'
           } >>"$GITHUB_STEP_SUMMARY"

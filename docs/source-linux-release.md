@@ -58,7 +58,9 @@ A release selects an already committed and tested state; code is not committed
    and verify that crates.io serves identical bytes.
 7. Dispatch `.github/workflows/source-linux-release-publish-homebrew.yml` from
    the tag. After another `release` approval, it copies the exact attested
-   formula to the organization tap with the tap-scoped deploy key.
+   formula to the organization tap with the tap-scoped deploy key. The one-time
+   `v0.1.0` recovery exception below applies only when the immutable tag's
+   original workflow definition cannot complete this step.
 8. Dispatch `.github/workflows/source-linux-release-channels.yml`. This final
    read-only workflow installs from every public channel represented by the
    release and exercises recovery on every supported native host.
@@ -238,6 +240,42 @@ key. It creates only `Formula/mcp-sync.rb`, refuses to replace different
 published bytes, and accepts an already-identical formula as a no-op. It has no
 write permission to `EnjoyableWork/mcp-sync` and does not publish Cargo, WinGet,
 or a binary.
+
+### One-time protected `v0.1.0` publisher recovery
+
+The first `v0.1.0` Homebrew dispatch failed before reading the tap deploy key
+or mutating the tap because its crates.io package download did not identify its
+HTTP client and crates.io returned `403`. The immutable release and registry
+package remain byte-identical. Rerunning that frozen workflow definition would
+repeat the same request, while moving `v0.1.0` or replacing an asset is
+forbidden.
+
+Use this exact recovery path once:
+
+1. Merge the request-header correction through review and require successful
+   exact-`main` CI, source and GNU/Linux preflight, and retained release
+   preflight runs.
+2. Run `scripts/verify-release-repository-controls.sh` for that exact current
+   `main` commit. Reconfirm that `v0.1.0` remains immutable and attested, the
+   crates.io package is not yanked and is byte-equal, and the tap formula is
+   absent.
+3. After separate owner authorization, create the annotated operational tag
+   `v-mcp-029-homebrew-recovery-1` at that exact current `main` commit and push
+   only that tag. It is protected release-automation evidence, not a product
+   version: do not create a GitHub Release or Cargo version for it, and never
+   move or delete it.
+4. Dispatch `.github/workflows/source-linux-release-publish-homebrew.yml` from
+   `v-mcp-029-homebrew-recovery-1` with version `0.1.0`, then review and approve
+   its existing `release` environment deployment.
+
+The recovery path accepts only that exact annotated operational tag, requires
+it to resolve to the current `main` commit, requires all three exact-main gates
+to pass, and rechecks the public stable-tag ruleset. It then checks out only
+canonical `v0.1.0`, verifies its immutable release, attestations, and crates.io
+bytes, and can create only the absent byte-identical tap formula. It neither
+weakens the environment's tag-only policy nor permits a second product release.
+Future versions use their canonical release tag and must send an explicit
+project user agent on every crates.io request.
 
 Require Homebrew style, strict online audit, formula test, explicit
 `--build-from-source` installation, and the installed restore journey on native
