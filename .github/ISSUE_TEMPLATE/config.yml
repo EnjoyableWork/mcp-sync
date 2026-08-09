@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability privately
+    url: https://github.com/EnjoyableWork/mcp-sync/security/advisories/new
+    about: Do not disclose vulnerability details or sensitive data in a public issue.
+  - name: Read the contribution and support guide
+    url: https://github.com/EnjoyableWork/mcp-sync/blob/main/CONTRIBUTING.md
+    about: Review defect, proposal, support, redaction, and contribution expectations.
+  - name: Read the usage and recovery guide
+    url: https://github.com/EnjoyableWork/mcp-sync/blob/main/docs/m1-usage-and-recovery.md
+    about: Check the current source-checkout workflow, limitations, and recovery guidance.

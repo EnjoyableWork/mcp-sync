@@ -1,0 +1,59 @@
+name: Feature request or usage obstacle
+description: Discuss a proposed change or a problem in the current user journey.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this public thread to explain the user problem before prescribing an implementation.
+
+        **Do not post vulnerability details, credentials, private configuration, user data, or raw logs.** Report suspected vulnerabilities through [GitHub private vulnerability reporting](https://github.com/EnjoyableWork/mcp-sync/security/advisories/new).
+  - type: textarea
+    id: obstacle
+    attributes:
+      label: Usage obstacle or problem
+      description: Who is affected, and what are they unable to accomplish safely or efficiently?
+      placeholder: Describe the problem with generic names and no private data.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe observable success from a user's perspective.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Optional. Explain a possible interface or behavior without assuming it is accepted.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Note current workarounds and why they are insufficient.
+  - type: textarea
+    id: safety
+    attributes:
+      label: Configuration, privacy, and compatibility effects
+      description: Identify effects on configuration preservation, secrets, recovery, supported clients, or platforms. Use synthetic details only.
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I searched existing issues for this proposal or usage obstacle.
+          required: true
+        - label: This is not a suspected security vulnerability; vulnerabilities use the private reporting path.
+          required: true
+        - label: I included no credential, environment value, private configuration, private path, user data, or raw unreviewed log.
+          required: true
+        - label: I understand that opening an issue does not add the change to the accepted PROJECT.md delivery sequence.
+          required: true
+        - label: I agree to follow the mcp-sync Code of Conduct.
+          required: true

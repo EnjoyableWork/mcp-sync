@@ -1,0 +1,109 @@
+name: Bug report
+description: Report a reproducible mcp-sync defect using synthetic, redacted evidence.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve mcp-sync.
+
+        **Do not post a suspected vulnerability, credential, token, private configuration, user data, or raw unreviewed log here.** Use [GitHub private vulnerability reporting](https://github.com/EnjoyableWork/mcp-sync/security/advisories/new) and follow the [security policy](https://github.com/EnjoyableWork/mcp-sync/blob/main/SECURITY.md).
+
+        Use generic server names and synthetic, redacted values. Do not reproduce against real user configuration merely to complete this form.
+  - type: input
+    id: version
+    attributes:
+      label: mcp-sync version or commit
+      description: Provide the output of mcp-sync --version or a development commit identifier. Do not include command arguments.
+      placeholder: mcp-sync 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation channel
+      options:
+        - GitHub Releases GNU/Linux archive
+        - crates.io
+        - EnjoyableWork Homebrew tap
+        - Source checkout
+        - Another documented path
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform and architecture
+      description: Name the operating system and architecture without a private host name or user path.
+      placeholder: Ubuntu 24.04, x86_64
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client and version
+      description: Name the affected client, or write Not client-specific.
+      placeholder: Claude Desktop 1.x
+    validations:
+      required: true
+  - type: dropdown
+    id: command
+    attributes:
+      label: Affected command
+      options:
+        - init
+        - add
+        - list
+        - sync --dry-run
+        - sync
+        - test
+        - restore --dry-run
+        - restore
+        - Installation or packaging
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal synthetic reproduction
+      description: Use a disposable configuration, generic names, and redacted values. Do not paste a complete configuration or raw log.
+      placeholder: Describe numbered steps and only the minimum safe structure needed to reproduce the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: Describe the expected result.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Describe the result without environment values, credentials, private paths, user data, or server output.
+      placeholder: Describe the redacted observable result and whether recovery was needed.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional redacted context
+      description: Optional. Include only reviewed, minimal diagnostics; never attach raw configuration or logs.
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I searched existing issues for this defect.
+          required: true
+        - label: This is not a suspected security vulnerability; vulnerabilities use the private reporting path.
+          required: true
+        - label: I used synthetic, redacted evidence and included no credential, environment value, private configuration, private path, user data, or raw unreviewed log.
+          required: true
+        - label: I agree to follow the mcp-sync Code of Conduct.
+          required: true
