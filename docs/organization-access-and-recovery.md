@@ -8,7 +8,7 @@ must never contain a person's identity, authentication method, recovery code,
 credential, private-key material, secret value, recovery-record location, or
 the private instructions used during an exercise.
 
-`MCP-034` is in progress. The initial authenticated read-only audit on
+`MCP-034` is complete. The initial authenticated read-only audit on
 2026-08-09 verified required organization-wide 2FA, read-only Actions token
 defaults, no organization- or repository-level Actions secrets, and one
 protected-environment credential backed by one tap-only write deploy key. It
@@ -18,9 +18,11 @@ the same-day operator change set default permission to `none` and disabled all
 member repository creation; an immediate authenticated read-back verified both
 values. The owner also accepted the single-owner recovery exception and
 confirmed completion of the private installed-application review and recovery
-exercise. The exact secure-method-only setting confirmation, successful
-exercise result, private aggregate evidence, and complete live verifier remain
-ticket gates, so no OSPS control is claimed yet.
+exercise. The owner then confirmed that secure-method-only 2FA is enabled and
+that the same-day exercise passed. An owner-only aggregate evidence file was
+used for the complete non-disclosing verifier and removed immediately after
+the verifier succeeded; no identity, authentication method, recovery detail,
+application name, or credential entered public evidence.
 
 ## Authentication and collaborator access policy
 
@@ -194,6 +196,12 @@ For the [OpenSSF OSPS Baseline `v2026.02.19`](https://baseline.openssf.org/versi
   or the lowest available default. Base permission `none`, repository-specific
   grants, and the private aggregate access review provide that evidence.
 
-This document and verifier are inputs to the later dated `MCP-035`
-self-assessment. They are not an assurance badge, certification, regulatory
-claim, or statement that the complete OSPS Baseline has passed.
+On 2026-08-09, the live verifier passed this exact policy and aggregate private
+evidence boundary. The implementation head also passed [CI](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31328986122),
+[CodeQL](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31328983549),
+the [six-target release preflight](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31328986128),
+and the complete [source and GNU/Linux preflight](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31328986137).
+This is the durable `MCP-034` evidence for `OSPS-AC-01.01` and
+`OSPS-AC-02.01`. It remains an input to the later dated `MCP-035`
+self-assessment, not an assurance badge, certification, regulatory claim, or
+statement that the complete OSPS Baseline has passed.

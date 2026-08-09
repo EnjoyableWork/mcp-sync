@@ -11,7 +11,7 @@ fn organization_access_contract_is_current_non_disclosing_and_not_an_assurance_c
     let contract = repository_file("docs/organization-access-and-recovery.md");
 
     for required in [
-        "`MCP-034` is in progress",
+        "`MCP-034` is complete",
         "Only allow secure two-factor methods",
         "base repository permission must be `none`",
         "Non-owner repository creation must be disabled",
@@ -176,13 +176,14 @@ fn private_evidence_preparation_outputs_only_aggregate_false_by_default_fields()
 }
 
 #[test]
-fn mcp_034_tracker_state_stays_in_progress_without_starting_public_claims() {
+fn mcp_034_tracker_is_done_and_only_mcp_035_is_ready_without_public_claims() {
     let project = repository_file("PROJECT.md");
     let readme = repository_file("README.md");
 
-    assert!(project.contains("`MCP-034` is `In progress`"));
-    assert!(project.contains("| MCP-034 | Establish organization access, credential, and ownership recovery policy | M3 | P1 | Codex | In progress |"));
-    assert!(project.contains("`MCP-035` remains proposed and dormant"));
+    assert!(project.contains("`MCP-034`'s explicitly authorized live changes"));
+    assert!(project.contains("| MCP-034 | Establish organization access, credential, and ownership recovery policy | M3 | P1 | Codex | Done |"));
+    assert!(project.contains("| MCP-035 | Self-assess, publish, and showcase the zero-cost enterprise assurance baseline | M3 | P1 | Unassigned | Ready |"));
+    assert!(project.contains("`MCP-035` is the only `Ready` main-story successor"));
     assert!(!readme.contains("OSPS-AC-01.01"));
     assert!(!readme.contains("OSPS-AC-02.01"));
 }
