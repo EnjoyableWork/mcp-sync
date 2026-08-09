@@ -6,6 +6,15 @@ fn repository_file(path: &str) -> String {
     fs::read_to_string(root.join(path)).expect("repository governance file should be readable")
 }
 
+fn assert_official_channels_exclude_insecure_transports(name: &str, document: &str) {
+    for forbidden_transport in ["http://", "git://", "ftp://", "ssh://", "git@"] {
+        assert!(
+            !document.contains(forbidden_transport),
+            "{name} must not advertise {forbidden_transport}"
+        );
+    }
+}
+
 #[test]
 fn public_main_ruleset_verifier_encodes_the_accepted_contract() {
     let verifier = repository_file("scripts/verify-public-main-ruleset.sh");
@@ -197,4 +206,259 @@ fn repository_security_evidence_keeps_paid_and_later_ticket_scope_explicit() {
             && !root.join(".github/dependabot.yaml").exists(),
         "dependency version-update configuration remains MCP-033 scope"
     );
+}
+
+#[test]
+fn contribution_and_conduct_guidance_define_safe_public_routes() {
+    let contributing = repository_file("CONTRIBUTING.md");
+    let conduct = repository_file("CODE_OF_CONDUCT.md");
+
+    for required_contract in [
+        "## Choose the right public path",
+        "bug form",
+        "feature form",
+        "GitHub Issues and pull-request conversations",
+        "## Keep security reports and sensitive data private",
+        "https://github.com/EnjoyableWork/mcp-sync/security/advisories/new",
+        "synthetic, redacted values",
+        "## Report a defect",
+        "## Prepare a source checkout",
+        "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings",
+        "## Submit a pull request",
+        "## Contribution licensing, CLA, and DCO",
+        "does not require a Contributor License Agreement (CLA)",
+        "does not currently require a Developer",
+        "Certificate of Origin (DCO)",
+    ] {
+        assert!(
+            contributing.contains(required_contract),
+            "contribution guide should define {required_contract}"
+        );
+    }
+
+    for required_contract in [
+        "## Expected behavior",
+        "## Unacceptable behavior",
+        "## Scope",
+        "## Reporting a conduct concern",
+        "03-conduct-contact.yml",
+        "do not identify",
+        "people in the public issue",
+        "private security-reporting path",
+        "## Enforcement",
+        "request reconsideration",
+        "single-maintainer limitation",
+    ] {
+        assert!(
+            conduct.contains(required_contract),
+            "code of conduct should define {required_contract}"
+        );
+    }
+
+    for (name, document) in [
+        ("CONTRIBUTING.md", contributing.as_str()),
+        ("CODE_OF_CONDUCT.md", conduct.as_str()),
+    ] {
+        assert_official_channels_exclude_insecure_transports(name, document);
+        for forbidden_claim in [
+            "OSPS compliant",
+            "OSPS certified",
+            "independently certified",
+        ] {
+            assert!(
+                !document.contains(forbidden_claim),
+                "{name} must not publish the assurance claim {forbidden_claim}"
+            );
+        }
+    }
+}
+
+#[test]
+fn issue_forms_and_pull_request_template_enforce_routing_and_redaction() {
+    let bug = repository_file(".github/ISSUE_TEMPLATE/01-bug-report.yml");
+    let feature = repository_file(".github/ISSUE_TEMPLATE/02-feature-request.yml");
+    let conduct = repository_file(".github/ISSUE_TEMPLATE/03-conduct-contact.yml");
+    let chooser = repository_file(".github/ISSUE_TEMPLATE/config.yml");
+    let pull_request = repository_file(".github/pull_request_template.md");
+
+    for required_contract in [
+        "name: Bug report",
+        "description:",
+        "labels:\n  - bug",
+        "id: reproduction",
+        "Minimal synthetic reproduction",
+        "private vulnerability reporting",
+        "raw unreviewed log",
+        "required: true",
+    ] {
+        assert!(
+            bug.contains(required_contract),
+            "bug form should define {required_contract}"
+        );
+    }
+
+    for required_contract in [
+        "name: Feature request or usage obstacle",
+        "labels:\n  - enhancement",
+        "id: obstacle",
+        "id: outcome",
+        "id: safety",
+        "opening an issue does not add the change",
+        "private reporting path",
+    ] {
+        assert!(
+            feature.contains(required_contract),
+            "feature form should define {required_contract}"
+        );
+    }
+
+    for required_contract in [
+        "name: Private conduct contact request",
+        "This issue is public",
+        "do not name people or describe the incident",
+        "I have not included incident details",
+    ] {
+        assert!(
+            conduct.contains(required_contract),
+            "conduct contact form should define {required_contract}"
+        );
+    }
+
+    for required_contract in [
+        "blank_issues_enabled: false",
+        "Report a security vulnerability privately",
+        "https://github.com/EnjoyableWork/mcp-sync/security/advisories/new",
+        "Read the contribution and support guide",
+        "Read the usage and recovery guide",
+    ] {
+        assert!(
+            chooser.contains(required_contract),
+            "issue chooser should define {required_contract}"
+        );
+    }
+
+    for required_contract in [
+        "## User and safety impact",
+        "## Validation",
+        "## Documentation and release effects",
+        "private reporting",
+        "synthetic, redacted examples",
+        "right to submit this contribution",
+        "does not require a CLA or DCO",
+    ] {
+        assert!(
+            pull_request.contains(required_contract),
+            "pull-request template should define {required_contract}"
+        );
+    }
+
+    for (name, document) in [
+        ("bug form", bug.as_str()),
+        ("feature form", feature.as_str()),
+        ("conduct form", conduct.as_str()),
+        ("issue chooser", chooser.as_str()),
+        ("pull-request template", pull_request.as_str()),
+    ] {
+        assert_official_channels_exclude_insecure_transports(name, document);
+    }
+}
+
+#[test]
+fn repository_inventory_and_license_evidence_cover_the_two_codebases() {
+    let evidence = repository_file("docs/project-community-and-licensing.md");
+    let manifest = repository_file("Cargo.toml");
+    let license = repository_file("LICENSE");
+    let unix_packager = repository_file("scripts/package-release.sh");
+    let windows_packager = repository_file("scripts/package-release.ps1");
+
+    for required_contract in [
+        "## Official project channels",
+        "https://github.com/EnjoyableWork/mcp-sync",
+        "https://github.com/EnjoyableWork/homebrew-tap",
+        "https://crates.io/crates/enjoyable-mcp-sync",
+        "GitHub Discussions is not an enabled project channel",
+        "## Repository and codebase inventory",
+        "`EnjoyableWork/courtside-mcp`",
+        "`EnjoyableWork/enjoyable-mcp`",
+        "`EnjoyableWork/mcp-doctor`",
+        "## Source and release licensing",
+        "OSI-approved MIT License",
+        "NOASSERTION",
+        "## Inbound contribution terms",
+        "no `CODEOWNERS` file",
+        "OSPS-BR-03.01",
+        "OSPS-DO-02.01",
+        "OSPS-GV-02.01",
+        "OSPS-GV-03.01",
+        "OSPS-LE-02.01",
+        "OSPS-LE-02.02",
+        "OSPS-LE-03.01",
+        "OSPS-LE-03.02",
+        "OSPS-QA-04.01",
+        "not an assurance badge, independent certification",
+    ] {
+        assert!(
+            evidence.contains(required_contract),
+            "project inventory should document {required_contract}"
+        );
+    }
+
+    assert!(manifest.contains("license = \"MIT\""));
+    assert!(manifest.contains("\"/LICENSE\""));
+    assert!(license.contains("MIT License"));
+    assert!(unix_packager.contains("$release_repository_root/LICENSE"));
+    assert!(windows_packager.contains("(Join-Path $mcpSyncRepositoryRoot 'LICENSE')"));
+    assert_official_channels_exclude_insecure_transports("project inventory", &evidence);
+}
+
+#[test]
+fn public_project_contract_verifier_is_credential_free_and_exact() {
+    let verifier = repository_file("scripts/verify-public-project-contract.sh");
+
+    for required_contract in [
+        "https://api.github.com/repos/$public_contract_repository/community/profile",
+        ".health_percentage == 100",
+        ".files.code_of_conduct_file != null",
+        ".files.contributing != null",
+        ".files.issue_template != null",
+        ".files.pull_request_template != null",
+        "$public_contract_tap_repository/license",
+        ".license.spdx_id == \"MIT\"",
+        "(http://|git://|ftp://|ssh://|git@)",
+        ".immutable == true",
+        "verify-published-source-linux-release.sh",
+        "raw.githubusercontent.com/$public_contract_repository/v$public_contract_version/LICENSE",
+        "https://crates.io/api/v1/crates/enjoyable-mcp-sync/$public_contract_version/download",
+        "raw.githubusercontent.com/$public_contract_tap_repository/main/Formula/mcp-sync.rb",
+        "license \"MIT\"",
+    ] {
+        assert!(
+            verifier.contains(required_contract),
+            "public project verifier should enforce {required_contract}"
+        );
+    }
+
+    for forbidden_contract in ["gh api", "GH_TOKEN", "Authorization:", "secrets."] {
+        assert!(
+            !verifier.contains(forbidden_contract),
+            "public project verifier must not depend on {forbidden_contract}"
+        );
+    }
+}
+
+#[test]
+fn codeowners_remains_absent_without_an_independent_reviewer() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+    for codeowners_path in [
+        root.join("CODEOWNERS"),
+        root.join(".github/CODEOWNERS"),
+        root.join("docs/CODEOWNERS"),
+    ] {
+        assert!(
+            !codeowners_path.exists(),
+            "CODEOWNERS requires a real independent reviewer: {}",
+            codeowners_path.display()
+        );
+    }
 }

@@ -277,13 +277,17 @@ CI-pinned `cargo-deny` 0.20.2 release; install that exact version with
 security advisories, licenses, duplicate or banned dependencies, and dependency
 sources.
 
-Contributions are welcome! Feel free to submit a pull request:
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before reporting a defect, discussing a
+usage obstacle or proposed change, or opening a pull request. It defines the
+public support boundary, redaction rules, setup and test workflow, contribution
+licensing, and the separate no-CLA and no-DCO choices.
 
-1. Fork the repository.
-2. Create your feature branch: `git checkout -b feature/amazing-feature`.
-3. Commit your changes: `git commit -m 'Add amazing feature'`.
-4. Push to the branch: `git push origin feature/amazing-feature`.
-5. Open a pull request.
+Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
+Suspected vulnerabilities must use the private route in
+[SECURITY.md](SECURITY.md), never a public issue or pull request. The
+[project repository and licensing inventory](docs/project-community-and-licensing.md)
+lists the authoritative codebases, public channels, and source-and-release MIT
+license boundary.
 
 ## 📄 License
 

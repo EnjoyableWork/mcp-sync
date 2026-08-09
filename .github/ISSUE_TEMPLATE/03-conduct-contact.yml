@@ -1,0 +1,19 @@
+name: Private conduct contact request
+description: Request private follow-up without posting incident or identity details.
+title: "[Conduct contact]: Private follow-up requested"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is public. Submit only the contact request; do not name people or describe the incident here. A maintainer will arrange a private follow-up route.
+
+        Software vulnerabilities use [GitHub private vulnerability reporting](https://github.com/EnjoyableWork/mcp-sync/security/advisories/new) instead.
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Safe public request
+      options:
+        - label: I have not included incident details, identities, contact credentials, private configuration, user data, or vulnerability information.
+          required: true
+        - label: I have read the mcp-sync Code of Conduct and request private follow-up.
+          required: true
