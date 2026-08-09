@@ -435,7 +435,7 @@ fn public_project_contract_verifier_is_credential_free_and_exact() {
 
     for required_contract in [
         "https://api.github.com/repos/$public_contract_repository/community/profile",
-        ".health_percentage == 100",
+        ".health_percentage >= 87",
         ".files.code_of_conduct_file != null",
         ".files.contributing != null",
         ".files.pull_request_template != null",
@@ -444,6 +444,7 @@ fn public_project_contract_verifier_is_credential_free_and_exact() {
         "02-feature-request.yml",
         "03-conduct-contact.yml",
         "contents/SUPPORT.md",
+        "contents/SECURITY.md",
         "$public_contract_tap_repository/license",
         ".license.spdx_id == \"MIT\"",
         "(http://|git://|ftp://|ssh://|git@)",
@@ -470,6 +471,10 @@ fn public_project_contract_verifier_is_credential_free_and_exact() {
     assert!(
         !verifier.contains(".files.issue_template != null"),
         "GitHub does not expose YAML issue forms through that community-profile field"
+    );
+    assert!(
+        !verifier.contains(".health_percentage == 100"),
+        "GitHub's REST score must not override recognized YAML forms in the UI"
     );
 }
 

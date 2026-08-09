@@ -46,7 +46,7 @@ public_contract_community="$({
 })"
 
 jq -e '
-    .health_percentage == 100 and
+    .health_percentage >= 87 and
     .files.readme != null and
     .files.license.name == "MIT License" and
     .files.code_of_conduct_file != null and
@@ -54,10 +54,12 @@ jq -e '
     .files.pull_request_template != null
   ' <<<"$public_contract_community" >/dev/null
 
-# GitHub's community-profile API leaves files.issue_template null for YAML issue
-# forms. Require 100% community health above, then verify the exact published
-# default-branch form inventory directly instead of treating that null as a
-# missing-template signal.
+# GitHub's community-profile REST API reports 87% and leaves
+# files.issue_template null for this repository even though the signed-in
+# Community Standards UI marks the valid YAML issue forms as Added. Require the
+# other REST-visible files and the observed lower bound above, then verify the
+# exact default-branch form inventory directly instead of treating that API
+# field as a missing-template signal.
 public_contract_issue_templates="$({
   public_contract_get_json \
     "https://api.github.com/repos/$public_contract_repository/contents/.github/ISSUE_TEMPLATE"
@@ -79,6 +81,16 @@ jq -e '
     .type == "file" and
     (.download_url | startswith("https://"))
   ' <<<"$public_contract_support" >/dev/null
+
+public_contract_security="$({
+  public_contract_get_json \
+    "https://api.github.com/repos/$public_contract_repository/contents/SECURITY.md"
+})"
+jq -e '
+    .name == "SECURITY.md" and
+    .type == "file" and
+    (.download_url | startswith("https://"))
+  ' <<<"$public_contract_security" >/dev/null
 
 for public_contract_public_repository in \
   "$public_contract_repository" \
