@@ -7,7 +7,10 @@ assurance work.
 
 The live GitHub ruleset is authoritative for enforcement. The repository's
 credential-free [`verify-public-main-ruleset.sh`](../scripts/verify-public-main-ruleset.sh)
-checks that the public settings still match this contract.
+checks the public rule, while the read-only operator-side
+[`verify-main-repository-controls.sh`](../scripts/verify-main-repository-controls.sh)
+also checks repository merge and signoff settings that GitHub omits from
+unauthenticated responses.
 
 ## Protected branch contract
 
@@ -59,8 +62,8 @@ belongs to `MCP-032`.
    check rerun against the latest `main`.
 5. Merge through one of the three allowed pull-request methods only after all
    five checks pass.
-6. Confirm the merged commit is reachable from `main` and rerun the public
-   ruleset verifier.
+6. Confirm the merged commit is reachable from `main` and rerun both repository
+   control verifiers.
 
 A renamed job, replacement GitHub application, or changed check topology is a
 governance change. Update and reverify the ruleset deliberately; never remove a
@@ -82,8 +85,8 @@ For an emergency:
 3. Constrain any rule edit to the smallest ref, rule, and time window. Never
    alter stable-tag or protected-environment controls as a shortcut.
 4. Restore the exact accepted rule immediately after the emergency action.
-5. Run the public verifier, inspect the GitHub rule evaluation or audit record,
-   and route any resulting source change through a follow-up pull request.
+5. Run both verifiers, inspect the GitHub rule evaluation or audit record, and
+   route any resulting source change through a follow-up pull request.
 
 The `MCP-030` drill exercises this path by temporarily adding and then removing
 a disposable branch from the rule's scope while `main` remains continuously

@@ -80,19 +80,4 @@ jq -e --arg name "$main_ruleset_name" '
         ] | sort_by(.context)))
   ' <<<"$main_ruleset" >/dev/null
 
-repository_state="$({
-  curl --fail --silent --show-error --location \
-    "${main_ruleset_api_headers[@]}" \
-    "https://api.github.com/repos/$main_ruleset_repository"
-})"
-jq -e '
-    .default_branch == "main" and
-    .allow_merge_commit == true and
-    .allow_squash_merge == true and
-    .allow_rebase_merge == true and
-    .allow_auto_merge == false and
-    .delete_branch_on_merge == true and
-    .web_commit_signoff_required == false
-  ' <<<"$repository_state" >/dev/null
-
 echo "Verified the public default-branch ruleset for $main_ruleset_repository."

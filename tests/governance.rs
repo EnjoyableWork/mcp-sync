@@ -30,7 +30,6 @@ fn public_main_ruleset_verifier_encodes_the_accepted_contract() {
         "Windows x64 — format, Clippy, and test",
         "Windows ARM64 — format, Clippy, and test",
         "integration_id: 15368",
-        "web_commit_signoff_required == false",
     ] {
         assert!(
             verifier.contains(required_contract),
@@ -44,6 +43,29 @@ fn public_main_ruleset_verifier_encodes_the_accepted_contract() {
             "public verifier must not depend on {forbidden_contract}"
         );
     }
+}
+
+#[test]
+fn operator_main_control_verifier_keeps_admin_access_local() {
+    let verifier = repository_file("scripts/verify-main-repository-controls.sh");
+
+    for required_contract in [
+        "gh auth status --hostname github.com",
+        "verify-public-main-ruleset.sh",
+        "default_branch == \"main\"",
+        "allow_merge_commit == true",
+        "allow_squash_merge == true",
+        "allow_rebase_merge == true",
+        "allow_auto_merge == false",
+        "delete_branch_on_merge == true",
+        "web_commit_signoff_required == false",
+    ] {
+        assert!(
+            verifier.contains(required_contract),
+            "operator verifier should enforce {required_contract}"
+        );
+    }
+    assert!(!verifier.contains("secrets."));
 }
 
 #[test]
