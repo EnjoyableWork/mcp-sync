@@ -140,11 +140,23 @@ Run the credential-free public verifier after a default-branch change:
 ./scripts/verify-public-project-contract.sh EnjoyableWork/mcp-sync 0.1.0
 ```
 
-The verifier requires 100% GitHub community health and exact default-branch
-publication of all three YAML issue forms plus their chooser configuration.
-GitHub's community-profile API leaves `files.issue_template` null for YAML issue
-forms even when they contribute to a 100% profile, so the verifier does not
-misinterpret that API field as a form failure. It also checks HTTPS-only
+On 2026-08-09, a signed-in maintainer inspection of exact `main` commit
+[`608fddf`](https://github.com/EnjoyableWork/mcp-sync/commit/608fddfecea6e4c68e0d20d699c5de6e6ce41ea6)
+showed GitHub's [Community Standards](https://github.com/EnjoyableWork/mcp-sync/community)
+UI marking the description, README, code of conduct, contribution guide,
+license, security policy, issue templates, and pull-request template as
+**Added**. The [issue chooser](https://github.com/EnjoyableWork/mcp-sync/issues/new/choose)
+rendered the bug, feature-or-usage-obstacle, and detail-free conduct-contact
+forms plus the private vulnerability-reporting route. The only **Not added
+yet** checklist entry was the separate repository-administrator content-report
+setting, which is outside this ticket and was not changed.
+
+GitHub's community-profile REST API simultaneously reported health `87` and
+left `files.issue_template` null. Because that endpoint disagrees with the
+recognized YAML forms in GitHub's UI, the verifier requires the other
+REST-visible community files, accepts the observed score or a future higher
+score, and checks the exact default-branch YAML-form and chooser inventory
+directly. It also checks the live support and security files, HTTPS-only
 official URI files, both repository licenses, the exact immutable release asset
 set, license presence in every software archive, crates.io byte identity, and
 the published tap formula. Focused repository tests enforce the local contract.
