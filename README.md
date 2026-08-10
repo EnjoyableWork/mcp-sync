@@ -1,4 +1,4 @@
-<h1 align="center">mcp-sync</h1>
+<h1 align="center">mcp-sync :zap:</h1>
 
 <p align="center">
   <strong>Define your MCP servers once. Keep every local AI client in sync.</strong>
