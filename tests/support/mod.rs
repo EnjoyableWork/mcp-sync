@@ -106,11 +106,15 @@ impl SyntheticHome {
     }
 
     pub fn canonical_configuration(&self) -> PathBuf {
-        self.configuration_home().join("mcp-sync/config.json")
+        self.configuration_home()
+            .join("mcp-sync")
+            .join("config.json")
     }
 
     pub fn operation_lock(&self) -> PathBuf {
-        self.configuration_home().join("mcp-sync/operation.lock")
+        self.configuration_home()
+            .join("mcp-sync")
+            .join("operation.lock")
     }
 
     pub fn configuration_home(&self) -> PathBuf {
