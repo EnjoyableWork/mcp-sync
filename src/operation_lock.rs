@@ -35,15 +35,26 @@ pub fn try_acquire(path: &Path) -> Result<OperationLockGuard, OperationLockError
         .open(path)
     {
         Ok(file) => file,
-        Err(source) if source.kind() == io::ErrorKind::AlreadyExists => {
-            validate_path(path)?;
+        Err(create_source) => {
+            // Windows can report `PermissionDenied`, rather than
+            // `AlreadyExists`, when this path is an existing directory.
+            // Inspect every artifact that exists after failed creation so all
+            // platforms apply the same fail-closed classification.
+            match fs::symlink_metadata(path) {
+                Ok(metadata) => validate_metadata(&metadata)?,
+                Err(source) if source.kind() == io::ErrorKind::NotFound => {
+                    return Err(OperationLockError::Open {
+                        source: create_source,
+                    });
+                }
+                Err(source) => return Err(OperationLockError::Inspect { source }),
+            }
             OpenOptions::new()
                 .read(true)
                 .write(true)
                 .open(path)
                 .map_err(|source| OperationLockError::Open { source })?
         }
-        Err(source) => return Err(OperationLockError::Open { source }),
     };
 
     validate_file(&file)?;
@@ -164,10 +175,12 @@ mod tests {
         assert!(path.is_file());
         assert_eq!(format!("{guard:?}"), "OperationLockGuard");
         assert!(!format!("{guard:?}").contains(&path.to_string_lossy().into_owned()));
-        assert!(
-            fs::read(&path)
-                .expect("the lock should remain readable")
-                .is_empty()
+        assert_eq!(
+            fs::metadata(&path)
+                .expect("the locked coordination file should remain inspectable")
+                .len(),
+            0,
+            "coordination metadata should remain empty while locked"
         );
         drop(guard);
         assert!(
