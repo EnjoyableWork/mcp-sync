@@ -8,9 +8,9 @@ lightweight enough to use before a hosted tracker is justified.
 | --- | --- |
 | Document state | Active |
 | Product state | The source-checkout macOS, GNU/Linux, and Windows implementation reconciles global Claude Desktop, Cursor, Windsurf legacy Cascade, native VS Code default user-profile, and global Codex host configuration, exposes one bounded named-server STDIO initialize health boundary, and provides parser-validated restore with one-generation adjacent backup retention for canonical state plus all five targets. Deterministic fixtures and native x64/ARM64 GNU/Linux and Windows MSVC CI prove the pre-restore five-target configuration behavior; the restore journey passes locally on ARM64 and Intel macOS, resolves every supported platform path in tests, and compiles every test surface for all six supported architecture targets. Every mutating command now acquires one fail-fast cross-process lock per canonical configuration root before managed-state planning and retains it through apply and rollback; focused process regressions and native macOS, GNU/Linux, and Windows evidence prove the issue #45 mixed-generation interleaving is prevented without changing lock-free read-only or dry-run behavior. The credential-free source and GNU/Linux release preflight proves deterministic Cargo and source-built Homebrew outputs, exact-package installation and recovery across all six native hosts, Homebrew installation and recovery across four native Unix hosts, and the two represented GNU/Linux archive/SBOM paths while the retained six-target release preflight remains green. The immutable `v0.1.0` GitHub Release, byte-identical `enjoyable-mcp-sync` `0.1.0` crates.io package, and exact source-building `EnjoyableWork/tap/mcp-sync` formula are public; the final installed-channel matrix passes two GitHub archive, six Cargo, and four Homebrew native install and recovery journeys. Claude Desktop and Cursor retain macOS current-client sync smoke evidence, and no Linux or Windows target has a current-client smoke claim |
-| Current milestone | Post-M3 corrective maintenance complete through `MCP-036`; no successor arc is selected |
-| Overall status | M0 through M3, `MCP-001` through `MCP-036`, `SIDE-007`, and `SIDE-008` are `Done`; no main-story ticket or side quest is active, and funded `SIDE-006` remains proposed |
-| Current focus | Maintain the completed issue [#45](https://github.com/EnjoyableWork/mcp-sync/issues/45) cross-process mutation boundary, immutable release, and assurance evidence while leaving every later arc and side quest inactive until deliberately selected |
+| Current milestone | Post-M3 corrective maintenance complete through `MCP-036`; Kiro is the first deferred M4 client candidate to qualify, but no successor arc is active |
+| Overall status | M0 through M3, `MCP-001` through `MCP-036`, `SIDE-007`, and `SIDE-008` are `Done`; no main-story ticket or side quest is active, funded `SIDE-006` remains proposed, `MCP-037` Kiro is first in the deferred M4 client-candidate order, and `MCP-038` Kilo Code remains a later separate candidate |
+| Current focus | Maintain the completed issue [#45](https://github.com/EnjoyableWork/mcp-sync/issues/45) cross-process mutation boundary, immutable release, and assurance evidence while qualifying Kiro before Kilo Code without activating M4 or claiming either client as supported |
 | Milestone target | No active milestone; a later outcome requires an accepted ticket, explicit activation, and its own canonical Goal |
 | Last reviewed | 2026-08-10 |
 | Next review trigger | A README target-state promise, install channel, call to action, navigation anchor, live badge or link, client boundary, mutation-lock or safety contract changes; an organization-access, recovery, Actions, dependency-update, workflow-trust, distribution-authentication, repository-artifact, `main` ruleset/check-context, repository-security-control, community-contract, repository-inventory, or licensing change; an assurance-framework, issuer-status, badge, or public-proof-link revision; a security or release incident; evidence drift; deliberate selection of a later main-story arc; or explicit funding and activation of `SIDE-006` |
@@ -1368,9 +1368,13 @@ one-side-quest WIP cap, and completing one never activates another.
 
 ### Expansion candidates
 
-These are deliberately not executable tickets yet. M3 now owns enterprise
-assurance and adoption; after it completes, select and sequence the next
-main-story arc and classify anything truly optional as a `SIDE-NNN` ticket.
+These are deliberately not executable tickets yet. M3 is complete, and
+anything truly optional must be classified as a `SIDE-NNN` ticket. Kiro and
+Kilo Code passed an initial client-candidacy review on 2026-08-10; the owner
+selected Kiro as the first candidate to qualify and Kilo Code as the later
+candidate. That priority is not activation: neither client is implemented or
+publicly supported, and `MCP-037` is not eligible for a Goal until its evidence
+gates are revalidated and it is accepted into an ordered M4 main story.
 
 | ID | Candidate outcome | Possible arc | Classification trigger | Status |
 | --- | --- | --- | --- | --- |
@@ -1380,6 +1384,85 @@ main-story arc and classify anything truly optional as a `SIDE-NNN` ticket.
 | MCP-025 | Formalize a third-party adapter API | M4 | At least one real external adapter consumer | Deferred |
 | MCP-026 | Explore managed team/fleet configuration | M5 | Approved product discovery and security boundary | Deferred |
 | MCP-027 | Explore a GUI or desktop management surface | M5 | User research proves a distinct interface need | Deferred |
+| MCP-037 | Add a global-user Kiro MCP adapter with inherited Kiro Crew coverage | M4 | Revalidate the current global and `KIRO_HOME` contracts, resolve environment-reference representability, bound Kiro Crew inheritance, and use installed clients for controlled current-client smoke evidence | Deferred |
+| MCP-038 | Add a shared global Kilo Code MCP adapter | M4 | Revalidate unified configuration discovery and precedence, define the legacy-storage boundary, choose a lossless JSONC strategy, and obtain access for current-client smoke evidence | Deferred |
+
+#### Deferred client-candidate evidence gates
+
+The candidate decision is based on current official vendor material, not on a
+support claim. Before either row moves out of `Deferred`, its owning change
+must recheck the then-current release, documentation, source contract, and
+platform paths; name every product surface covered by the adapter; and record
+an accepted global-only ownership and precedence boundary. `MCP-037` is the
+first client candidate to qualify. Activation still requires an accepted
+outcome, owner, acceptance evidence, dependencies, main-story position, and
+canonical Goal before it moves into the ordered board. The candidate row itself
+has no Goal, and `MCP-038` remains inactive until the Kiro candidate has an
+explicit disposition.
+
+Both candidates must satisfy the normal adapter safety contract: never inspect
+or mutate project, workspace, agent, organization-managed, remote-service, or
+credential stores; classify remote transports and any local entry that cannot
+be represented by canonical v1 as unmanaged; refuse a canonical name collision
+with unmanaged data; preserve every unowned field and document comment; and
+never expand an environment or file reference while importing, planning,
+rendering, reporting, or testing. The selected ticket must extend deterministic
+import, sync, restore, no-op, drift, redaction, collision, backup, exact-byte
+guard, transaction rollback, operation-lock, and native macOS/GNU/Linux/Windows
+coverage through the additional target. A public README support claim requires
+a controlled current-client smoke for every named product surface in that
+claim; fixture-backed schema evidence alone may be described only as native
+contract coverage.
+
+- **`MCP-037` — Kiro:** Kiro's current official
+  [MCP configuration contract](https://kiro.dev/docs/mcp/configuration/)
+  exposes user-level `~/.kiro/settings/mcp.json` and workspace-level
+  `.kiro/settings/mcp.json`, with agent and workspace definitions taking
+  precedence over the global file. Its plain-JSON `mcpServers` local STDIO
+  shape has canonical-compatible `command`, `args`, and `env`, so a bounded
+  global adapter is a strong fit. Current Kiro CLI also supports
+  [relocating its whole user directory](https://kiro.dev/changelog/cli/2-3/)
+  with `KIRO_HOME`, so the ticket must revalidate the default and relocated
+  path behavior for every surface it names rather than assuming that one
+  process environment controls them all. It must manage only the selected
+  user-level file; preserve `disabled`, `autoApprove`, `disabledTools`, remote
+  URL, headers, OAuth, and unknown data; leave higher-precedence layers
+  untouched; and explicitly treat Kiro's `${VARIABLE}` expansion syntax as
+  semantic data rather than a literal canonical value unless a separately
+  accepted schema evolution can represent it safely.
+
+  Kiro Crew is a relevant consumer, not a duplicate adapter. Its current
+  upstream
+  [MCP architecture](https://github.com/kirodotdev/KiroCrew/blob/584bbb05f674ce0677b117f732f35d53ade99d0a/docs/architecture/mcp.md)
+  reads the user-owned Kiro global file into Crew sessions, while keeping
+  Crew-only overrides in `~/.kiro/crew/mcp.json` and rendering its gateway-owned
+  agent at `~/.kiro/agents/kirocrew.json`. `MCP-037` must never discover or
+  mutate either Crew-specific file. Instead, it must prove that one synthetic
+  global definition is accepted by current Kiro IDE and inherited by current
+  Kiro Crew while `mcp-sync` never plans or applies either Crew-specific file.
+  The owner's installed Kiro IDE and Kiro Crew provide macOS access for those
+  future controlled smokes; installation alone is not acceptance evidence or
+  a support claim.
+  Demand for Crew-only targeting would require a separate later ticket and an
+  explicit precedence decision rather than writing the same server into both
+  global and Crew scopes.
+- **`MCP-038` — Kilo Code:** current official
+  [Kilo MCP guidance](https://kilo.ai/docs/automate/mcp/using-in-kilo-code)
+  and the upstream
+  [shared-settings contract](https://github.com/Kilo-Org/kilocode/blob/ad9d0adc367502b2c741d24ab37211754321b685/packages/kilo-docs/pages/getting-started/settings/index.md)
+  place a top-level `mcp` map in global `~/.config/kilo/kilo.json[c]` and say
+  CLI, VS Code, and JetBrains consume the same configuration. This is a useful
+  multi-surface target, but the upstream repository also retains an explicit
+  [legacy MCP migration boundary](https://github.com/Kilo-Org/kilocode/blob/ad9d0adc367502b2c741d24ab37211754321b685/packages/opencode/src/kilocode/mcp-migrator.ts)
+  for extension `globalStorage` `mcp_settings.json`, and the current loader
+  accepts several global filenames. The ticket must first pin filename and
+  merge precedence on all claimed platforms, refuse ambiguous authoritative
+  documents, and choose one current global surface without mutating legacy or
+  project storage. It must structurally preserve JSONC comments and unrelated
+  provider, permission, agent, and tool configuration; map only unambiguous
+  local command arrays and environment strings; preserve remote, disabled,
+  timeout, reference-bearing, and unknown entries; and smoke every CLI or IDE
+  surface named by the eventual support claim.
 
 ### Side-quest board
 
@@ -1473,10 +1556,12 @@ target added later:
 4. Maintain the completed `MCP-030` through `MCP-035` controls, public evidence,
    official BadgeApp `baseline-1` status, README trust surface, and exact-main
    verifier. Reassess or remove claims on every documented trigger.
-5. Keep M4, M5, and every side quest inactive until a later outcome is
-   deliberately selected, accepted, assigned, and activated under its own
-   canonical Goal; completing M3, `SIDE-007`, or `SIDE-008` does not choose a
-   successor.
+5. Qualify deferred Kiro `MCP-037` first by revalidating its current global
+   path, `KIRO_HOME`, interpolation, precedence, Kiro Crew inheritance, and
+   controlled-smoke contracts. Keep M4, Kilo Code `MCP-038`, M5, and every side
+   quest inactive until an outcome is accepted, assigned, and activated under
+   its own canonical Goal. This qualification order is not a current support
+   claim; completing M3, `SIDE-007`, or `SIDE-008` does not choose a successor.
 6. Preserve immutable `v0.1.0`, its signed annotated release and operational
    recovery tags, seven attested assets, byte-identical Cargo package, exact
    tap formula, protected environments, and repository-scoped credentials.
@@ -1544,6 +1629,7 @@ target added later:
 | DEC-043 | Use default-no-access organization membership and a tested single-owner recovery exception until a trusted second owner exists | Accepted | 2026-08-09 | Explicit owner approval changed organization base repository permission from `read` to `none` and disabled member repository creation, so future grants and repositories require deliberate owner action. No current human access was removed. The current sole owner accepts the residual risk of single-owner continuity rather than promoting a nominal or untrusted owner, keeps the recovery plan and exercise record private, and must add a genuinely trusted second owner when one exists. Teams are created only for a real collaborator cohort, installed applications are privately reviewed for least privilege, normal automation remains short-lived and repository-scoped, and the one protected tap-only deploy key remains the documented cross-repository exception. This decision does not itself satisfy the secure-method, successful recovery, live-verifier, or later public-assurance gates. |
 | DEC-044 | Make official public proof part of completing every accepted assurance target that provides it | Accepted | 2026-08-09 | Assurance work is intended to reduce adoption friction as well as improve controls, so invisible evidence alone does not complete a target when its issuer offers a badge or conformance mark for the achieved scope. The owning ticket must obtain that official proof, follow its terms, link it from the README to issuer or assessment evidence, verify it on exact `main`, and define revalidation and removal triggers. M3 therefore requires the official BadgeApp `baseline-1` self-certification badge after all 24 named controls pass; future accepted Best Practices or OpenChain targets likewise require their applicable official badges. Human OAuth, public-attribution, or legal-assertion prerequisites remain explicit owner gates and are not silently performed or copied into repository evidence. SLSA and NIST SSDF currently use accurately scoped public artifact or self-assessment evidence because no applicable issuer-awarded project certification badge has been identified; the project must recheck that fact at activation and must never fabricate an official-looking shield. An unfunded required proof keeps a target candidate or deferred until a later decision funds it; a stale or withdrawn proof is corrected or removed immediately. |
 | DEC-045 | Serialize mutating configuration operations with one persistent fail-fast lock per canonical root | Accepted | 2026-08-09 | Issue [#45](https://github.com/EnjoyableWork/mcp-sync/issues/45) proves that per-file exact-byte guards and reverse rollback do not protect a successful five-target transaction from an older overlapping process. Each resolved canonical configuration directory therefore owns a persistent empty `operation.lock`; `mcp-sync` acquires its operating-system exclusive advisory lock without waiting and holds the open handle through every managed-state read, plan, apply, and rollback for `init`, `add`, non-dry-run `restore`, and non-dry-run `sync`. Contention fails before managed configuration access with one actionable diagnostic that exposes no owner, process, command, argument, environment value, configuration content, or lock-path detail; process exit releases the advisory lock, and the persistent file is never treated as stale or deleted during normal operation. Invalid `add` input remains validated before lock-file access. `list`, `test`, `sync --dry-run`, and `restore --dry-run` remain lock-free and non-mutating. Existing exact-byte guards still detect non-cooperating external changes, and rollback, backup retention, redaction, target ownership, and plan-once behavior remain unchanged. The implementation uses the stable Rust standard-library cross-platform file-lock boundary rather than a new dependency, rejects non-regular or non-empty lock artifacts, and must prove same-root contention, independent roots, release on drop and process exit, every mutating command, the original stale-generation scenario, macOS, GNU/Linux, and Windows behavior. No version, tag, release asset, Cargo package, Homebrew formula, or adjacent issue changes under this decision. |
+| DEC-046 | Qualify Kiro before Kilo Code while keeping both as separate deferred M4 client candidates without claiming support | Accepted | 2026-08-10 | Both products expose an official global MCP configuration and a local STDIO shape that can plausibly fit the existing adapter architecture, so discarding either would make the M4 client backlog incomplete. Their risks differ enough to require separate tickets: Kiro uses a clear global JSON file but gives workspace and agent layers higher precedence, supports `KIRO_HOME`, and interprets `${VARIABLE}` references, while Kilo Code uses a shared multi-surface JSONC configuration with multiple accepted filenames and an active legacy-storage migration boundary. The owner selected `MCP-037` Kiro as the first candidate to qualify and `MCP-038` Kilo Code as the later candidate. Kiro Crew does not create a second adapter candidate because it currently inherits the user-owned Kiro global file; `MCP-037` instead includes controlled Crew inheritance evidence and excludes Crew-only and generated-agent files. Installed Kiro IDE and Kiro Crew provide future macOS smoke access but are not evidence by themselves. Both rows remain deferred with revalidation, bounded ownership, lossless preservation, cross-platform transaction, and current-client proof gates. This decision establishes qualification order only: it does not move either candidate into the main-story board or goal catalog, change the five implemented targets, update the README support matrix, activate M4, or create a current support claim. |
 
 ### Open decisions
 
@@ -1560,7 +1646,10 @@ choice. `DEC-044` makes issuer-provided public proof a completion requirement
 for every accepted assurance target that offers it and fixes the specific
 OpenSSF `baseline-1` badge requirement for `MCP-035` and M3. `DEC-045`
 accepts `MCP-036`'s fail-fast cross-process mutation-lock boundary in response
-to issue #45.
+to issue #45. `DEC-046` accepts Kiro and Kilo Code only as separate deferred
+M4 client candidates and fixes Kiro as the first candidate to qualify. Kiro's
+exact supported surfaces, acceptance contract, and activation remain open;
+Kilo Code stays later and inactive.
 `MCP-029`, M2, `MCP-030` through `MCP-036`, M3, `SIDE-007`, and `SIDE-008` are
 complete; no main-story ticket or side quest is active. The completed side
 quests changed only the README product-page
@@ -1585,7 +1674,7 @@ only dormant `SIDE-006`.
 | --- | --- | --- | --- | --- | --- | --- |
 | RISK-01 | A merge or partial failure loses user configuration | Critical | Medium | Pure plan/apply separation, guarded exact-byte writes, recoverable backups, reversible receipts, reverse-order five-target rollback, non-mutating drift, bounded client ownership, unmanaged-name collision refusal, interrupted-write compensation, and the complete synthetic failure matrix are implemented. Fixed-target restore validates retained bytes, swaps existing target and backup exactly, recreates missing targets without consuming the backup, and compensates an interrupted creation. A forced Codex fifth-target failure still restores Claude Desktop, Cursor, Windsurf, and VS Code plus their pre-existing backups exactly. Current Cursor verification is isolated; current Claude verification uses a no-clobber backup and verified exact restore; every represented installed release channel completes its synthetic recovery journey | Any unrecoverable fixture mutation or ambiguous ownership case | Mitigated — sync, restore, and installed-channel recovery proof; monitor future releases |
 | RISK-02 | Secrets leak through plans, errors, logs, fixtures, or snapshots | High | Medium | Import conflicts, canonical add/list reports, sync and restore plans/reports, per-target transaction reports, rollback errors, four JSON adapters, the TOML-native Codex document/render debug surfaces, and health-process failures expose structure only. Health journeys prove commands, arguments, environment values, raw stdout/stderr, malformed output, JSON-RPC error messages/data, and unchecked protocol versions remain undisclosed; restore journeys prove current, retained, malformed, unowned, and parser-error values remain undisclosed; the broader built-binary sentinels and safe byte/structural assertions cover the complete synthetic matrix without printing fixture contents. Current-client smokes read only synthetic output and structural status; no real configuration, credential, or account value was displayed | Any test or output path observes a secret value | Mitigated — configuration, restore, and health synthetic proof |
-| RISK-03 | Native client schemas or paths drift | High | Medium | All five implemented global contracts and macOS, GNU/Linux, and Windows paths are fixture-backed. Current Cursor `3.15.6` and current Claude Desktop `1.26832.0` accept and initialize rendered global entries on macOS. GNU/Linux and Windows have deterministic built-binary coverage and successful native x64/ARM64 whole-suite CI; neither has a current-client smoke claim. Windsurf's legacy Cascade, VS Code's native default-profile, and Codex's global TOML contracts retain explicit exclusions and have no current-client smoke claim on any implemented platform | A client update invalidates fixture/discovery behavior or changes one of the documented global paths or schemas | Mitigated — monitor client updates and all five documented contracts |
+| RISK-03 | Native client schemas or paths drift | High | Medium | All five implemented global contracts and macOS, GNU/Linux, and Windows paths are fixture-backed. Current Cursor `3.15.6` and current Claude Desktop `1.26832.0` accept and initialize rendered global entries on macOS. GNU/Linux and Windows have deterministic built-binary coverage and successful native x64/ARM64 whole-suite CI; neither has a current-client smoke claim. Windsurf's legacy Cascade, VS Code's native default-profile, and Codex's global TOML contracts retain explicit exclusions and have no current-client smoke claim on any implemented platform. Deferred Kiro `MCP-037` and Kilo Code `MCP-038` must revalidate their then-current global paths, schema, precedence, interpolation, legacy-storage, and product-surface contracts before activation; Kiro must additionally prove `KIRO_HOME` behavior and Crew inheritance without managing Crew-specific files, and neither candidate is currently claimed | A client update invalidates fixture/discovery behavior or changes one of the five implemented contracts, or a deferred candidate cannot establish one bounded, lossless global ownership model with current-client evidence | Mitigated — monitor implemented clients and requalify deferred candidates at activation |
 | RISK-04 | Cross-platform file replacement behaves differently | High | Medium | No-clobber creation, guarded atomic replacement, one-generation restore, reversible target receipts, and reverse-order rollback are isolated behind filesystem ports with disposable backup, stale-byte, interrupted-write, symlink, non-regular, permission, compensation, and cleanup tests. The complete suite passes on native ARM64 and emulated x64 macOS, every test surface compiles warning-free for all six macOS/GNU/Linux/Windows targets, the native x64/ARM64 GNU/Linux and Windows CI matrix carries the expanded restore plus copied-binary Windows journey, and the final channel matrix passes installed recovery on every represented native host | Platform work requires weakening atomicity, restore, or rollback | Mitigated — three-platform source-checkout and published-channel contract; monitor future native runs |
 | RISK-05 | Health checks hang or leave child processes running | High | Medium | The only execution boundary enforces a five-second response limit, 1-MiB message limit, 500-millisecond clean-shutdown allowance, force termination, reap, and a drop backstop. Focused and built-binary tests verify direct child PIDs are gone after response timeout, malformed output, and refused shutdown; native Windows x64/ARM64 PowerShell fixtures prove the same operating-system boundary. An operational-tag Windows x64 attempt and PR #43's redundant branch-push suite each hit the shutdown-resistant fixture's startup timeout while an identical-SHA run passed and termination held. `SIDE-008` limits branch-push CI to `main`, keeps one pull-request suite, gives only responsive Windows process fixtures 15 seconds to start, explicitly regresses the unchanged five-second product boundary, and passes one exact-SHA native x64/ARM64 CI suite plus repeated local fixture exercises | The timing failure recurs after `SIDE-008`, a health test exceeds its cleanup bound, a tested child remains running, duplicate pull-request CI returns, or a production timeout is weakened | Mitigated — deterministic single-suite cross-platform process proof; monitor timing and trigger drift |
 | RISK-06 | Broad client/platform scope delays the first usable proof | High | High | M1 and the strictly sequenced M2 are complete; `DEC-038` accepts a bounded assurance-only M3, while the WIP limit and required classification prevent M4, M5, or funded side-quest scope from silently entering it | Work starts outside `MCP-030` through `MCP-035`, a later ticket starts early, or assurance work expands beyond the exact accepted target | Mitigated — M2 complete and M3 bounded; enforce intentional activation |

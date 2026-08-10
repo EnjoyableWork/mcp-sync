@@ -200,7 +200,26 @@ fn m3_and_mcp_036_remain_complete_without_activating_a_successor() {
     ));
     assert!(project.contains("| D-16 | Cross-process serialization for every mutating configuration operation | Post-M3 corrective maintenance | Codex | 2026-08-10 | Done |"));
     assert!(project.contains("Complete SIDE-008: make pull-request CI deterministic"));
-    assert!(project.contains("completing M3, `SIDE-007`, or `SIDE-008` does not choose a"));
+    assert!(project.contains("completing M3, `SIDE-007`, or `SIDE-008` does not"));
+    assert!(project.contains("choose a successor."));
+    assert!(project.contains(
+        "| MCP-037 | Add a global-user Kiro MCP adapter with inherited Kiro Crew coverage | M4 | Revalidate the current global and `KIRO_HOME` contracts, resolve environment-reference representability, bound Kiro Crew inheritance, and use installed clients for controlled current-client smoke evidence | Deferred |"
+    ));
+    assert!(project.contains(
+        "| MCP-038 | Add a shared global Kilo Code MCP adapter | M4 | Revalidate unified configuration discovery and precedence, define the legacy-storage boundary, choose a lossless JSONC strategy, and obtain access for current-client smoke evidence | Deferred |"
+    ));
+    assert!(project.contains(
+        "This decision establishes qualification order only: it does not move either candidate into the main-story board or goal catalog"
+    ));
+    assert!(project.contains("`MCP-037` is the"));
+    assert!(project.contains("first client candidate to qualify."));
+    assert!(project.contains("Kiro Crew is a relevant consumer, not a duplicate adapter."));
+    assert!(project.contains("`~/.kiro/crew/mcp.json`"));
+    assert!(project.contains("`~/.kiro/agents/kirocrew.json`"));
+    assert!(project.contains("`MCP-037` must never discover or"));
+    assert!(project.contains("mutate either Crew-specific file."));
+    assert!(!project.contains("| MCP-037 | Complete MCP-037:"));
+    assert!(!project.contains("| MCP-038 | Complete MCP-038:"));
     assert!(!project.contains("| MCP-036 | Serialize every mutating operation per canonical configuration root | Post-M3 corrective maintenance | P0 | Codex | In progress |"));
     assert!(!project.contains("| SIDE-006 | Activate the funded six-target signed-native distribution pipeline | P2 | Codex | In progress |"));
     assert!(!readme.contains("OSPS-AC-01.01"));
