@@ -6,7 +6,8 @@ and global Codex adapters added by `MCP-014` through `MCP-016`, and the bounded
 STDIO initialize health boundary added by `MCP-017`, the Linux path and
 behavior support added by `MCP-018`, and the Windows source-checkout support
 completed by `MCP-019`, plus the explicit restore and retention behavior added
-by `MCP-020`. It is the operational companion to the
+by `MCP-020` and the cross-process mutation serialization added by `MCP-036`.
+It is the operational companion to the
 [north-star README](../README.md), not a replacement for that product
 specification. Use it when building from source on macOS, GNU/Linux, or Windows
 and reconciling the five implemented global targets: Claude Desktop, Cursor,
@@ -22,13 +23,16 @@ Codex CLI, and Codex IDE extension.
 | Canonical format | Strict JSON schema version `1` for local STDIO servers |
 | Client targets | Global Claude Desktop, global Cursor, global Windsurf legacy Cascade configuration, native VS Code default user profile, and global Codex host configuration |
 | Commands | `init`, `add`, `list`, `test`, `sync --dry-run`, `sync`, `restore <configuration> --dry-run`, and `restore <configuration>` |
-| Safety | Structural redaction, bounded health-process execution, plan-first validation, atomic replacement, one-generation recoverable backups, guarded restore, no-op detection, and reverse-order transaction rollback |
+| Safety | Structural redaction, bounded health-process execution, fail-fast cross-process mutation serialization, plan-first validation, atomic replacement, one-generation recoverable backups, guarded restore, no-op detection, and reverse-order transaction rollback |
 | Installation | Build and run from a source checkout |
 
 Only `test` starts the one named canonical server. `init`, `sync`, and
 `restore`, including their dry-run forms, remain configuration operations and
-never start a configured MCP server. Packaged installation and explicit prune
-behavior remain later work tracked in [PROJECT.md](../PROJECT.md).
+never start a configured MCP server. This guide deliberately uses a source
+checkout; the verified zero-cost `v0.1.0` Cargo, source-building Homebrew, and
+GNU/Linux archive boundaries are documented by the
+[README](../README.md) and [PROJECT.md](../PROJECT.md). Project-issued macOS
+and Windows binaries, WinGet, and explicit prune behavior remain later work.
 
 ## Build and verify the checkout
 
@@ -62,6 +66,7 @@ Canonical configuration uses a platform-local configuration root:
 | Purpose | macOS and GNU/Linux | Windows |
 | --- | --- | --- |
 | Canonical configuration | `$XDG_CONFIG_HOME/mcp-sync/config.json` when `XDG_CONFIG_HOME` is a non-empty absolute path; otherwise `$HOME/.config/mcp-sync/config.json` | `%LOCALAPPDATA%\mcp-sync\config.json` |
+| Persistent empty operation lock | Beside canonical state at `$XDG_CONFIG_HOME/mcp-sync/operation.lock`, or `$HOME/.config/mcp-sync/operation.lock` under the fallback | Beside canonical state at `%LOCALAPPDATA%\mcp-sync\operation.lock` |
 
 Three clients retain their documented home-relative paths:
 
@@ -122,6 +127,12 @@ Canonical and native configuration can contain literal credentials. Their
 the same care as the original secret source, and do not paste their complete
 contents into terminal output, bug reports, or chat.
 
+`operation.lock` is different: it is persistent empty coordination metadata
+and never contains a PID, command, environment value, configuration value, or
+owner record. Do not write to it or delete it as a stale-lock remedy. The
+operating system releases ownership when the holding process closes or exits;
+the empty file intentionally remains for the next invocation.
+
 ## Safe first import
 
 Quit Claude Desktop, Cursor, Windsurf, VS Code, and active Codex hosts before a
@@ -150,6 +161,11 @@ The operation has these outcomes:
 - All five native client files are read-only during `init`; excluded project,
   profile, credential, extension-owned, and alternate-product files are never
   accessed.
+
+The first mutating invocation may create the canonical directory and empty
+`operation.lock` even when later import validation refuses to create
+`config.json`. The coordination file is not canonical state and does not mean
+initialization succeeded.
 
 After a successful import, inspect the redacted catalog:
 
@@ -225,9 +241,11 @@ or environment expansion. Updating an existing name replaces its complete
 `command`, `args`, and `env` definition; omitted arguments or environment
 assignments therefore become empty collections.
 
-Input is validated before canonical state is read. A semantic no-op preserves
-the canonical bytes and any existing backup. A changed canonical regular file
-is replaced atomically after its exact prior bytes are written to
+Input is validated before the operation lock or canonical state is accessed.
+After validation, `add` owns the same mutation lock as every other writer while
+it reads and conditionally replaces canonical state. A semantic no-op
+preserves the canonical bytes and any existing backup. A changed canonical
+regular file is replaced atomically after its exact prior bytes are written to
 `config.json.bak`.
 
 ## Preview and apply target changes
@@ -240,7 +258,8 @@ Always review the complete plan before applying it:
 
 Dry-run validates the canonical file and all five native documents, renders
 and reparses every proposed output, and reports every target without changing
-a file or creating a backup. The plan can contain:
+a file, creating a backup, or acquiring the mutation lock. The plan can
+contain:
 
 - `add` for a canonical server missing from a target;
 - `update` for a compatible local entry whose owned fields differ;
@@ -259,11 +278,13 @@ and active Codex hosts and apply it:
 ./target/debug/mcp-sync sync
 ```
 
-Apply consumes the already validated plan; it does not recalculate a different
-desired state. Existing changed targets receive exact `.bak` files before
-same-directory atomic replacement. Missing changed targets are created without
-a prior-file backup. Target-only entries, unowned native fields, unmanaged
-Cursor, Windsurf, VS Code, and Codex entries, and excluded
+The apply invocation acquires the mutation lock before planning and retains it
+through every write and any reverse-order rollback. Apply then consumes the
+already validated plan; it does not recalculate a different desired state.
+Existing changed targets receive exact `.bak` files before same-directory
+atomic replacement. Missing changed targets are created without a prior-file
+backup. Target-only entries, unowned native fields, unmanaged Cursor,
+Windsurf, VS Code, and Codex entries, and excluded
 project/profile/credential/extension files remain untouched.
 
 Reopen the clients only after `sync` finishes. Then repeat both checks:
@@ -275,6 +296,33 @@ Reopen the clients only after `sync` finishes. Then repeat both checks:
 
 A settled configuration reports all five targets unchanged. Neither command
 rewrites native bytes or replaces existing backups for a no-op.
+
+## Concurrent mutating operations
+
+One operating-system exclusive lock serializes every cooperating writer that
+resolves the same canonical configuration root. The complete locked boundary
+is:
+
+- `init`, from before canonical and client discovery through create-only
+  publication;
+- valid `add`, from before canonical read through no-op or guarded replacement;
+- non-dry-run `sync`, from before canonical and native planning through apply
+  and any rollback; and
+- non-dry-run `restore`, from before target and backup planning through no-op
+  or guarded restoration.
+
+If one of those commands already owns the root, another mutating invocation
+returns non-zero immediately with
+`another mutating mcp-sync operation is already in progress`; it does not read
+managed configuration, wait, join the older plan, or write any target or
+backup. Different canonical roots remain independent. `list`, `test`,
+`sync --dry-run`, and `restore --dry-run` do not take the mutation lock. They
+can run while a writer is active, so treat any read-only view produced during
+that interval as transient and repeat it after the writer finishes.
+
+The lock coordinates `mcp-sync` processes. Native clients and editors do not
+participate, so the existing exact-byte guards still refuse a target or backup
+that an external process changes after planning.
 
 ## Backup and transaction behavior
 
@@ -311,6 +359,18 @@ The command remains unsuccessful after any apply or rollback failure. Read the
 per-target outcomes before retrying.
 
 ## Failure and recovery playbook
+
+### Another mutating operation is in progress
+
+Let the current `mcp-sync` invocation finish, then rerun the command from a new
+dry-run where applicable. Do not delete `operation.lock`: an empty persistent
+file is normal, and deleting a locked file can let two processes coordinate on
+different file identities. If the earlier process exited or was terminated,
+the operating system has already released its ownership even though the file
+remains, so a retry can acquire it. A non-empty, symbolic-link, directory, or
+otherwise non-regular lock artifact fails closed; replace such an artifact
+only after confirming no `mcp-sync` operation is running and preserving it for
+inspection when tampering or corruption is possible.
 
 ### Import conflict or malformed input
 
@@ -592,8 +652,10 @@ promise:
 - Restore intentionally retains one adjacent generation rather than automatic
   backup history. Copy target and backup bytes to separate access-controlled
   storage when more than one previous state is required.
-- No GitHub Release, Homebrew, WinGet, or Cargo publication has been verified
-  for this repository yet.
+- The immutable `v0.1.0` release verifies GNU/Linux archives, Cargo across the
+  six supported native hosts, and source-building Homebrew on supported macOS
+  and GNU/Linux hosts. It intentionally has no project-issued macOS or Windows
+  binary and no WinGet package; those remain funding-dependent later work.
 
 See [PROJECT.md](../PROJECT.md) for the ordered implementation record and the
 evidence required before any later capability is described as delivered.

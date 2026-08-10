@@ -679,6 +679,7 @@ fn a_write_permission_failure_preserves_canonical_state_and_creates_no_backup() 
 
     let home = SyntheticHome::new();
     write_empty_canonical(&home);
+    home.write_file(&home.operation_lock(), b"");
     let canonical_path = home.canonical_configuration();
     let parent = canonical_path
         .parent()

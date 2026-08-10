@@ -11,6 +11,7 @@ mod cursor;
 mod filesystem;
 mod health;
 mod init;
+mod operation_lock;
 mod paths;
 mod reconciliation;
 mod restore;
@@ -118,21 +119,26 @@ fn run(command: Command) -> Result<CommandReport, ApplicationError> {
         .map_err(ApplicationError::ResolvePaths)?;
 
     match command {
-        Command::Init => init::initialize(&paths, &filesystem::OsFileSystem)
-            .map(CommandReport::Init)
-            .map_err(ApplicationError::Init),
-        Command::Add(command) => catalog::add_server(
-            &paths,
-            &filesystem::OsFileSystem,
-            catalog::AddRequest::new(
+        Command::Init => {
+            let _operation_lock = acquire_operation_lock(&paths)?;
+            init::initialize(&paths, &filesystem::OsFileSystem)
+                .map(CommandReport::Init)
+                .map_err(ApplicationError::Init)
+        }
+        Command::Add(command) => {
+            let request = catalog::AddRequest::new(
                 command.name,
                 command.command,
                 command.arguments,
                 command.environment,
-            ),
-        )
-        .map(CommandReport::Add)
-        .map_err(ApplicationError::Catalog),
+            )
+            .validate()
+            .map_err(ApplicationError::Catalog)?;
+            let _operation_lock = acquire_operation_lock(&paths)?;
+            catalog::add_server(&paths, &filesystem::OsFileSystem, request)
+                .map(CommandReport::Add)
+                .map_err(ApplicationError::Catalog)
+        }
         Command::List => catalog::list_servers(&paths, &filesystem::OsFileSystem)
             .map(CommandReport::List)
             .map_err(ApplicationError::Catalog),
@@ -145,32 +151,48 @@ fn run(command: Command) -> Result<CommandReport, ApplicationError> {
         .map(CommandReport::Test)
         .map_err(ApplicationError::Health),
         Command::Restore(command) => {
-            let plan = restore::plan_restore(
-                &paths,
-                &filesystem::OsFileSystem,
-                command.configuration.into(),
-            )
-            .map_err(ApplicationError::Restore)?;
             if command.dry_run {
+                let plan = restore::plan_restore(
+                    &paths,
+                    &filesystem::OsFileSystem,
+                    command.configuration.into(),
+                )
+                .map_err(ApplicationError::Restore)?;
                 Ok(CommandReport::Restore(restore::dry_run(&plan)))
             } else {
+                let _operation_lock = acquire_operation_lock(&paths)?;
+                let plan = restore::plan_restore(
+                    &paths,
+                    &filesystem::OsFileSystem,
+                    command.configuration.into(),
+                )
+                .map_err(ApplicationError::Restore)?;
                 restore::apply_restore(&plan, &filesystem::OsFileSystem)
                     .map(CommandReport::Restore)
                     .map_err(ApplicationError::Restore)
             }
         }
         Command::Sync(command) => {
-            let plan = sync::plan_sync(&paths, &filesystem::OsFileSystem)
-                .map_err(ApplicationError::Sync)?;
             if command.dry_run {
+                let plan = sync::plan_sync(&paths, &filesystem::OsFileSystem)
+                    .map_err(ApplicationError::Sync)?;
                 Ok(CommandReport::Sync(sync::dry_run(&plan)))
             } else {
+                let _operation_lock = acquire_operation_lock(&paths)?;
+                let plan = sync::plan_sync(&paths, &filesystem::OsFileSystem)
+                    .map_err(ApplicationError::Sync)?;
                 sync::apply_sync(&plan, &filesystem::OsFileSystem)
                     .map(CommandReport::Sync)
                     .map_err(ApplicationError::Sync)
             }
         }
     }
+}
+
+fn acquire_operation_lock(
+    paths: &paths::ConfigurationPaths,
+) -> Result<operation_lock::OperationLockGuard, ApplicationError> {
+    operation_lock::try_acquire(paths.operation_lock()).map_err(ApplicationError::OperationLock)
 }
 
 enum CommandReport {
@@ -211,6 +233,7 @@ fn main() -> ExitCode {
 #[derive(Debug)]
 enum ApplicationError {
     ResolvePaths(paths::PathResolutionError),
+    OperationLock(operation_lock::OperationLockError),
     Init(init::InitError),
     Catalog(catalog::CatalogError),
     Health(health::HealthError),
@@ -222,6 +245,7 @@ impl fmt::Display for ApplicationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ResolvePaths(error) => error.fmt(formatter),
+            Self::OperationLock(error) => error.fmt(formatter),
             Self::Init(error) => error.fmt(formatter),
             Self::Catalog(error) => error.fmt(formatter),
             Self::Health(error) => error.fmt(formatter),
@@ -235,6 +259,7 @@ impl Error for ApplicationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::ResolvePaths(error) => Some(error),
+            Self::OperationLock(error) => Some(error),
             Self::Init(error) => Some(error),
             Self::Catalog(error) => Some(error),
             Self::Health(error) => Some(error),

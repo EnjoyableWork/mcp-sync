@@ -109,6 +109,10 @@ impl SyntheticHome {
         self.configuration_home().join("mcp-sync/config.json")
     }
 
+    pub fn operation_lock(&self) -> PathBuf {
+        self.configuration_home().join("mcp-sync/operation.lock")
+    }
+
     pub fn configuration_home(&self) -> PathBuf {
         match std::env::consts::OS {
             "windows" => self.user_root.join("AppData/Local"),
