@@ -886,8 +886,8 @@ impl From<ResponseReadError> for InitializeError {
 mod tests {
     use super::{
         CURRENT_HANDSHAKE_PROTOCOL_VERSION, HealthLimits, InitializeError, InitializeTester,
-        NegotiatedProtocol, ResponseViolation, initialize_request, run_initialize, test_server,
-        validate_initialize_response,
+        NegotiatedProtocol, RESPONSE_TIMEOUT, ResponseViolation, initialize_request,
+        run_initialize, test_server, validate_initialize_response,
     };
     use crate::config::CanonicalServer;
     use crate::filesystem::OsFileSystem;
@@ -916,12 +916,39 @@ mod tests {
         maximum_response_bytes: 64 * 1024,
     };
 
+    #[cfg(unix)]
+    const RESPONSIVE_PROCESS_FIXTURE_TIMEOUT: Duration = Duration::from_millis(200);
+
+    // A cold Windows PowerShell process can take longer than the product's
+    // response boundary to initialize on a hosted runner. This test-only
+    // allowance is used only where the assertion begins after a successful
+    // fixture handshake; built-binary tests retain the five-second boundary.
+    #[cfg(windows)]
+    const RESPONSIVE_PROCESS_FIXTURE_TIMEOUT: Duration = Duration::from_secs(15);
+
     static PROCESS_FIXTURE_LOCK: Mutex<()> = Mutex::new(());
 
     fn process_fixture_lock() -> MutexGuard<'static, ()> {
         PROCESS_FIXTURE_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    #[test]
+    fn responsive_fixture_headroom_does_not_change_the_product_response_boundary() {
+        assert_eq!(RESPONSE_TIMEOUT, Duration::from_secs(5));
+
+        #[cfg(unix)]
+        assert_eq!(
+            RESPONSIVE_PROCESS_FIXTURE_TIMEOUT,
+            SHORT_LIMITS.response_timeout
+        );
+
+        #[cfg(windows)]
+        {
+            assert_eq!(SHORT_LIMITS.response_timeout, RESPONSE_TIMEOUT);
+            assert!(RESPONSIVE_PROCESS_FIXTURE_TIMEOUT > RESPONSE_TIMEOUT);
+        }
     }
 
     struct FixtureEnvironment {
@@ -1311,7 +1338,11 @@ exit 0
             environment,
         );
 
-        let protocol = run_initialize(&server, SHORT_LIMITS).unwrap_or_else(|error| {
+        let limits = HealthLimits {
+            response_timeout: RESPONSIVE_PROCESS_FIXTURE_TIMEOUT,
+            ..SHORT_LIMITS
+        };
+        let protocol = run_initialize(&server, limits).unwrap_or_else(|error| {
             panic!(
                 "the operating-system handshake should succeed: {error}; initialize request captured: {}",
                 request_path.exists()
@@ -1463,7 +1494,7 @@ while ($true) { Start-Sleep -Milliseconds 10 }
             )]),
         );
         let limits = HealthLimits {
-            response_timeout: SHORT_LIMITS.response_timeout,
+            response_timeout: RESPONSIVE_PROCESS_FIXTURE_TIMEOUT,
             shutdown_timeout: Duration::from_millis(100),
             maximum_response_bytes: 1024,
         };

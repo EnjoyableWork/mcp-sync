@@ -236,6 +236,34 @@ fn untrusted_workflows_are_read_only_secretless_and_not_privileged() {
 }
 
 #[test]
+fn ci_runs_once_per_pull_request_commit_and_again_after_main_merge() {
+    let ci = repository_file(".github/workflows/ci.yml");
+    let trigger_end = ci
+        .find("\npermissions:")
+        .expect("CI should define an explicit permissions boundary");
+    let triggers = &ci[..trigger_end];
+
+    assert!(triggers.contains("  pull_request:\n"));
+    assert!(
+        triggers.contains("  push:\n    branches:\n      - main\n"),
+        "CI branch pushes should be limited to main so an open pull request does not run twice"
+    );
+    assert_eq!(triggers.matches("  pull_request:").count(), 1);
+    assert_eq!(triggers.matches("  push:").count(), 1);
+
+    for protected_context in [
+        "name: Dependency policy",
+        "name: Linux ${{ matrix.architecture }} — format, Clippy, and test",
+        "name: Windows ${{ matrix.architecture }} — format, Clippy, and test",
+    ] {
+        assert!(
+            ci.contains(protected_context),
+            "CI should retain protected check context template {protected_context}"
+        );
+    }
+}
+
+#[test]
 fn homebrew_input_is_validated_before_protected_access() {
     let workflow = repository_file(".github/workflows/source-linux-release-publish-homebrew.yml");
     let validate_start = workflow
