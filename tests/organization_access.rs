@@ -176,7 +176,7 @@ fn private_evidence_preparation_outputs_only_aggregate_false_by_default_fields()
 }
 
 #[test]
-fn m3_remains_complete_while_mcp_036_is_the_only_active_correction() {
+fn m3_and_mcp_036_remain_complete_without_activating_a_successor() {
     let project = repository_file("PROJECT.md");
     let readme = repository_file("README.md");
 
@@ -184,8 +184,9 @@ fn m3_remains_complete_while_mcp_036_is_the_only_active_correction() {
     assert!(project.contains("| MCP-034 | Establish organization access, credential, and ownership recovery policy | M3 | P1 | Codex | Done |"));
     assert!(project.contains("| MCP-035 | Self-assess, publish, and showcase the zero-cost enterprise assurance baseline | M3 | P1 | Codex | Done |"));
     assert!(project.contains("| Done — `MCP-030` through `MCP-035` Done |"));
-    assert!(project.contains("`MCP-036` is the sole `In progress` corrective main-story ticket"));
-    assert!(project.contains("| MCP-036 | Serialize every mutating operation per canonical configuration root | Post-M3 corrective maintenance | P0 | Codex | In progress |"));
+    assert!(project.contains("M0 through M3, `MCP-001` through `MCP-036`"));
+    assert!(project.contains("no main-story ticket or side quest is active"));
+    assert!(project.contains("| MCP-036 | Serialize every mutating operation per canonical configuration root | Post-M3 corrective maintenance | P0 | Codex | Done |"));
     assert!(project.contains("No side quest or successor to `MCP-036` is"));
     assert!(project.contains("| SIDE-007 | Redesign the README as a polished, terminal-first public product page | P2 | Codex | Done |"));
     assert!(project.contains("| SIDE-008 | Eliminate duplicate pull-request CI and stabilize Windows health-process fixture timing | P2 | Codex | Done |"));
@@ -197,8 +198,10 @@ fn m3_remains_complete_while_mcp_036_is_the_only_active_correction() {
     assert!(project.contains(
         "| D-16 | Cross-process serialization for every mutating configuration operation |"
     ));
+    assert!(project.contains("| D-16 | Cross-process serialization for every mutating configuration operation | Post-M3 corrective maintenance | Codex | 2026-08-10 | Done |"));
     assert!(project.contains("Complete SIDE-008: make pull-request CI deterministic"));
     assert!(project.contains("completing M3, `SIDE-007`, or `SIDE-008` does not choose a"));
+    assert!(!project.contains("| MCP-036 | Serialize every mutating operation per canonical configuration root | Post-M3 corrective maintenance | P0 | Codex | In progress |"));
     assert!(!project.contains("| SIDE-006 | Activate the funded six-target signed-native distribution pipeline | P2 | Codex | In progress |"));
     assert!(!readme.contains("OSPS-AC-01.01"));
     assert!(!readme.contains("OSPS-AC-02.01"));
