@@ -416,11 +416,14 @@ fn init_reports_an_exact_redacted_conflict_and_mutates_nothing() {
 
     assert!(!home.canonical_configuration().exists());
     assert!(
-        !home
-            .canonical_configuration()
-            .parent()
-            .expect("the canonical path should have a parent")
-            .exists()
+        home.operation_lock().is_file(),
+        "a mutating invocation should retain its empty coordination file"
+    );
+    assert!(
+        fs::read(home.operation_lock())
+            .expect("the operation lock should remain readable")
+            .is_empty(),
+        "coordination metadata must never contain process or configuration data"
     );
     assert_file_matches(
         &home.claude_desktop_configuration(),

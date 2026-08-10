@@ -32,6 +32,20 @@ impl AddRequest {
             environment_assignments,
         }
     }
+
+    /// Validate all user-controlled fields before any filesystem boundary is
+    /// reached. The CLI acquires its cross-process mutation lock only after
+    /// this step succeeds.
+    pub fn validate(self) -> Result<ValidatedAddRequest, CatalogError> {
+        let environment = parse_environment(self.environment_assignments)?;
+        let server = CanonicalServer::new(self.command, self.arguments, environment);
+        CanonicalConfig::new(BTreeMap::from([(self.name.clone(), server.clone())]))
+            .map_err(|source| CatalogError::InvalidRequestedDefinition { source })?;
+        Ok(ValidatedAddRequest {
+            name: self.name,
+            server,
+        })
+    }
 }
 
 impl fmt::Debug for AddRequest {
@@ -49,6 +63,23 @@ impl fmt::Debug for AddRequest {
     }
 }
 
+pub struct ValidatedAddRequest {
+    name: String,
+    server: CanonicalServer,
+}
+
+impl fmt::Debug for ValidatedAddRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ValidatedAddRequest")
+            .field("name", &self.name)
+            .field("command", &"<redacted>")
+            .field("argument_count", &self.server.args().len())
+            .field("environment_key_count", &self.server.env().len())
+            .finish()
+    }
+}
+
 /// Add or replace one complete named definition in canonical state.
 ///
 /// An exact match is a semantic no-op and never reaches the replacement port.
@@ -57,27 +88,22 @@ impl fmt::Debug for AddRequest {
 pub fn add_server(
     paths: &ConfigurationPaths,
     filesystem: &(impl FileSystem + FileReplacer),
-    request: AddRequest,
+    request: ValidatedAddRequest,
 ) -> Result<AddReport, CatalogError> {
-    let environment = parse_environment(request.environment_assignments)?;
-    let server = CanonicalServer::new(request.command, request.arguments, environment);
-    CanonicalConfig::new(BTreeMap::from([(request.name.clone(), server.clone())]))
-        .map_err(|source| CatalogError::InvalidRequestedDefinition { source })?;
-
     let loaded = load_canonical(paths, filesystem)?;
     let outcome = match loaded.config.servers().get(&request.name) {
-        Some(current) if current == &server => UpsertOutcome::Unchanged,
+        Some(current) if current == &request.server => UpsertOutcome::Unchanged,
         Some(_) => UpsertOutcome::Updated,
         None => UpsertOutcome::Added,
     };
 
-    let report = AddReport::new(outcome, &request.name, &server);
+    let report = AddReport::new(outcome, &request.name, &request.server);
     if outcome == UpsertOutcome::Unchanged {
         return Ok(report);
     }
 
     let mut servers = loaded.config.servers().clone();
-    servers.insert(request.name, server);
+    servers.insert(request.name, request.server);
     let desired = CanonicalConfig::new(servers)
         .map_err(|source| CatalogError::InvalidRequestedDefinition { source })?;
     let desired_bytes = desired
@@ -500,6 +526,24 @@ mod tests {
         for private_value in ["private-command", "private-argument", "private-value"] {
             assert!(!debug.contains(private_value));
         }
+
+        let validated = AddRequest::new(
+            "alpha".to_owned(),
+            "private-command".to_owned(),
+            vec!["private-argument".to_owned()],
+            vec!["TOKEN=private-value".to_owned()],
+        )
+        .validate()
+        .expect("the redaction fixture should validate");
+        let validated_debug = format!("{validated:?}");
+
+        assert!(validated_debug.contains("name: \"alpha\""));
+        assert!(validated_debug.contains("command: \"<redacted>\""));
+        assert!(validated_debug.contains("argument_count: 1"));
+        assert!(validated_debug.contains("environment_key_count: 1"));
+        for private_value in ["private-command", "private-argument", "private-value"] {
+            assert!(!validated_debug.contains(private_value));
+        }
     }
 
     #[test]
@@ -521,7 +565,9 @@ mod tests {
                 "private-command".to_owned(),
                 vec!["private-argument".to_owned()],
                 vec!["TOKEN=private-value".to_owned()],
-            ),
+            )
+            .validate()
+            .expect("the exact request should validate"),
         )
         .expect("an exact upsert should succeed");
 
@@ -549,7 +595,9 @@ mod tests {
                 "private-command".to_owned(),
                 vec!["private-argument".to_owned()],
                 vec!["TOKEN=private-value".to_owned()],
-            ),
+            )
+            .validate()
+            .expect("the changed request should validate"),
         )
         .expect_err("a concurrent edit should stop the update");
         let diagnostic = error.to_string();
@@ -589,7 +637,9 @@ mod tests {
                 "new-command".to_owned(),
                 vec!["--new".to_owned()],
                 vec!["TOKEN=new-value".to_owned()],
-            ),
+            )
+            .validate()
+            .expect("the update request should validate"),
         )
         .expect("a valid update should succeed");
 
@@ -664,19 +714,16 @@ mod tests {
 
     #[test]
     fn invalid_requested_definitions_fail_before_reading_canonical_state() {
-        let (_root, paths) = paths();
+        let (_root, _paths) = paths();
         let filesystem = RecordingFileSystem::new(canonical(Vec::new()));
 
-        let error = add_server(
-            &paths,
-            &filesystem,
-            AddRequest::new(
-                " valid-name ".to_owned(),
-                "private-command".to_owned(),
-                Vec::new(),
-                Vec::new(),
-            ),
+        let error = AddRequest::new(
+            " valid-name ".to_owned(),
+            "private-command".to_owned(),
+            Vec::new(),
+            Vec::new(),
         )
+        .validate()
         .expect_err("a padded name should be rejected");
 
         assert!(matches!(

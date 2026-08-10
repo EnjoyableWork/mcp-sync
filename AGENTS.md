@@ -104,7 +104,10 @@ owning parser before mutation, treats equal bytes as a no-op, recreates a
 missing target without consuming the backup, and atomically swaps an existing
 target so its immediately preceding exact bytes become the one retained
 generation. Missing, malformed, symbolic-link, non-regular, stale, or
-concurrently changed inputs fail closed. Only
+concurrently changed inputs fail closed. `init`, valid `add`, non-dry-run
+`sync`, and non-dry-run `restore` acquire one fail-fast operating-system lock
+at the canonical root before reading managed state and hold it through apply
+and rollback; read-only and dry-run commands remain lock-free. Only
 `test` starts the selected configured process. It performs a five-second,
 1-MiB-bounded newline-delimited MCP `initialize` exchange, validates the
 JSON-RPC envelope and negotiated handshake version, sends
@@ -118,13 +121,17 @@ combined built-binary synthetic-home suite proves the complete configuration
 flow, deterministic five-client import, health success and failure behavior,
 redaction, idempotence, native preservation, non-zero failures, and
 five-target transaction rollback plus exact six-file restore and retention.
+Cross-process regressions additionally prove same-root contention, independent
+roots, process-exit release, every mutating command, and the issue #45
+partial-generation refusal with coherent final backups.
 Controlled current-stable Cursor and Claude Desktop smokes on macOS both accept
 the rendered global definitions and complete MCP initialization; the Claude
 journey uses a no-clobber backup and verified exact restore around its temporary
 native file. The source-checkout usage and recovery guide documents the current
 workflow, redaction boundary, bounded health behavior, one-slot backups,
-transaction recovery, validated built-in restoration, manual fallbacks, and
-current limitations without turning the README into a progress report. All five Linux targets have
+transaction recovery, mutation serialization, validated built-in restoration,
+manual fallbacks, and current limitations without turning the README into a
+progress report. All five Linux targets have
 deterministic path, fixture, built-binary behavior, and native x64/ARM64
 whole-suite CI coverage under `MCP-018`; there is no Linux current-client smoke
 claim. All five Windows paths, the copied-binary journey, native PowerShell
@@ -284,6 +291,11 @@ integrity and redaction as product requirements.
 - A multi-target apply must report per-target outcomes and recover already
   changed targets if a later target fails. Never report overall success after a
   partial, unrecovered mutation.
+- Serialize every mutating command per canonical configuration root with one
+  fail-fast cross-process lock held from before managed-state reads through
+  apply and rollback. Keep the persistent empty lock file free of owner or
+  configuration data, never delete it as stale during normal operation, and
+  keep read-only and dry-run commands lock-free.
 - Inspect and test behavior for missing files, malformed JSON or TOML,
   permissions, symlinks, non-regular files, interrupted writes, backup
   collisions, and concurrent modification before claiming safe sync or restore.

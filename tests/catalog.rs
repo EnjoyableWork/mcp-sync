@@ -412,10 +412,6 @@ fn missing_and_malformed_canonical_state_fail_without_mutation_or_value_output()
         &["missing-private-argument"],
         &["TOKEN=missing-private-value"],
     )));
-    assert!(
-        missing_add == expected_missing,
-        "missing add diagnostics should be exact and actionable"
-    );
     assert_output_omits(
         &missing_add,
         &[
@@ -423,6 +419,10 @@ fn missing_and_malformed_canonical_state_fail_without_mutation_or_value_output()
             "missing-private-argument",
             "missing-private-value",
         ],
+    );
+    assert_eq!(
+        missing_add, expected_missing,
+        "missing add diagnostics should be exact and actionable"
     );
     let missing_list = stderr(&run_failure(list_command(&missing)));
     assert!(
@@ -601,13 +601,13 @@ fn a_non_regular_backup_blocks_replacement_without_changing_canonical_state() {
         "error: cannot update canonical configuration: refusing to replace directory `{}`; a regular file is required\n",
         backup.display()
     );
-    assert!(
-        output == expected,
-        "backup-collision diagnostics should be exact and actionable"
-    );
     assert_output_omits(
         &output,
         &["private-command", "private-argument", "private-value"],
+    );
+    assert_eq!(
+        output, expected,
+        "backup-collision diagnostics should be exact and actionable"
     );
     assert!(
         fs::read(&canonical_path).expect("canonical state should remain readable")
@@ -679,6 +679,7 @@ fn a_write_permission_failure_preserves_canonical_state_and_creates_no_backup() 
 
     let home = SyntheticHome::new();
     write_empty_canonical(&home);
+    home.write_file(&home.operation_lock(), b"");
     let canonical_path = home.canonical_configuration();
     let parent = canonical_path
         .parent()

@@ -14,7 +14,7 @@ fn readme() -> String {
 fn product_page_frontloads_the_cli_journey_and_progressively_discloses_detail() {
     let readme = readme();
 
-    assert!(readme.starts_with("<h1 align=\"center\">mcp-sync</h1>"));
+    assert!(readme.starts_with("<h1 align=\"center\">⚡ mcp-sync</h1>"));
     for required_surface in [
         "Define your MCP servers once. Keep every local AI client in sync.",
         "https://github.com/EnjoyableWork/mcp-sync/actions/workflows/ci.yml/badge.svg",
@@ -27,6 +27,7 @@ fn product_page_frontloads_the_cli_journey_and_progressively_discloses_detail() 
         "<a href=\"#security-and-trust\">Trust</a>",
         "$ mcp-sync init",
         "$ mcp-sync sync --dry-run",
+        "**Serialize writers.**",
         "<details>\n<summary><strong>Managed paths by platform</strong></summary>",
         "<details>\n<summary><strong>Build and verify from source</strong></summary>",
     ] {
@@ -79,6 +80,26 @@ fn product_page_frontloads_the_cli_journey_and_progressively_discloses_detail() 
         0,
         "README code fences should remain balanced"
     );
+}
+
+#[test]
+fn operational_guide_documents_the_complete_mutation_lock_contract() {
+    let guide = fs::read_to_string(repository_root().join("docs/m1-usage-and-recovery.md"))
+        .expect("the operational guide should be readable");
+
+    for required_contract in [
+        "## Concurrent mutating operations",
+        "mcp-sync/operation.lock",
+        "from before canonical and native planning through apply",
+        "another mutating mcp-sync operation is already in progress",
+        "Do not delete `operation.lock`",
+        "Different canonical roots remain independent",
+    ] {
+        assert!(
+            guide.contains(required_contract),
+            "the operational guide should retain the mutation-lock contract: {required_contract}"
+        );
+    }
 }
 
 #[test]

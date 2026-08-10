@@ -1,4 +1,4 @@
-<h1 align="center">mcp-sync</h1>
+<h1 align="center">⚡ mcp-sync</h1>
 
 <p align="center">
   <strong>Define your MCP servers once. Keep every local AI client in sync.</strong>
@@ -226,6 +226,10 @@ Devin Local agent configuration.
 - **Plan before apply.** Every target is parsed, validated, and rendered in
   memory before the first write. `sync --dry-run` exposes that plan without
   mutation.
+- **Serialize writers.** `init`, `add`, applied `sync`, and applied `restore`
+  take one fail-fast lock per canonical configuration root before reading
+  managed state and hold it through apply and rollback. Overlapping writers
+  exit without joining a partial transaction.
 - **Preserve what mcp-sync does not own.** Client-only fields, settings,
   comments, target-only servers, and unmanaged remote transports survive a
   sync. There is no implicit prune.

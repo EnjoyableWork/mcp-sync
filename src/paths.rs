@@ -49,6 +49,7 @@ pub struct ConfigurationPaths {
     configuration_home: PathBuf,
     user_data_home: PathBuf,
     canonical_configuration: PathBuf,
+    operation_lock: PathBuf,
 }
 
 impl ConfigurationPaths {
@@ -78,13 +79,16 @@ impl ConfigurationPaths {
                 required_absolute_path(environment, APP_DATA)?,
             ),
         };
-        let canonical_configuration = configuration_home.join("mcp-sync/config.json");
+        let canonical_root = configuration_home.join("mcp-sync");
+        let canonical_configuration = canonical_root.join("config.json");
+        let operation_lock = canonical_root.join("operation.lock");
 
         Ok(Self {
             user_home,
             configuration_home,
             user_data_home,
             canonical_configuration,
+            operation_lock,
         })
     }
 
@@ -103,6 +107,10 @@ impl ConfigurationPaths {
 
     pub fn canonical_configuration(&self) -> &Path {
         &self.canonical_configuration
+    }
+
+    pub fn operation_lock(&self) -> &Path {
+        &self.operation_lock
     }
 }
 
@@ -274,12 +282,17 @@ mod tests {
             paths.canonical_configuration(),
             fixture.user_home.join(".config/mcp-sync/config.json")
         );
+        assert_eq!(
+            paths.operation_lock(),
+            fixture.user_home.join(".config/mcp-sync/operation.lock")
+        );
 
         for path in [
             paths.user_home(),
             paths.configuration_home(),
             paths.user_data_home(),
             paths.canonical_configuration(),
+            paths.operation_lock(),
         ] {
             fixture.assert_isolated(path);
         }
@@ -302,12 +315,17 @@ mod tests {
             paths.canonical_configuration(),
             fixture.user_home.join(".config/mcp-sync/config.json")
         );
+        assert_eq!(
+            paths.operation_lock(),
+            fixture.user_home.join(".config/mcp-sync/operation.lock")
+        );
 
         for path in [
             paths.user_home(),
             paths.configuration_home(),
             paths.user_data_home(),
             paths.canonical_configuration(),
+            paths.operation_lock(),
         ] {
             fixture.assert_isolated(path);
         }
@@ -334,12 +352,19 @@ mod tests {
             paths.canonical_configuration(),
             fixture.user_home.join("AppData/Local/mcp-sync/config.json")
         );
+        assert_eq!(
+            paths.operation_lock(),
+            fixture
+                .user_home
+                .join("AppData/Local/mcp-sync/operation.lock")
+        );
 
         for path in [
             paths.user_home(),
             paths.configuration_home(),
             paths.user_data_home(),
             paths.canonical_configuration(),
+            paths.operation_lock(),
         ] {
             fixture.assert_isolated(path);
         }
@@ -362,10 +387,18 @@ mod tests {
             fixture.root.path().join("xdg-config/mcp-sync/config.json")
         );
         assert_eq!(
+            paths.operation_lock(),
+            fixture
+                .root
+                .path()
+                .join("xdg-config/mcp-sync/operation.lock")
+        );
+        assert_eq!(
             paths.user_data_home(),
             fixture.user_home.join("Library/Application Support")
         );
         fixture.assert_isolated(paths.canonical_configuration());
+        fixture.assert_isolated(paths.operation_lock());
         fixture.assert_isolated(paths.user_data_home());
     }
 
@@ -386,7 +419,15 @@ mod tests {
             paths.canonical_configuration(),
             fixture.root.path().join("xdg-config/mcp-sync/config.json")
         );
+        assert_eq!(
+            paths.operation_lock(),
+            fixture
+                .root
+                .path()
+                .join("xdg-config/mcp-sync/operation.lock")
+        );
         fixture.assert_isolated(paths.canonical_configuration());
+        fixture.assert_isolated(paths.operation_lock());
         fixture.assert_isolated(paths.user_data_home());
     }
 
@@ -404,8 +445,13 @@ mod tests {
             paths.canonical_configuration(),
             fixture.user_home.join(".config/mcp-sync/config.json")
         );
+        assert_eq!(
+            paths.operation_lock(),
+            fixture.user_home.join(".config/mcp-sync/operation.lock")
+        );
         assert_eq!(paths.user_data_home(), fixture.user_home.join(".config"));
         fixture.assert_isolated(paths.canonical_configuration());
+        fixture.assert_isolated(paths.operation_lock());
     }
 
     #[test]
