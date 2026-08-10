@@ -176,7 +176,7 @@ fn private_evidence_preparation_outputs_only_aggregate_false_by_default_fields()
 }
 
 #[test]
-fn m3_tracker_is_complete_without_activating_a_successor() {
+fn m3_tracker_is_complete_after_the_ci_reliability_side_quest_without_a_successor() {
     let project = repository_file("PROJECT.md");
     let readme = repository_file("README.md");
 
@@ -185,7 +185,16 @@ fn m3_tracker_is_complete_without_activating_a_successor() {
     assert!(project.contains("| MCP-035 | Self-assess, publish, and showcase the zero-cost enterprise assurance baseline | M3 | P1 | Codex | Done |"));
     assert!(project.contains("| Done — `MCP-030` through `MCP-035` Done |"));
     assert!(project.contains("no later main-story milestone or side quest is active"));
-    assert!(project.contains("completing M3 does not choose a successor"));
+    assert!(project.contains("| SIDE-007 | Redesign the README as a polished, terminal-first public product page | P2 | Codex | Done |"));
+    assert!(project.contains("| SIDE-008 | Eliminate duplicate pull-request CI and stabilize Windows health-process fixture timing | P2 | Codex | Done |"));
+    assert!(
+        project.contains(
+            "| D-15 | Deterministic pull-request CI and stable Windows health fixtures |"
+        )
+    );
+    assert!(project.contains("Complete SIDE-008: make pull-request CI deterministic"));
+    assert!(project.contains("completing M3, `SIDE-007`, or `SIDE-008` does not choose a"));
+    assert!(!project.contains("| SIDE-006 | Activate the funded six-target signed-native distribution pipeline | P2 | Codex | In progress |"));
     assert!(!readme.contains("OSPS-AC-01.01"));
     assert!(!readme.contains("OSPS-AC-02.01"));
 }
