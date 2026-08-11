@@ -257,6 +257,20 @@ pub(super) fn replace_existing_with_backup_snapshot_after(
         );
     }
 
+    backup_stage = match make_stage_process_durable(path, backup_stage) {
+        Ok(stage) => stage,
+        Err((failure, stage)) => {
+            return fail_before_commit(
+                path,
+                failure,
+                Some(&journal_bytes),
+                replacement_stage,
+                stage,
+                &journal,
+            );
+        }
+    };
+
     journal.phase = TransactionPhase::Prepared;
     let prepared_bytes = journal.serialized(path)?;
     if let Err(failure) = replace_journal(path, &journal_bytes, &prepared_bytes) {
@@ -648,6 +662,37 @@ fn preserve_named_stage(stage: tempfile::NamedTempFile) {
         Ok((file, _)) => drop(file),
         Err(mut error) => error.file.disable_cleanup(true),
     }
+}
+
+fn make_stage_process_durable(
+    transaction_target: &Path,
+    stage: tempfile::NamedTempFile,
+) -> Result<tempfile::NamedTempFile, (FileMutationError, tempfile::NamedTempFile)> {
+    if !stage.path().is_absolute() {
+        return Err((
+            FileMutationError::InvalidReplacementTransaction {
+                path: transaction_target.to_owned(),
+            },
+            stage,
+        ));
+    }
+    let (file, stage_path) = match stage.keep() {
+        Ok(parts) => parts,
+        Err(error) => {
+            return Err((
+                FileIoError::new(
+                    FileOperation::PreserveTransactionStage,
+                    transaction_target,
+                    error.error,
+                )
+                .into(),
+                error.file,
+            ));
+        }
+    };
+    let temporary_path = tempfile::TempPath::try_from_path(stage_path)
+        .expect("a non-empty absolute transaction stage path should remain absolute");
+    Ok(tempfile::NamedTempFile::from_parts(file, temporary_path))
 }
 
 fn read_journal(
@@ -1081,9 +1126,9 @@ mod tests {
     use super::{
         DurableBoundary, FileMutationError, FileSnapshot, Fingerprint, RecoveryOutcome,
         ReplacementTransaction, TRANSACTION_VERSION, TransactionPhase, backup_path,
-        create_empty_stage, observe_test_boundary, preserve_named_stage, publish_new_journal,
-        recover_pending_replacement, replace_journal, sync_parent_directory, transaction_path,
-        valid_stage_name, write_and_sync_stage,
+        create_empty_stage, make_stage_process_durable, observe_test_boundary,
+        preserve_named_stage, publish_new_journal, recover_pending_replacement, replace_journal,
+        sync_parent_directory, transaction_path, valid_stage_name, write_and_sync_stage,
     };
     use std::path::Path;
 
@@ -1177,6 +1222,25 @@ mod tests {
         assert!(!valid_stage_name(".mcp-sync-abc123.tmp/child"));
         assert!(!valid_stage_name(".mcp-sync-short.tmp"));
         assert!(!valid_stage_name("foreign.tmp"));
+    }
+
+    #[test]
+    fn process_durable_stage_retains_bytes_and_normal_cleanup() {
+        let fixture = tempfile::tempdir().unwrap();
+        let target = fixture.path().join("config.json");
+        let mut stage = create_empty_stage(&target).unwrap();
+        write_and_sync_stage(&target, &mut stage, b"original generation\n").unwrap();
+        let stage_path = stage.path().to_owned();
+
+        let stage = make_stage_process_durable(&target, stage)
+            .unwrap_or_else(|_| panic!("an absolute owned stage should become process-durable"));
+
+        assert_eq!(
+            std::fs::read(&stage_path).unwrap(),
+            b"original generation\n"
+        );
+        drop(stage);
+        assert!(!stage_path.exists());
     }
 
     #[test]

@@ -583,6 +583,7 @@ pub enum FileOperation {
     PublishTransaction,
     ReplaceFile,
     ReplaceTransaction,
+    PreserveTransactionStage,
     OpenTransactionStage,
     RemoveFile,
 }
@@ -603,6 +604,9 @@ impl fmt::Display for FileOperation {
             Self::PublishTransaction => formatter.write_str("publish replacement transaction for"),
             Self::ReplaceFile => formatter.write_str("atomically replace"),
             Self::ReplaceTransaction => formatter.write_str("advance replacement transaction for"),
+            Self::PreserveTransactionStage => {
+                formatter.write_str("make replacement stage process-durable for")
+            }
             Self::OpenTransactionStage => formatter.write_str("open replacement stage for"),
             Self::RemoveFile => formatter.write_str("remove"),
         }
