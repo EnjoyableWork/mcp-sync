@@ -5,9 +5,7 @@ use super::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-#[cfg(any(unix, test))]
-use std::fs::File;
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 
@@ -166,6 +164,28 @@ enum DurableBoundary {
     BackupPublished,
 }
 
+struct DurableStage {
+    file: File,
+    path: PathBuf,
+}
+
+impl DurableStage {
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn into_named(self) -> tempfile::NamedTempFile {
+        // Reintroduce temporary-file ownership only for an explicit close or
+        // atomic publish. Recovery must retain the ordinary stage if the
+        // process stops between either operation's validation and commit.
+        let temporary_path = tempfile::TempPath::try_from_path(self.path)
+            .expect("a durable transaction stage path must remain absolute");
+        let mut stage = tempfile::NamedTempFile::from_parts(self.file, temporary_path);
+        stage.disable_cleanup(true);
+        stage
+    }
+}
+
 pub(super) fn ensure_no_pending_for_read(path: &Path) -> Result<(), FileIoError> {
     let transaction = transaction_path(path);
     match fs::symlink_metadata(&transaction) {
@@ -257,7 +277,7 @@ pub(super) fn replace_existing_with_backup_snapshot_after(
         );
     }
 
-    backup_stage = match make_stage_process_durable(path, backup_stage, expected_current) {
+    let backup_stage = match make_stage_process_durable(path, backup_stage, expected_current) {
         Ok(stage) => stage,
         Err((failure, stage)) => {
             return fail_before_commit(
@@ -279,7 +299,7 @@ pub(super) fn replace_existing_with_backup_snapshot_after(
             failure,
             Some(&journal_bytes),
             replacement_stage,
-            backup_stage,
+            backup_stage.into_named(),
             &journal,
         );
     }
@@ -290,7 +310,7 @@ pub(super) fn replace_existing_with_backup_snapshot_after(
             failure,
             Some(&journal_bytes),
             replacement_stage,
-            backup_stage,
+            backup_stage.into_named(),
             &journal,
         );
     }
@@ -309,7 +329,7 @@ pub(super) fn replace_existing_with_backup_snapshot_after(
             failure,
             Some(&journal_bytes),
             replacement_stage,
-            backup_stage,
+            backup_stage.into_named(),
             &journal,
         );
     }
@@ -323,7 +343,7 @@ pub(super) fn replace_existing_with_backup_snapshot_after(
                 failure,
                 Some(&journal_bytes),
                 error.file,
-                backup_stage,
+                backup_stage.into_named(),
                 &journal,
             );
         }
@@ -335,7 +355,7 @@ pub(super) fn replace_existing_with_backup_snapshot_after(
             expected_current,
             replacement,
             failure,
-            backup_stage,
+            backup_stage.into_named(),
             &journal_bytes,
         );
     }
@@ -352,11 +372,12 @@ pub(super) fn replace_existing_with_backup_snapshot_after(
             expected_current,
             replacement,
             failure,
-            backup_stage,
+            backup_stage.into_named(),
             &journal_bytes,
         );
     }
 
+    let backup_stage = backup_stage.into_named();
     let backup_result = match &previous_backup {
         FileSnapshot::Missing => backup_stage.persist_noclobber(&backup),
         FileSnapshot::Existing(_) => backup_stage.persist(&backup),
@@ -668,7 +689,7 @@ fn make_stage_process_durable(
     transaction_target: &Path,
     stage: tempfile::NamedTempFile,
     expected: &[u8],
-) -> Result<tempfile::NamedTempFile, (FileMutationError, tempfile::NamedTempFile)> {
+) -> Result<DurableStage, (FileMutationError, tempfile::NamedTempFile)> {
     if !stage.path().is_absolute() {
         return Err((
             FileMutationError::InvalidReplacementTransaction {
@@ -677,7 +698,10 @@ fn make_stage_process_durable(
             stage,
         ));
     }
-    let (temporary_file, stage_path) = match stage.keep() {
+    if let Err(failure) = ensure_regular_bytes(stage.path(), expected) {
+        return Err((failure, stage));
+    }
+    let (file, path) = match stage.keep() {
         Ok(parts) => parts,
         Err(error) => {
             return Err((
@@ -691,29 +715,7 @@ fn make_stage_process_durable(
             ));
         }
     };
-    let reopened_file = OpenOptions::new().read(true).write(true).open(&stage_path);
-    let temporary_path = tempfile::TempPath::try_from_path(stage_path)
-        .expect("a non-empty absolute transaction stage path should remain absolute");
-    let reopened_file = match reopened_file {
-        Ok(file) => file,
-        Err(source) => {
-            return Err((
-                FileIoError::new(
-                    FileOperation::OpenTransactionStage,
-                    transaction_target,
-                    source,
-                )
-                .into(),
-                tempfile::NamedTempFile::from_parts(temporary_file, temporary_path),
-            ));
-        }
-    };
-    drop(temporary_file);
-    let durable_stage = tempfile::NamedTempFile::from_parts(reopened_file, temporary_path);
-    match ensure_regular_bytes(durable_stage.path(), expected) {
-        Ok(()) => Ok(durable_stage),
-        Err(failure) => Err((failure, durable_stage)),
-    }
+    Ok(DurableStage { file, path })
 }
 
 fn read_journal(
@@ -1246,7 +1248,7 @@ mod tests {
     }
 
     #[test]
-    fn process_durable_stage_retains_bytes_and_normal_cleanup() {
+    fn process_durable_stage_survives_drop_until_explicit_cleanup() {
         let fixture = tempfile::tempdir().unwrap();
         let target = fixture.path().join("config.json");
         let mut stage = create_empty_stage(&target).unwrap();
@@ -1261,6 +1263,11 @@ mod tests {
             b"original generation\n"
         );
         drop(stage);
+        assert_eq!(
+            std::fs::read(&stage_path).unwrap(),
+            b"original generation\n"
+        );
+        std::fs::remove_file(&stage_path).unwrap();
         assert!(!stage_path.exists());
     }
 
