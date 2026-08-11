@@ -161,12 +161,12 @@ and Codex have no current-client smoke claim on any implemented platform.
 Distribution remains later-ticket scope.
 `MCP-039` is `Done`: every Cargo version after `0.1.0` must use its exact
 protected crates.io Trusted Publishing path with trusted-publishing-only
-enforcement and no API-token fallback. Approved M4 successor `MCP-037` is
-`In progress` under Codex and its exact canonical Goal; it has no `v0.1.0`
-adoption-evidence prerequisite. Its adapter, local and hosted native matrix,
-and controlled Kiro IDE plus inherited Kiro Crew evidence pass on the active
-implementation branch; protected merge, exact-main verification, durable
-ticket closure, and Goal completion remain before `MCP-037` is `Done`.
+enforcement and no API-token fallback. Bounded M4 expansion `MCP-037` is also
+`Done` without a `v0.1.0` adoption-evidence prerequisite: protected PR #58
+merged its six-target adapter and durable native and current-client evidence as
+exact-main commit `d63a7a97026f994e06d89c1f699938a26a313aa8`, whose CI, CodeQL,
+release preflight, and source/install/archive preflight all pass. No main-story
+ticket, side quest, or successor is active.
 Use the existing Clap command tree as CLI behavior grows; do not introduce a
 second parser.
 
