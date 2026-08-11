@@ -33,7 +33,7 @@ fn product_page_frontloads_the_cli_journey_and_progressively_discloses_detail() 
         "| Kiro | Global-user `.kiro/settings/mcp.json` | Comment-preserving JSON `mcpServers` |",
         "An absolute, traversal-free `KIRO_HOME`",
         "**Serialize writers.**",
-        "**Treat six targets as one transaction.**",
+        "**Treat returned failures across six targets as one transaction.**",
         "<details>\n<summary><strong>Managed paths by platform</strong></summary>",
         "<details>\n<summary><strong>Build and verify from source</strong></summary>",
     ] {
@@ -113,7 +113,7 @@ fn public_and_operational_docs_pin_the_kiro_ownership_boundary() {
         "Kiro IDE `1.0.288`",
         "Kiro Crew `0.1.3`",
         "`includeMcpJson: false`",
-        "`sync` is one six-target transaction",
+        "`sync` treats returned failures as one six-target",
         "| `kiro` | Global-user Kiro comment-preserving JSON |",
     ] {
         assert!(
@@ -139,6 +139,41 @@ fn operational_guide_documents_the_complete_mutation_lock_contract() {
         assert!(
             guide.contains(required_contract),
             "the operational guide should retain the mutation-lock contract: {required_contract}"
+        );
+    }
+}
+
+#[test]
+fn public_and_operational_docs_pin_the_per_file_crash_recovery_boundary() {
+    let readme = readme();
+    let guide = fs::read_to_string(repository_root().join("docs/m1-usage-and-recovery.md"))
+        .expect("the operational guide should be readable");
+
+    for required_contract in [
+        "target-first, journaled same-directory transaction",
+        "the next locked mutation safely aborts or",
+        "Crash recovery is per file",
+        "atomic across process termination or whole-machine power loss",
+    ] {
+        assert!(
+            readme.contains(required_contract),
+            "README should retain the crash-recovery boundary: {required_contract}"
+        );
+    }
+
+    for required_contract in [
+        "### An earlier process stopped during existing-file replacement",
+        "<target>.mcp-sync-transaction.json",
+        "byte counts, SHA-256 fingerprints",
+        "lock-free commands never perform recovery",
+        "inspects all seven resolved managed",
+        "Recovery is idempotent",
+        "whole-machine or power-loss durability",
+        "nor does it make all six target commits",
+    ] {
+        assert!(
+            guide.contains(required_contract),
+            "the operational guide should retain the crash-recovery contract: {required_contract}"
         );
     }
 }

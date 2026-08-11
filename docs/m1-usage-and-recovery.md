@@ -26,7 +26,7 @@ Kiro Crew.
 | Canonical format | Strict JSON schema version `1` for local STDIO servers |
 | Client targets | Global Claude Desktop, global Cursor, global Windsurf legacy Cascade configuration, native VS Code default user profile, global Codex host configuration, and global-user Kiro configuration inherited by Kiro Crew |
 | Commands | `init`, `add`, `list`, `test`, `sync --dry-run`, `sync`, `restore <configuration> --dry-run`, and `restore <configuration>` |
-| Safety | Structural redaction, bounded health-process execution, fail-fast cross-process mutation serialization, plan-first validation, atomic replacement, one-generation recoverable backups, guarded restore, no-op detection, and reverse-order transaction rollback |
+| Safety | Structural redaction, bounded health-process execution, fail-fast cross-process mutation serialization, plan-first validation, target-first per-file abrupt-process recovery, one-generation recoverable backups, guarded restore, no-op detection, and reverse-order returned-failure rollback |
 | Installation | Build and run from a source checkout |
 
 Only `test` starts the one named canonical server. `init`, `sync`, and
@@ -288,8 +288,10 @@ Input is validated before the operation lock or canonical state is accessed.
 After validation, `add` owns the same mutation lock as every other writer while
 it reads and conditionally replaces canonical state. A semantic no-op
 preserves the canonical bytes and any existing backup. A changed canonical
-regular file is replaced atomically after its exact prior bytes are written to
-`config.json.bak`.
+regular file uses the target-first journal protocol below: the exact prior
+target is staged while the existing `config.json.bak` remains authoritative,
+the target becomes the commit point, and only then is the prior target
+published as the new backup.
 
 ## Preview and apply target changes
 
@@ -324,10 +326,11 @@ active Codex hosts, Kiro IDE, and Kiro Crew and apply it:
 The apply invocation acquires the mutation lock before planning and retains it
 through every write and any reverse-order rollback. Apply then consumes the
 already validated plan; it does not recalculate a different desired state.
-Existing changed targets receive exact `.bak` files before same-directory
-atomic replacement. Missing changed targets are created without a prior-file
-backup. Target-only entries, unowned native fields, unmanaged Cursor,
-Windsurf, VS Code, Codex, and Kiro entries, and excluded
+Existing changed targets use a same-directory target-first transaction and
+receive exact `.bak` files containing their immediately preceding bytes.
+Missing changed targets are created without a prior-file backup. Target-only
+entries, unowned native fields, unmanaged Cursor, Windsurf, VS Code, Codex,
+and Kiro entries, and excluded
 project/profile/workspace/agent/Crew/credential/extension files remain
 untouched.
 
@@ -361,8 +364,11 @@ returns non-zero immediately with
 managed configuration, wait, join the older plan, or write any target or
 backup. Different canonical roots remain independent. `list`, `test`,
 `sync --dry-run`, and `restore --dry-run` do not take the mutation lock. They
-can run while a writer is active, so treat any read-only view produced during
-that interval as transient and repeat it after the writer finishes.
+can run while a writer is active. Once an existing-file transaction journal is
+published, a lock-free command that reads that affected file refuses it as
+incomplete rather than planning from an intermediate generation. A lock-free
+command that does not read the affected file can still run, so treat any view
+produced during a writer as transient and repeat it after the writer finishes.
 
 The lock coordinates `mcp-sync` processes. Native clients and editors do not
 participate, so the existing exact-byte guards still refuse a target or backup
@@ -389,9 +395,35 @@ transaction leaves the pre-operation retention state intact. If longer history
 is important, copy the current file and its backup to a separate,
 access-controlled location before making another change.
 
-`sync` is one six-target transaction. Claude Desktop is applied first, Cursor
-second, Windsurf third, VS Code fourth, Codex fifth, and Kiro sixth. If a later
-target fails, earlier changes are rolled back in reverse order:
+Changed existing files share one target-first transaction protocol across
+`add`, `sync`, and `restore`:
+
+1. mcp-sync validates and snapshots the exact regular target and adjacent
+   backup state.
+2. It creates two private same-directory stages and publishes an adjacent
+   `<target>.mcp-sync-transaction.json` journal before writing either stage.
+   The versioned journal contains only byte counts, SHA-256 fingerprints, the
+   transaction phase, and two traversal-free stage basenames; it never contains
+   configuration bytes.
+3. It writes and synchronizes the exact replacement and original-target stages,
+   then durably advances the journal to `prepared`.
+4. After rechecking the target, backup, journal, and stages, it atomically
+   publishes the replacement target. This is the per-file commit point; the
+   previous backup remains unchanged until then.
+5. It publishes the exact original target as `.bak`, then removes only the
+   journal-named regular stages whose fingerprints still match and cleans up the
+   journal.
+
+The stages contain private configuration bytes even though the journal does
+not. Do not print, upload, or casually inspect either kind of recovery artifact.
+This protocol covers abrupt mcp-sync process termination. It does not promise
+whole-machine or power-loss durability, nor does it make all six target commits
+atomic across termination.
+
+During a running invocation, `sync` treats returned failures as one six-target
+transaction. Claude Desktop is applied first, Cursor second, Windsurf third,
+VS Code fourth, Codex fifth, and Kiro sixth. If a later target returns a
+failure, earlier changes are rolled back in reverse order:
 
 - an updated file and any backup that existed before the transaction are
   restored exactly;
@@ -415,6 +447,35 @@ remains, so a retry can acquire it. A non-empty, symbolic-link, directory, or
 otherwise non-regular lock artifact fails closed; replace such an artifact
 only after confirming no `mcp-sync` operation is running and preserving it for
 inspection when tampering or corruption is possible.
+
+### An earlier process stopped during existing-file replacement
+
+An abrupt exit can leave an adjacent
+`<target>.mcp-sync-transaction.json` and one or two private
+`.mcp-sync-XXXXXX.tmp` stages. Do not delete or rename them. `list`, `test`,
+`sync --dry-run`, or `restore --dry-run` returns non-zero if it reaches the
+affected file because lock-free commands never perform recovery.
+
+Keep the clients closed and rerun a valid mutating command: `init`, `add`,
+non-dry-run `sync`, or non-dry-run `restore`. After acquiring the canonical-root
+operation lock and before planning, mcp-sync inspects all seven resolved managed
+paths. If the target still has its original bytes, recovery aborts the pending
+replacement and preserves the prior backup. If the target has the exact
+replacement bytes, recovery publishes the exact original target as `.bak`. An
+already complete target/backup pair needs cleanup only. Recovery is idempotent,
+so retrying after another abrupt exit is safe.
+
+Malformed metadata, a symbolic link or non-regular artifact, a missing or
+fingerprint-mismatched required stage, or an external target or backup edit
+fails closed without overwriting or deleting the ambiguous state. In that case:
+
+1. Do not rerun `sync` repeatedly or remove a journal or stage by filename.
+2. Preserve the target, `.bak`, journal, and journal-named stages in separate,
+   access-controlled storage.
+3. Resolve which generation is authoritative without printing configuration
+   values or fingerprints into a ticket, terminal transcript, or chat.
+4. Restore only after checking file types, syntax, exact intent, and ownership;
+   then start again with a dry-run where applicable.
 
 ### Import conflict or malformed input
 
@@ -499,7 +560,8 @@ Apply only after the preview is understood:
 ```
 
 For an existing regular target whose bytes differ, guarded apply verifies that
-both files still match the preview, atomically publishes the backup bytes, and
+both files still match the preview, stages both generations, atomically
+publishes the selected backup bytes to the target as the commit point, and then
 rotates the exact previous target into `.bak`. Running the command again can
 therefore undo a restore when the rotated bytes also form a valid document. If
 the target is missing, restore recreates it without consuming or rewriting the
@@ -748,6 +810,9 @@ promise:
 - Restore intentionally retains one adjacent generation rather than automatic
   backup history. Copy target and backup bytes to separate access-controlled
   storage when more than one previous state is required.
+- Abrupt-process recovery is target-first and per existing file. It does not
+  make the six target commits atomic across termination and does not claim
+  whole-machine or power-loss durability.
 - The immutable `v0.1.0` release verifies GNU/Linux archives, Cargo across the
   six supported native hosts, and source-building Homebrew on supported macOS
   and GNU/Linux hosts. It intentionally has no project-issued macOS or Windows

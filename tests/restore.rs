@@ -474,6 +474,11 @@ fn built_binary_refuses_missing_invalid_and_non_regular_backups_without_mutation
         current,
         "missing backup must not change the current target",
     );
+    let transaction = PathBuf::from(format!("{}.mcp-sync-transaction.json", canonical.display()));
+    assert!(
+        !transaction.exists(),
+        "a missing restore source must fail during planning before a replacement transaction starts"
+    );
 
     fs::create_dir(&canonical_backup).expect("a blocking backup directory should be created");
     let non_regular = stderr(&run_failure(restore_command(&home, "canonical", false)));

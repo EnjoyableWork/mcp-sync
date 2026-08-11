@@ -254,10 +254,12 @@ requiring a duplicate target.
   headers, server output, and raw configuration stay out of ordinary
   diagnostics.
 - **Replace recoverably.** Changed regular files receive one adjacent `.bak`
-  generation and are replaced through a same-directory temporary file.
-- **Treat six targets as one transaction.** If a later write fails, earlier
-  target changes are rolled back in reverse order; overall success is never
-  reported for an unrecovered partial apply.
+  generation through a target-first, journaled same-directory transaction.
+  After abrupt process termination, the next locked mutation safely aborts or
+  completes each exact interrupted file; lock-free reads refuse affected state.
+- **Treat returned failures across six targets as one transaction.** If a later
+  write returns an error, earlier target changes are rolled back in reverse
+  order; overall success is never reported for an unrecovered partial apply.
 - **Fail closed.** Malformed, unreadable, symbolic-link, non-regular, stale, or
   concurrently changed inputs are refused instead of flattened or overwritten.
 
@@ -267,6 +269,9 @@ existing-target `restore` retains the bytes immediately preceding that
 operation. Creations have no prior-file backup; no-ops and failed or rolled-back
 operations preserve the existing slot. Copy both files to access-controlled
 storage before another change when you need longer history.
+
+Crash recovery is per file. It does not claim that all six target changes are
+atomic across process termination or whole-machine power loss.
 
 For the complete operational and recovery contract, see the
 [usage and recovery guide](docs/m1-usage-and-recovery.md).
