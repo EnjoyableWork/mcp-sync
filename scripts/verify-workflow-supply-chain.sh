@@ -193,7 +193,8 @@ for workflow_supply_chain_required in \
   fi
 done
 for workflow_supply_chain_required in \
-  'mcp-sync:cargo-publish-authorization' \
+  "REQUEST_WORKFLOW_SHA: \${{ github.workflow_sha }}" \
+  "REQUEST_REF_PROTECTED: \${{ github.ref_protected }}" \
   'scripts/validate-cargo-publish-request.sh'; do
   if ! grep -F -- "$workflow_supply_chain_required" \
     <<<"$workflow_supply_chain_cargo_validate" >/dev/null; then
@@ -218,6 +219,8 @@ for workflow_supply_chain_required in \
   'scripts/verify-published-source-linux-release.sh' \
   'scripts/verify-published-release.sh' \
   'cargo package --locked' \
+  'Cargo authorization rehearsal does not use exact protected main' \
+  "\"\$GITHUB_WORKFLOW_SHA\" != \"\$GITHUB_SHA\"" \
   "cmp --silent \"\$first_package\" \"\$local_package\"" \
   "cmp --silent \"\$release_package\" \"\$local_package\"" \
   '.crate.trustpub_only == true' \
@@ -233,6 +236,11 @@ for workflow_supply_chain_required in \
     exit 1
   fi
 done
+
+if grep -qE '^  deployment:[[:space:]]*$' "$workflow_supply_chain_cargo"; then
+  echo "Cargo publisher contains a forbidden deployment trigger" >&2
+  exit 1
+fi
 
 if [[ "$(grep -c 'id-token: write' "$workflow_supply_chain_cargo")" != 1 ]] ||
   [[ "$(grep -c 'rust-lang/crates-io-auth-action@' "$workflow_supply_chain_cargo")" != 1 ]] ||

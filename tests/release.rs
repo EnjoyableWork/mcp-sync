@@ -511,6 +511,10 @@ fn repository_control_verifiers_keep_admin_access_operator_side() {
         "verify-public-stable-tag-ruleset.sh",
         "verify_release_environment release-control main branch",
         "verify_release_environment release 'v*' tag",
+        "--allow-mcp-039-main-rehearsal",
+        ".total_count == 2",
+        "{name: \"main\", type: \"branch\"}",
+        "{name: \"v*\", type: \"tag\"}",
         "required_reviewers",
         "deployment-branch-policies",
     ] {
