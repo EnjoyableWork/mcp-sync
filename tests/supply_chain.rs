@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const EXPECTED_DIRECT_ACTIONS: [&str; 9] = [
+const EXPECTED_DIRECT_ACTIONS: [&str; 10] = [
     "Azure/artifact-signing-action",
     "Azure/login",
     "EmbarkStudios/cargo-deny-action",
@@ -12,9 +12,10 @@ const EXPECTED_DIRECT_ACTIONS: [&str; 9] = [
     "actions/download-artifact",
     "actions/upload-artifact",
     "anchore/sbom-action",
+    "rust-lang/crates-io-auth-action",
 ];
 
-const EXPECTED_ALLOWED_PATTERNS: [&str; 10] = [
+const EXPECTED_ALLOWED_PATTERNS: [&str; 11] = [
     "Azure/artifact-signing-action@*",
     "Azure/login@*",
     "EmbarkStudios/cargo-deny-action@*",
@@ -25,6 +26,7 @@ const EXPECTED_ALLOWED_PATTERNS: [&str; 10] = [
     "actions/download-artifact@*",
     "actions/upload-artifact@*",
     "anchore/sbom-action@*",
+    "rust-lang/crates-io-auth-action@*",
 ];
 
 fn repository_root() -> PathBuf {
@@ -435,6 +437,8 @@ fn operator_verifiers_encode_live_policy_and_authenticated_distribution() {
         "does not modify that immutable",
         "not a project-wide conformance or certification claim",
         "There is no current WinGet distribution",
+        "Cargo publication after `0.1.0` uses one protected",
+        "No crates.io API token may be created, stored, or used as fallback",
     ] {
         assert!(
             evidence.contains(limitation),

@@ -30,6 +30,8 @@ jobs:
           ./scripts/verify-workflow-supply-chain.sh
           ./scripts/verify-repository-artifacts.sh
           ./scripts/test-repository-artifact-policy.sh
+          ./scripts/test-cargo-publish-policy.sh
+          ./scripts/test-cargo-publish-workflow-policy.sh
           ./scripts/test-organization-access-policy.sh
 
       - name: Check advisories, licenses, bans, and sources

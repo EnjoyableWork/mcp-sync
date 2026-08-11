@@ -15,6 +15,45 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  source-package:
+    name: Deterministic Cargo source package
+    if: github.repository == 'EnjoyableWork/mcp-sync'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Package deterministic Cargo source bytes
+        id: package
+        run: |
+          set -euo pipefail
+          release_version="$(
+            cargo metadata --locked --no-deps --format-version 1 \
+              | jq -r '.packages[] | select(.name == "enjoyable-mcp-sync") | .version'
+          )"
+          [[ "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          cargo package --locked
+          package="target/package/enjoyable-mcp-sync-$release_version.crate"
+          first_package="$RUNNER_TEMP/enjoyable-mcp-sync-first.crate"
+          install -m 0644 "$package" "$first_package"
+          cargo package --locked
+          cmp --silent "$first_package" "$package"
+          mkdir -p release-assets
+          install -m 0644 "$package" release-assets/
+          printf 'version=%s\n' "$release_version" >>"$GITHUB_OUTPUT"
+
+      - name: Retain the Cargo source package briefly
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: preflight-source
+          path: release-assets/enjoyable-mcp-sync-${{ steps.package.outputs.version }}.crate
+          if-no-files-found: error
+          retention-days: 1
+
   unix-artifacts:
     name: ${{ matrix.platform }} ${{ matrix.architecture }} — package and installed restore
     if: github.repository == 'EnjoyableWork/mcp-sync'
@@ -117,6 +156,46 @@ jobs:
             release-assets/mcp-sync-v${{ steps.version.outputs.version }}-${{ matrix.rust_target }}.spdx.json
           if-no-files-found: error
           retention-days: 1
+
+  payload:
+    name: Verify the exact non-publishing funded payload
+    needs:
+      - source-package
+      - unix-artifacts
+      - windows-artifacts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out verification sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read the stable package version
+        id: version
+        run: |
+          set -euo pipefail
+          release_version="$(
+            cargo metadata --locked --no-deps --format-version 1 \
+              | jq -r '.packages[] | select(.name == "enjoyable-mcp-sync") | .version'
+          )"
+          printf 'version=%s\n' "$release_version" >>"$GITHUB_OUTPUT"
+
+      - name: Download every represented funded payload
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: preflight-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify both prepublication and published payload contracts
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          scripts/verify-release-assets.sh release-assets "$RELEASE_VERSION"
+          scripts/verify-published-release.sh release-assets "$RELEASE_VERSION"
 
   windows-artifacts:
     name: Windows ${{ matrix.architecture }} — package and installed restore

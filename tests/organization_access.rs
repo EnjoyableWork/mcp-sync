@@ -176,7 +176,7 @@ fn private_evidence_preparation_outputs_only_aggregate_false_by_default_fields()
 }
 
 #[test]
-fn m3_and_mcp_036_remain_complete_without_activating_a_successor() {
+fn trusted_publishing_is_active_and_kiro_is_the_approved_successor() {
     let project = repository_file("PROJECT.md");
     let readme = repository_file("README.md");
 
@@ -185,9 +185,13 @@ fn m3_and_mcp_036_remain_complete_without_activating_a_successor() {
     assert!(project.contains("| MCP-035 | Self-assess, publish, and showcase the zero-cost enterprise assurance baseline | M3 | P1 | Codex | Done |"));
     assert!(project.contains("| Done — `MCP-030` through `MCP-035` Done |"));
     assert!(project.contains("M0 through M3, `MCP-001` through `MCP-036`"));
-    assert!(project.contains("no main-story ticket or side quest is active"));
+    assert!(project.contains("`MCP-039` is active under Codex"));
+    assert!(project.contains("no side quest is active"));
     assert!(project.contains("| MCP-036 | Serialize every mutating operation per canonical configuration root | Post-M3 corrective maintenance | P0 | Codex | Done |"));
-    assert!(project.contains("No side quest or successor to `MCP-036` is"));
+    assert!(project.contains("| MCP-039 | Replace Cargo publication tokens with crates.io Trusted Publishing | Post-M3 release maintenance | P1 | Codex | In progress | `MCP-036` |"));
+    assert!(project.contains("| MCP-039 | Complete MCP-039: replace reusable crates.io credentials for every Cargo version after 0.1.0"));
+    assert!(project.contains("Require trusted publishing for all new versions"));
+    assert!(project.contains("`MCP-039` is the active release-maintenance successor"));
     assert!(project.contains("| SIDE-007 | Redesign the README as a polished, terminal-first public product page | P2 | Codex | Done |"));
     assert!(project.contains("| SIDE-008 | Eliminate duplicate pull-request CI and stabilize Windows health-process fixture timing | P2 | Codex | Done |"));
     assert!(
@@ -195,32 +199,23 @@ fn m3_and_mcp_036_remain_complete_without_activating_a_successor() {
             "| D-15 | Deterministic pull-request CI and stable Windows health fixtures |"
         )
     );
-    assert!(project.contains(
-        "| D-16 | Cross-process serialization for every mutating configuration operation |"
-    ));
     assert!(project.contains("| D-16 | Cross-process serialization for every mutating configuration operation | Post-M3 corrective maintenance | Codex | 2026-08-10 | Done |"));
+    assert!(project.contains("| D-17 | Tokenless crates.io publication for every version after `0.1.0` | Post-M3 release maintenance | Codex | Current ticket | In progress |"));
+    assert!(project.contains("| D-18 | Global-user Kiro adapter with inherited Kiro Crew coverage | M4 | Unassigned | After `MCP-039` | Proposed |"));
     assert!(project.contains("Complete SIDE-008: make pull-request CI deterministic"));
-    assert!(project.contains("completing M3, `SIDE-007`, or `SIDE-008` does not"));
-    assert!(project.contains("choose a successor."));
+    assert!(project.contains("| MCP-037 | Add a global-user Kiro MCP adapter with inherited Kiro Crew coverage | M4 | P1 | Unassigned | Proposed | `MCP-039` |"));
     assert!(project.contains(
-        "| MCP-037 | Add a global-user Kiro MCP adapter with inherited Kiro Crew coverage | M4 | Revalidate the current global and `KIRO_HOME` contracts, resolve environment-reference representability, bound Kiro Crew inheritance, and use installed clients for controlled current-client smoke evidence | Deferred |"
+        "| MCP-037 | Complete MCP-037: add Kiro as the sixth global configuration target"
     ));
-    assert!(project.contains(
-        "| MCP-038 | Add a shared global Kilo Code MCP adapter | M4 | Revalidate unified configuration discovery and precedence, define the legacy-storage boundary, choose a lossless JSONC strategy, and obtain access for current-client smoke evidence | Deferred |"
-    ));
-    assert!(project.contains(
-        "This decision establishes qualification order only: it does not move either candidate into the main-story board or goal catalog"
-    ));
-    assert!(project.contains("`MCP-037` is the"));
-    assert!(project.contains("first client candidate to qualify."));
+    assert!(project.contains("The owner approved `MCP-037` as the ordered M4 successor"));
+    assert!(project.contains("without requiring `v0.1.0` adoption evidence"));
     assert!(project.contains("Kiro Crew is a relevant consumer, not a duplicate adapter."));
     assert!(project.contains("`~/.kiro/crew/mcp.json`"));
     assert!(project.contains("`~/.kiro/agents/kirocrew.json`"));
     assert!(project.contains("`MCP-037` must never discover or"));
     assert!(project.contains("mutate either Crew-specific file."));
-    assert!(!project.contains("| MCP-037 | Complete MCP-037:"));
-    assert!(!project.contains("| MCP-038 | Complete MCP-038:"));
     assert!(!project.contains("| MCP-036 | Serialize every mutating operation per canonical configuration root | Post-M3 corrective maintenance | P0 | Codex | In progress |"));
+    assert!(!project.contains("| MCP-039 | Replace Cargo publication tokens with crates.io Trusted Publishing | Post-M3 release maintenance | P1 | Unassigned | Proposed |"));
     assert!(!project.contains("| SIDE-006 | Activate the funded six-target signed-native distribution pipeline | P2 | Codex | In progress |"));
     assert!(!readme.contains("OSPS-AC-01.01"));
     assert!(!readme.contains("OSPS-AC-02.01"));

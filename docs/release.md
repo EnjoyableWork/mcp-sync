@@ -16,10 +16,11 @@ Cargo publishes `enjoyable-mcp-sync`, Homebrew uses
 `EnjoyableWork.mcp-sync`, and every channel installs an executable named
 `mcp-sync`.
 
-The GitHub Release must contain exactly these six archives, six matching SPDX
-JSON SBOMs, and `SHA256SUMS`:
+The GitHub Release must contain the deterministic Cargo source package, exactly
+these six archives, six matching SPDX JSON SBOMs, and `SHA256SUMS`:
 
 ```text
+enjoyable-mcp-sync-{version}.crate
 mcp-sync-v{version}-aarch64-apple-darwin.tar.gz
 mcp-sync-v{version}-x86_64-apple-darwin.tar.gz
 mcp-sync-v{version}-aarch64-unknown-linux-gnu.tar.gz
@@ -136,29 +137,47 @@ signing certificate plus a timestamp certificate before ZIP creation.
    verifies SBOMs and attestations, assembles the exact draft, verifies
    downloaded bytes, and only then publishes it.
 9. Require the release API to report `immutable: true`; verify the release
-   attestation and all 13 downloaded assets before publishing any downstream
+   attestation and all 14 downloaded assets before publishing any downstream
    channel.
 
-## Cargo first publication
+## Cargo publication after `0.1.0`
 
-crates.io cannot establish a trusted publisher before the crate exists. From a
-fresh checkout of the immutable release tag, first compare `HEAD`, the tag
-target, `Cargo.toml`, and the GitHub Release source commit. Then run:
+The crate now exists, so the one-time token exception used for `0.1.0` must not
+be repeated. `.github/workflows/cargo-publish.yml` is the only authorized Cargo
+publisher for a funded release. Configure
+[crates.io Trusted Publishing](https://crates.io/docs/trusted-publishing) with
+this exact identity:
 
-```bash
-cargo package --locked
-cargo publish --dry-run --locked
-cargo publish --locked
-```
+| Trusted-publisher field | Required value |
+| --- | --- |
+| GitHub owner | `EnjoyableWork` |
+| GitHub repository | `mcp-sync` |
+| Workflow filename | `cargo-publish.yml` |
+| GitHub environment | `release` |
 
-Inject the one-time, scope-minimized crates.io token through the operator's
-protected credential mechanism; do not include it in shell history or a
-workflow. Revoke it immediately after publication. Verify
-`cargo install enjoyable-mcp-sync --version '={version}' --locked` natively on all
-six supported OS/CPU combinations and exercise `scripts/smoke-installed.sh` or
-`scripts/smoke-installed.ps1` against the installed executable. Configure a
-repository/environment-bound crates.io trusted publisher for later versions
-only after ownership exists.
+The protected publish job alone requests `id-token: write`. It uses the
+official `rust-lang/crates-io-auth-action` at reviewed commit
+`c6f97d42243bad5fab37ca0427f495c86d5b1a18` (`v1.0.5`), stores no registry
+credential, and has no API-token fallback. The owner-side check records only an
+aggregate zero-token result from crates.io before and after rehearsal.
+Configure and read back the exact publisher, complete the authorization-only
+existing-`v0.1.0` deployment
+rehearsal, enable **Require trusted publishing for all new versions**, and run
+`scripts/verify-cargo-publishing-controls.sh` exactly as described in the
+[source/GNU/Linux runbook](source-linux-release.md#cargo-publication-after-010).
+
+The funded release workflow now packages and attests
+`enjoyable-mcp-sync-{version}.crate` without receiving crates.io authority. Its
+immutable release therefore contains 14 assets, including the exact source
+package consumed by the separate Cargo publisher. After release verification,
+dispatch `cargo-publish.yml` on the exact tag with explicit `version`, `tag`,
+`release_kind=funded`, and `mode=publish`. It validates the request before
+environment access, reproduces the locked package twice, requires local/release
+byte equality and provenance, performs the dry run, publishes through the
+short-lived OIDC credential, downloads and compares the registry package, and
+then requires native Cargo installation and recovery on all six supported
+OS/CPU hosts. Authentication, identity, release, attestation, byte, registry,
+or native-smoke failure stops the publication path.
 
 ## Homebrew and WinGet
 
@@ -198,7 +217,7 @@ installed restore smoke.
 
 After Cargo, the tap formula, and the WinGet manifests are public, dispatch
 `.github/workflows/release-channels.yml` with the funded version. This read-only,
-credential-free workflow first requires the immutable release and all 13
+credential-free workflow first requires the immutable release and all 14
 attestations, an unyanked crates.io record owned by this repository, and exact
 byte equality between freshly generated downstream definitions and their
 published Homebrew and WinGet copies. It then installs and exercises the

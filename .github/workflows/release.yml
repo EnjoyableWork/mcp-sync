@@ -189,6 +189,49 @@ jobs:
             exit 1
           fi
 
+  source:
+    name: Package and attest the deterministic Cargo source
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    env:
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Package deterministic Cargo source bytes
+        run: |
+          set -euo pipefail
+          cargo package --locked
+          package="target/package/enjoyable-mcp-sync-$RELEASE_VERSION.crate"
+          first_package="$RUNNER_TEMP/enjoyable-mcp-sync-first.crate"
+          install -m 0644 "$package" "$first_package"
+          cargo package --locked
+          cmp --silent "$first_package" "$package"
+          mkdir -p release-assets
+          install -m 0644 "$package" release-assets/
+
+      - name: Attest the Cargo source package
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/enjoyable-mcp-sync-${{ env.RELEASE_VERSION }}.crate
+
+      - name: Upload the Cargo source package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-source
+          path: release-assets/enjoyable-mcp-sync-${{ env.RELEASE_VERSION }}.crate
+          if-no-files-found: error
+          retention-days: 7
+
   macos:
     name: macOS ${{ matrix.architecture }} — sign, notarize, package, attest
     needs: validate
@@ -613,6 +656,7 @@ jobs:
     name: Verify complete payload and publish immutably
     needs:
       - validate
+      - source
       - macos
       - linux
       - windows

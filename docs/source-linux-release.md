@@ -199,7 +199,7 @@ tag ruleset, registry identity, and existing release state. It then:
 The workflow never reads Apple or Microsoft credentials and never builds a
 macOS or Windows release executable.
 
-## Cargo first publication
+## Historical Cargo first publication
 
 crates.io cannot establish this crate's trusted publisher before the crate
 exists. From a fresh checkout of the immutable tag, download the attested
@@ -218,10 +218,111 @@ from crates.io and require byte equality with the immutable release asset. A
 mismatch is not repaired by replacing either artifact: yank the bad registry
 version if necessary, preserve evidence, and issue a new version.
 
-Configure a repository/environment-bound crates.io trusted publisher for later
-versions only after crate ownership exists. Native `cargo install
-enjoyable-mcp-sync --version '=0.1.0' --locked` plus the installed restore smoke
-must pass on all six supported OS/CPU hosts.
+Native `cargo install enjoyable-mcp-sync --version '=0.1.0' --locked` plus the
+installed restore smoke must pass on all six supported OS/CPU hosts. The
+first-publication token was revoked and removed; this section is historical
+evidence and is not an authorized procedure for another version.
+
+## Cargo publication after `0.1.0`
+
+The historical first-publication token is not an authorized path for another
+version. `.github/workflows/cargo-publish.yml` is the one Cargo publisher for
+both source/GNU/Linux and funded immutable releases. It uses
+[crates.io Trusted Publishing](https://crates.io/docs/trusted-publishing)
+with this exact identity:
+
+| Trusted-publisher field | Required value |
+| --- | --- |
+| GitHub owner | `EnjoyableWork` |
+| GitHub repository | `mcp-sync` |
+| Workflow filename | `cargo-publish.yml` |
+| GitHub environment | `release` |
+
+The official `rust-lang/crates-io-auth-action` is reviewed and pinned to commit
+`c6f97d42243bad5fab37ca0427f495c86d5b1a18` (`v1.0.5`). Only the `publish`
+job enters the protected `release` environment and requests `id-token: write`.
+Its temporary token is masked, consumed only as `CARGO_REGISTRY_TOKEN` by the
+single `cargo publish --locked` step, and revoked by the action's post-job
+handler. The repository and environment contain no crates.io credential, and
+there is no API-token fallback.
+
+Before configuring the publisher, inspect crates.io **Account Settings → API
+Tokens** and require the empty-token state. Do not create a token for setup,
+rehearsal, recovery, or fallback. Recheck the same zero-token state after the
+authorization-only rehearsal. Record only the aggregate zero-token result;
+never copy or persist account-session data.
+
+Before a real publication, configure the exact trusted publisher above while
+signed in to crates.io. Do not create an API token. The `MCP-039` foundation
+rehearsal targets the existing immutable `v0.1.0` tag without creating or
+moving a ref. Create one GitHub deployment with this exact request:
+
+```sh
+gh api --method POST repos/EnjoyableWork/mcp-sync/deployments \
+  --input - <<'JSON'
+{
+  "ref": "v0.1.0",
+  "task": "mcp-sync:cargo-publish-authorization",
+  "auto_merge": false,
+  "required_contexts": [],
+  "payload": {
+    "contract": "MCP-039",
+    "version": "0.1.0",
+    "tag": "v0.1.0",
+    "release_kind": "source-linux",
+    "mode": "authorization-only"
+  },
+  "environment": "release",
+  "description": "MCP-039 authorization-only rehearsal",
+  "transient_environment": false,
+  "production_environment": true
+}
+JSON
+```
+
+GitHub loads the `deployment` event workflow from protected `main` while the
+deployment's `GITHUB_REF` remains the existing tag, so the tag-only `release`
+environment contract stays intact. The unprivileged validator accepts only the
+task and payload above; any other deployment event skips the protected path.
+Review the pending `release` job and approve it only after the repository-control
+verifier still passes for exact `main`. The workflow verifies the immutable
+seven-asset release, its release attestation, the `.crate` provenance, and two
+deterministic local packages before requesting OIDC. In authorization-only mode
+it never runs `cargo publish`, re-reads crates.io to require that unyanked
+`0.1.0` remains the sole version, and then relies on successful action cleanup
+to revoke the temporary credential.
+
+After that rehearsal succeeds, enable **Require trusted publishing for all new versions**
+on `enjoyable-mcp-sync`. Read back the authenticated trusted-publisher
+list from
+`/api/v1/trusted_publishing/github_configs?crate=enjoyable-mcp-sync` and the
+public `trustpub_only: true` crate field from
+`/api/v1/crates/enjoyable-mcp-sync`. Save the first response only to a temporary
+regular JSON file, then validate both readbacks and the GitHub controls without
+printing identities or credential material:
+
+```sh
+./scripts/verify-cargo-publishing-controls.sh \
+  <exact-current-main-commit> \
+  <temporary-trusted-publisher-readback.json>
+```
+
+Delete the temporary response after the verifier passes.
+
+For every later version, first finish and verify the protected immutable GitHub
+Release with an attested `enjoyable-mcp-sync-{version}.crate` asset. Dispatch
+`cargo-publish.yml` on that exact existing tag with explicit `version`, `tag`,
+the owning `release_kind` (`source-linux` or `funded`), and `mode=publish`.
+The unprivileged job rejects branches, mismatched tags, unsupported producers,
+unrecognized events, and any attempt to republish `0.1.0` before environment
+access. The protected job then reproduces and compares local and release
+`.crate` bytes, performs a credential-free `cargo publish --dry-run --locked`,
+requires the public trusted-publishing-only flag still to be enabled, publishes
+explicitly to `crates-io` through short-lived OIDC, downloads and compares the
+registry bytes, and gates success on native Cargo install and recovery journeys
+for all six supported OS/CPU hosts. Any identity, authorization, release,
+attestation, determinism, publication, registry, or native-smoke failure stops
+the workflow.
 
 ## Source-building Homebrew publication
 
