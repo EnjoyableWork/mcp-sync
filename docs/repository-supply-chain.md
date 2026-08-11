@@ -31,7 +31,8 @@ a checkout that persists credentials, a privileged pull-request trigger, or a
 GitHub expression interpolated directly into a shell command. Its optional
 `--verify-upstreams` mode proves that each hint resolves to the recorded SHA.
 
-The reviewed inventory, extended for `MCP-039` on 2026-08-10, is:
+The reviewed inventory, extended for `MCP-039` on 2026-08-10 and refreshed
+for the Homebrew action on 2026-08-11, is:
 
 | Action | Reviewed SHA | Update hint | Purpose |
 | --- | --- | --- | --- |
@@ -42,7 +43,7 @@ The reviewed inventory, extended for `MCP-039` on 2026-08-10, is:
 | `actions/attest` | `508db95dd578ae2727ebd6217d5ba78e4fbda05d` | `v4.2.1` | Transitive action pinned by the reviewed provenance action |
 | `EmbarkStudios/cargo-deny-action` | `3c6349835b2b7b196a839186cb8b78e02f7b5f25` | `v2.1.1` | Advisory, license, ban, and source policy |
 | `anchore/sbom-action` | `e22c389904149dbc22b58101806040fa8d37a610` | `v0.24.0` | SPDX SBOM generation |
-| `Homebrew/actions/setup-homebrew` | `fd832223f9f99ebf0244dd20658680e5d4aca049` | `2026.08.03.2` | Native Homebrew preflight and channel setup |
+| `Homebrew/actions/setup-homebrew` | `c8707045ccae42888fe98e86f2ee8938bc7cc193` | `2026.08.10.1` | Native Homebrew preflight and channel setup |
 | `Azure/login` | `f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca` | `v3.0.1` | Dormant funded Windows signing authentication |
 | `Azure/artifact-signing-action` | `c7ab2a863ab5f9a846ddb8265964877ef296ee82` | `v2.0.0` | Dormant funded Windows Public Trust signing |
 | `rust-lang/crates-io-auth-action` | `c6f97d42243bad5fab37ca0427f495c86d5b1a18` | `v1.0.5` | Official short-lived crates.io Trusted Publishing authorization and automatic revocation |
