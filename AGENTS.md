@@ -142,10 +142,10 @@ Distribution remains later-ticket scope.
 `MCP-039` is `Done`: every Cargo version after `0.1.0` must use its exact
 protected crates.io Trusted Publishing path with trusted-publishing-only
 enforcement and no API-token fallback. Approved M4 successor `MCP-037` is
-`Ready` for deliberate activation under its own canonical Goal; it has no
-`v0.1.0` adoption-evidence prerequisite, remains unimplemented, and must not
-be described as supported before its complete adapter, native-platform, and
-current-client evidence passes.
+`In progress` under Codex and its exact canonical Goal; it has no `v0.1.0`
+adoption-evidence prerequisite, remains unimplemented, and must not be
+described as supported before its complete adapter, native-platform, and
+current-client Kiro IDE plus inherited Kiro Crew evidence passes.
 Use the existing Clap command tree as CLI behavior grows; do not introduce a
 second parser.
 
