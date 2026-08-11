@@ -139,6 +139,11 @@ health fixtures, and complete native MSVC x64/ARM64 whole-suite CI pass under
 `MCP-019`. There is no Windows current-client smoke claim. Windsurf, VS Code,
 and Codex have no current-client smoke claim on any implemented platform.
 Distribution remains later-ticket scope.
+`MCP-039` is the active post-M3 release-maintenance ticket. Approved M4
+successor `MCP-037` will add Kiro only after `MCP-039` is `Done`; it has no
+`v0.1.0` adoption-evidence prerequisite, remains unimplemented, and must not be
+described as supported before its complete adapter, native-platform, and
+current-client evidence passes.
 Use the existing Clap command tree as CLI behavior grows; do not introduce a
 second parser.
 
@@ -336,6 +341,12 @@ integrity and redaction as product requirements.
   by that release before its Cargo, Homebrew, or WinGet channels are updated to
   the same version. Never move a published tag or replace immutable assets;
   issue a new version.
+- Treat the revoked first-publication token for Cargo `0.1.0` as the only token
+  exception. Every later Cargo version is blocked on `MCP-039` and must publish
+  through crates.io Trusted Publishing bound exactly to
+  `EnjoyableWork/mcp-sync`, `.github/workflows/cargo-publish.yml`, and the
+  protected `release` environment, with trusted-publishing-only enforcement.
+  Do not create, store, request, or fall back to a crates.io API token.
 - Stable macOS artifacts require Developer ID Application signing, hardened
   runtime, secure timestamping, and accepted notarization. Stable Windows
   executables require timestamped Public Trust Authenticode signing. Missing

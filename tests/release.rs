@@ -92,6 +92,10 @@ fn release_preflight_covers_every_native_artifact_without_credentials() {
 
     assert!(workflow.contains("scripts/smoke-archive.sh"));
     assert!(workflow.contains("scripts/smoke-archive.ps1"));
+    assert!(workflow.contains("Deterministic Cargo source package"));
+    assert!(workflow.contains("cargo package --locked"));
+    assert!(workflow.contains("scripts/verify-release-assets.sh"));
+    assert!(workflow.contains("scripts/verify-published-release.sh"));
     assert!(workflow.contains("syft-version: v1.50.0"));
     assert!(workflow.contains("retention-days: 1"));
     assert!(
@@ -152,6 +156,9 @@ fn funded_signed_workflow_is_explicit_and_preserves_the_full_trust_contract() {
         "Get-AuthenticodeSignature",
         "TimeStamperCertificate",
         "actions/attest-build-provenance@",
+        "Package and attest the deterministic Cargo source",
+        "enjoyable-mcp-sync-${{ env.RELEASE_VERSION }}.crate",
+        "name: release-source",
         "scripts/verify-release-assets.sh",
         "scripts/verify-published-release.sh",
         "gh release create",
@@ -528,6 +535,7 @@ fn package_and_public_docs_keep_the_accepted_release_identities() {
         "version = \"0.1.0\"",
         "name = \"mcp-sync\"",
         "publish = [\"crates-io\"]",
+        "\"/.github/workflows/cargo-publish.yml\"",
         "\"/.github/workflows/release*.yml\"",
         "\"/.github/workflows/source-linux-release*.yml\"",
         "\"/tests/**\"",
@@ -566,8 +574,27 @@ fn package_and_public_docs_keep_the_accepted_release_identities() {
     assert!(runbook.contains("only the `publish-new` endpoint"));
     assert!(runbook.contains("exact crate-name pattern `enjoyable-mcp-sync`"));
     assert!(runbook.contains("Revoke every first-publication token"));
+    for trusted_publication_contract in [
+        "`.github/workflows/cargo-publish.yml`",
+        "`rust-lang/crates-io-auth-action`",
+        "Require trusted publishing for all new versions",
+        "no API-token fallback",
+        "aggregate zero-token result",
+        "scripts/verify-cargo-publishing-controls.sh",
+    ] {
+        assert!(
+            runbook.contains(trusted_publication_contract),
+            "source/Linux runbook should retain {trusted_publication_contract}"
+        );
+        assert!(
+            signed_runbook.contains(trusted_publication_contract),
+            "signed-native runbook should retain {trusted_publication_contract}"
+        );
+    }
     assert!(signed_runbook.contains("com.enjoyablework.mcp-sync"));
     assert!(signed_runbook.contains("confirm_funded_signing"));
+    assert!(signed_runbook.contains("all 14 downloaded assets"));
+    assert!(signed_runbook.contains("release_kind=funded"));
     assert!(release_notes.contains("# mcp-sync v0.1.0"));
     assert!(release_notes.contains("immutable GitHub Release"));
     assert!(release_notes.contains("No project-issued macOS or Windows binary"));

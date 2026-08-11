@@ -11,7 +11,8 @@
     "actions/checkout@*",
     "actions/download-artifact@*",
     "actions/upload-artifact@*",
-    "anchore/sbom-action@*"
+    "anchore/sbom-action@*",
+    "rust-lang/crates-io-auth-action@*"
   ],
   "reviewed_transitive_actions": [
     {

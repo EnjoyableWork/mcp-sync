@@ -31,7 +31,7 @@ a checkout that persists credentials, a privileged pull-request trigger, or a
 GitHub expression interpolated directly into a shell command. Its optional
 `--verify-upstreams` mode proves that each hint resolves to the recorded SHA.
 
-The reviewed inventory on 2026-08-09 is:
+The reviewed inventory, extended for `MCP-039` on 2026-08-10, is:
 
 | Action | Reviewed SHA | Update hint | Purpose |
 | --- | --- | --- | --- |
@@ -45,6 +45,15 @@ The reviewed inventory on 2026-08-09 is:
 | `Homebrew/actions/setup-homebrew` | `fd832223f9f99ebf0244dd20658680e5d4aca049` | `2026.08.03.2` | Native Homebrew preflight and channel setup |
 | `Azure/login` | `f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca` | `v3.0.1` | Dormant funded Windows signing authentication |
 | `Azure/artifact-signing-action` | `c7ab2a863ab5f9a846ddb8265964877ef296ee82` | `v2.0.0` | Dormant funded Windows Public Trust signing |
+| `rust-lang/crates-io-auth-action` | `c6f97d42243bad5fab37ca0427f495c86d5b1a18` | `v1.0.5` | Official short-lived crates.io Trusted Publishing authorization and automatic revocation |
+
+The `MCP-039` review verified the official `rust-lang` repository and signed
+`v1.0.5` commit, its Node 24 action definition, crates.io-only default
+audience, masked token output, saved post-job state, and unconditional
+revocation request. The workflow consumes that output only as
+`CARGO_REGISTRY_TOKEN` on the single publish step; neither the OIDC assertion
+nor temporary registry credential is logged, persisted, or promoted to a job
+output.
 
 The live repository policy allows only those exact action repositories or
 subpaths, disables the broad GitHub-owned and verified-creator allowances, and
@@ -84,6 +93,13 @@ the exact `0.1.0` request and protected tag or recovery ref in an unprivileged
 job before entering the `release` environment, checking out release code, or
 making its tap-scoped deploy key available.
 
+The Cargo request validator similarly accepts only an explicit, fully matched
+version, annotated tag, release kind, and mode before the protected job can
+start. Its `deployment` trigger is restricted to the exact MCP-039
+authorization-only rehearsal against the existing immutable `v0.1.0` tag; it
+cannot select publication mode, create another version, or weaken the same
+repository, ref, and release-environment checks.
+
 Privileged publishing remains limited to explicit tag or manual workflows,
 least-privilege job permissions, protected environments, exact repository and
 ref checks, and the existing release authorization contract. No pull-request
@@ -104,6 +120,32 @@ GitHub Releases remains the canonical immutable channel. For `v0.1.0`:
    byte-identical to the attested release formula. Its protected publisher uses
    a tap-only SSH deploy key, a pinned GitHub Ed25519 host key, and strict host
    checking.
+
+The `0.1.0` crate is the only token-published exception: its one-use,
+scope-minimized first-publication token was revoked and removed.
+Cargo publication after `0.1.0` uses one protected
+`.github/workflows/cargo-publish.yml` path. Its required crates.io Trusted
+Publisher identity is exactly `EnjoyableWork/mcp-sync`, workflow filename
+`cargo-publish.yml`, and environment `release`; **Require trusted publishing
+for all new versions** must remain enabled. Before requesting authorization,
+the workflow verifies the annotated tag, immutable GitHub release and
+attestation, the attested `.crate`, deterministic local packaging, and exact
+local-to-release bytes. Only its protected publish job receives OIDC, and only
+the actual `cargo publish` step receives the official action's short-lived,
+masked registry credential.
+
+No crates.io API token may be created, stored, or used as fallback.
+The owner-side completion audit also requires crates.io **Account Settings →
+API Tokens** to remain empty before and after the authorization-only rehearsal;
+only the aggregate zero-token result is recorded.
+
+After publication, the workflow waits for crates.io, compares the downloaded
+registry `.crate` byte-for-byte with the attested GitHub release asset, and
+proves exact-version installation plus recovery output on all six retained
+native targets. The authorization-only mode exercises the protected OIDC and
+publisher identity without consuming the returned registry credential or
+creating a crate version; the fixed MCP-039 rehearsal also re-reads crates.io
+and succeeds only while unyanked `0.1.0` remains the sole version.
 
 `scripts/verify-distribution-authentication.sh EnjoyableWork/mcp-sync 0.1.0`
 rechecks this chain without publishing or replacing anything. Cargo and
@@ -141,6 +183,8 @@ Run the credential-free local gates with:
 ./scripts/verify-workflow-supply-chain.sh
 ./scripts/verify-repository-artifacts.sh
 ./scripts/test-repository-artifact-policy.sh
+./scripts/test-cargo-publish-policy.sh
+./scripts/test-cargo-publish-workflow-policy.sh
 ```
 
 An authenticated repository administrator can revalidate upstream action tags,
@@ -156,6 +200,22 @@ distribution chain without reading secret values:
 Re-run the operator verifier after an action, workflow, dependency-update
 policy, GitHub Actions policy, fork policy, CodeQL setup, release pipeline,
 official distribution channel, or repository-artifact policy change.
+
+After the protected Cargo workflow is present on exact `main`, save the
+non-sensitive crates.io Trusted Publisher readback to a temporary regular JSON
+file and verify the complete live control set with:
+
+```sh
+./scripts/verify-cargo-publishing-controls.sh \
+  <exact-main-commit> <trusted-publisher-json-file>
+```
+
+The verifier requires a clean checkout of that exact `main` commit, compares
+the live workflow bytes, confirms its active GitHub identity and existing
+release protections, rejects Cargo or registry credential names across the
+repository, `release` environment, and organization Actions stores, checks the
+public `trustpub_only` state, and accepts only one exact Trusted Publisher
+record. It reads no credential value.
 
 ## Live control record
 

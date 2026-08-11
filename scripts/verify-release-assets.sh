@@ -21,6 +21,7 @@ fi
 
 asset_directory=$(cd "$asset_directory" && pwd)
 asset_prefix="mcp-sync-v$asset_version"
+asset_cargo_package="enjoyable-mcp-sync-$asset_version.crate"
 asset_targets=(
   aarch64-apple-darwin
   x86_64-apple-darwin
@@ -30,7 +31,7 @@ asset_targets=(
   x86_64-pc-windows-msvc
 )
 
-expected_assets=()
+expected_assets=("$asset_cargo_package")
 for asset_target in "${asset_targets[@]}"; do
   case "$asset_target" in
     *-pc-windows-msvc) asset_archive="$asset_prefix-$asset_target.zip" ;;

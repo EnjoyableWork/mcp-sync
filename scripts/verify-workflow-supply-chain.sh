@@ -23,7 +23,7 @@ done
 jq -e '
     .github_owned_allowed == false and
     .verified_allowed == false and
-    (.patterns_allowed | type == "array" and length == 10 and
+    (.patterns_allowed | type == "array" and length == 11 and
       length == (unique | length) and . == sort and
       all(.[]; test("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?@\\*$"))) and
     (.reviewed_transitive_actions == [{
@@ -171,6 +171,106 @@ for workflow_supply_chain_forbidden in 'environment:' 'secrets.' 'uses: actions/
     exit 1
   fi
 done
+
+workflow_supply_chain_cargo="$workflow_supply_chain_files/cargo-publish.yml"
+workflow_supply_chain_cargo_validate="$({
+  sed -n '/^  validate:/,/^  publish:/p' "$workflow_supply_chain_cargo"
+})"
+workflow_supply_chain_cargo_publish="$({
+  sed -n '/^  publish:/,/^  cargo-unix:/p' "$workflow_supply_chain_cargo"
+})"
+
+for workflow_supply_chain_required in \
+  'workflow_dispatch:' \
+  'version:' \
+  'tag:' \
+  'release_kind:' \
+  'mode:'; do
+  if ! grep -F -- "$workflow_supply_chain_required" \
+    "$workflow_supply_chain_cargo" >/dev/null; then
+    echo "Cargo publisher lacks an explicit manual input: $workflow_supply_chain_required" >&2
+    exit 1
+  fi
+done
+for workflow_supply_chain_required in \
+  'mcp-sync:cargo-publish-authorization' \
+  'scripts/validate-cargo-publish-request.sh'; do
+  if ! grep -F -- "$workflow_supply_chain_required" \
+    <<<"$workflow_supply_chain_cargo_validate" >/dev/null; then
+    echo "Cargo publisher lacks unprivileged request validation: $workflow_supply_chain_required" >&2
+    exit 1
+  fi
+done
+for workflow_supply_chain_forbidden in 'environment:' 'id-token: write' 'crates-io-auth-action'; do
+  if grep -F -- "$workflow_supply_chain_forbidden" \
+    <<<"$workflow_supply_chain_cargo_validate" >/dev/null; then
+    echo "Cargo publisher validation reaches protected authorization: $workflow_supply_chain_forbidden" >&2
+    exit 1
+  fi
+done
+
+for workflow_supply_chain_required in \
+  'name: release' \
+  'deployment: false' \
+  'id-token: write' \
+  'gh release verify' \
+  'gh attestation verify' \
+  'scripts/verify-published-source-linux-release.sh' \
+  'scripts/verify-published-release.sh' \
+  'cargo package --locked' \
+  "cmp --silent \"\$first_package\" \"\$local_package\"" \
+  "cmp --silent \"\$release_package\" \"\$local_package\"" \
+  '.crate.trustpub_only == true' \
+  'rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5' \
+  "CARGO_REGISTRY_TOKEN: \${{ steps.crates_io.outputs.token }}" \
+  'cargo publish --locked --registry crates-io' \
+  'Require the MCP-039 rehearsal to create no Cargo version' \
+  '([.versions[].num] | sort) == ["0.1.0"]' \
+  "cmp --silent \"\$release_package\" \"\$registry_package\""; do
+  if ! grep -F -- "$workflow_supply_chain_required" \
+    <<<"$workflow_supply_chain_cargo_publish" >/dev/null; then
+    echo "Cargo publisher lacks protected fail-closed behavior: $workflow_supply_chain_required" >&2
+    exit 1
+  fi
+done
+
+if [[ "$(grep -c 'id-token: write' "$workflow_supply_chain_cargo")" != 1 ]] ||
+  [[ "$(grep -c 'rust-lang/crates-io-auth-action@' "$workflow_supply_chain_cargo")" != 1 ]] ||
+  [[ "$(grep -c 'CARGO_REGISTRY_TOKEN:' "$workflow_supply_chain_cargo")" != 1 ]]; then
+  echo "Cargo publisher must expose OIDC and its temporary credential through one protected path" >&2
+  exit 1
+fi
+for workflow_supply_chain_forbidden in \
+  'pull_request:' \
+  'pull_request_target:' \
+  'push:' \
+  'repository_dispatch:' \
+  'workflow_run:' \
+  'secrets.' \
+  'CRATES_IO_TOKEN' \
+  'cargo login' \
+  '--token'; do
+  if grep -F -- "$workflow_supply_chain_forbidden" \
+    "$workflow_supply_chain_cargo" >/dev/null; then
+    echo "Cargo publisher contains a forbidden trigger or token fallback: $workflow_supply_chain_forbidden" >&2
+    exit 1
+  fi
+done
+
+workflow_supply_chain_cargo_verify_line="$(
+  grep -n 'Verify immutable release, attested package, and deterministic local bytes' \
+    "$workflow_supply_chain_cargo" | cut -d: -f1
+)"
+workflow_supply_chain_cargo_auth_line="$(
+  grep -n 'Obtain short-lived crates.io authorization through OIDC' \
+    "$workflow_supply_chain_cargo" | cut -d: -f1
+)"
+if [[ -z "$workflow_supply_chain_cargo_verify_line" ||
+  -z "$workflow_supply_chain_cargo_auth_line" ||
+  "$workflow_supply_chain_cargo_verify_line" -ge "$workflow_supply_chain_cargo_auth_line" ]]; then
+  echo "Cargo publisher must verify immutable bytes before requesting OIDC authorization" >&2
+  exit 1
+fi
 
 if [[ "$workflow_supply_chain_mode" == --verify-upstreams ]]; then
   while IFS= read -r workflow_supply_chain_record; do
