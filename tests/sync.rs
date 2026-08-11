@@ -15,6 +15,7 @@ const CURSOR_CURRENT: &[u8] = include_bytes!("fixtures/cursor/current.json");
 const WINDSURF_CURRENT: &[u8] = include_bytes!("fixtures/windsurf/current.json");
 const VSCODE_CURRENT: &[u8] = include_bytes!("fixtures/vscode/current.json");
 const CODEX_CURRENT: &[u8] = include_bytes!("fixtures/codex/current.toml");
+const KIRO_CURRENT: &[u8] = include_bytes!("fixtures/kiro/current.json");
 const PROJECT_CURSOR: &[u8] = include_bytes!("fixtures/cursor/project.json");
 const PROJECT_CODEX: &[u8] = include_bytes!("fixtures/codex/project.toml");
 
@@ -65,6 +66,7 @@ struct ExistingJourney {
     windsurf: Vec<u8>,
     vscode: Vec<u8>,
     codex: Vec<u8>,
+    kiro: Vec<u8>,
     project_path: PathBuf,
     project_vscode_path: PathBuf,
     project_vscode: Vec<u8>,
@@ -73,6 +75,8 @@ struct ExistingJourney {
     codex_profile: Vec<u8>,
     codex_auth_path: PathBuf,
     codex_auth: Vec<u8>,
+    excluded_kiro_paths: Vec<PathBuf>,
+    excluded_kiro: Vec<u8>,
     process_marker: PathBuf,
     process_command: String,
 }
@@ -129,6 +133,18 @@ impl ExistingJourney {
             "https://codex.example.invalid/mixed",
             "codex-profile-private-value",
             "codex-auth-private-value",
+            "fixture-kiro-old-secret",
+            "fixture-kiro-remove-secret",
+            "fixture-kiro-local-secret",
+            "fixture-kiro-remote-secret",
+            "fixture-kiro-added-secret",
+            "fixture-kiro-added-environment-secret",
+            "fixture-kiro-new-secret",
+            "https://kiro.example.invalid/mcp",
+            "${KIRO_FIXTURE_RUNNER}",
+            "${KIRO_FIXTURE_ARGUMENT}",
+            "${KIRO_FIXTURE_TOKEN}",
+            "kiro-excluded-private-value",
         ]
     }
 }
@@ -187,6 +203,13 @@ fn prepare_existing_journey(home: &SyntheticHome) -> ExistingJourney {
         .replace("args = [\"--serve\"]", "args = [\"--mode\", \"safe\"]")
         .replace("fixture-codex-unchanged-secret", "fixture-unchanged-secret")
         .into_bytes();
+    let kiro = String::from_utf8(KIRO_CURRENT.to_vec())
+        .expect("the Kiro fixture should be UTF-8")
+        .replace("fixture-kiro-unchanged-secret", "fixture-unchanged-secret")
+        .replace("\"remote-only\"", "\"kiro-remote-only\"")
+        .replace("\"reference-only\"", "\"kiro-reference-only\"")
+        .replace("\"numeric-env\"", "\"kiro-numeric-env\"")
+        .into_bytes();
     let project_path = home.user_root().join("workspace/.cursor/mcp.json");
     let project_vscode_path = home.user_root().join("workspace/.vscode/mcp.json");
     let project_vscode = b"{\"projectVsCodeSentinel\":\"unchanged\"}\n".to_vec();
@@ -195,6 +218,13 @@ fn prepare_existing_journey(home: &SyntheticHome) -> ExistingJourney {
     let codex_profile = b"model = \"codex-profile-private-value\"\n".to_vec();
     let codex_auth_path = home.user_root().join(".codex/auth.json");
     let codex_auth = b"{\"token\":\"codex-auth-private-value\"}\n".to_vec();
+    let excluded_kiro_paths = vec![
+        home.user_root().join("workspace/.kiro/settings/mcp.json"),
+        home.user_root().join(".kiro/crew/mcp.json"),
+        home.user_root().join(".kiro/agents/kirocrew.json"),
+        home.user_root().join(".kiro/agents/synthetic.json"),
+    ];
+    let excluded_kiro = b"{\"private\":\"kiro-excluded-private-value\"}\n".to_vec();
 
     home.write_file(&home.canonical_configuration(), &canonical);
     home.write_file(&home.claude_desktop_configuration(), &claude);
@@ -202,11 +232,15 @@ fn prepare_existing_journey(home: &SyntheticHome) -> ExistingJourney {
     home.write_file(&home.windsurf_configuration(), &windsurf);
     home.write_file(&home.vscode_configuration(), &vscode);
     home.write_file(&home.codex_configuration(), &codex);
+    home.write_file(&home.kiro_configuration(), &kiro);
     home.write_file(&project_path, PROJECT_CURSOR);
     home.write_file(&project_vscode_path, &project_vscode);
     home.write_file(&project_codex_path, PROJECT_CODEX);
     home.write_file(&codex_profile_path, &codex_profile);
     home.write_file(&codex_auth_path, &codex_auth);
+    for path in &excluded_kiro_paths {
+        home.write_file(path, &excluded_kiro);
+    }
 
     ExistingJourney {
         canonical,
@@ -215,6 +249,7 @@ fn prepare_existing_journey(home: &SyntheticHome) -> ExistingJourney {
         windsurf,
         vscode,
         codex,
+        kiro,
         project_path,
         project_vscode_path,
         project_vscode,
@@ -223,6 +258,8 @@ fn prepare_existing_journey(home: &SyntheticHome) -> ExistingJourney {
         codex_profile,
         codex_auth_path,
         codex_auth,
+        excluded_kiro_paths,
+        excluded_kiro,
         process_marker,
         process_command,
     }
@@ -272,6 +309,38 @@ fn assert_codex_exclusions_unchanged(fixture: &ExistingJourney, context: &str) {
     );
 }
 
+fn assert_kiro_exclusions_unchanged(fixture: &ExistingJourney, context: &str) {
+    for path in &fixture.excluded_kiro_paths {
+        assert_file_matches(
+            path,
+            &fixture.excluded_kiro,
+            &format!("{context} should preserve excluded Kiro workspace, agent, and Crew bytes"),
+        );
+    }
+}
+
+fn parse_kiro(path: &Path) -> (String, Value) {
+    let text = fs::read_to_string(path).expect("Kiro output should be readable UTF-8");
+    let root = jsonc_parser::cst::CstRootNode::parse(
+        &text,
+        &jsonc_parser::ParseOptions {
+            allow_comments: true,
+            allow_loose_object_property_names: false,
+            allow_trailing_commas: true,
+            allow_missing_commas: false,
+            allow_single_quoted_strings: false,
+            allow_hexadecimal_numbers: false,
+            allow_unary_plus_numbers: false,
+        },
+    )
+    .expect("Kiro output should remain valid comment-bearing JSON");
+    let value = root
+        .value()
+        .and_then(|value| value.to_serde_value())
+        .expect("Kiro output should have a JSON value");
+    (text, value)
+}
+
 fn assert_native_result(home: &SyntheticHome, process_command: &str) {
     let claude: Value = serde_json::from_slice(
         &fs::read(home.claude_desktop_configuration())
@@ -295,6 +364,7 @@ fn assert_native_result(home: &SyntheticHome, process_command: &str) {
     let codex = codex_text
         .parse::<toml_edit::DocumentMut>()
         .expect("Codex output should remain valid TOML");
+    let (kiro_text, kiro) = parse_kiro(&home.kiro_configuration());
 
     for target in [&claude, &cursor, &windsurf] {
         assert!(
@@ -326,6 +396,14 @@ fn assert_native_result(home: &SyntheticHome, process_command: &str) {
             && codex["mcp_servers"]["updated"]["env"]["ROTATE"].as_str()
                 == Some("fixture-new-secret"),
         "managed Codex process values should match canonical state"
+    );
+    assert!(
+        kiro["mcpServers"]["added"]["command"].as_str() == Some(process_command)
+            && kiro["mcpServers"]["updated"]["command"].as_str() == Some("/synthetic/bin/new")
+            && kiro["mcpServers"]["updated"]["args"][1].as_str() == Some("two")
+            && kiro["mcpServers"]["updated"]["env"]["ROTATE"].as_str()
+                == Some("fixture-new-secret"),
+        "managed Kiro process values should match canonical state"
     );
 
     assert!(
@@ -373,7 +451,17 @@ fn assert_native_result(home: &SyntheticHome, process_command: &str) {
             && codex["mcp_servers"]["opaque"]["future_transport"].as_str()
                 == Some("fixture-codex-future-private")
             && codex["plugins"]["fixture@test"]["mcp_servers"]["hosted"]["enabled"].as_bool()
-                == Some(true),
+                == Some(true)
+            && kiro["mcpServers"]["target-only"]["env"]["LOCAL_TOKEN"].as_str()
+                == Some("fixture-kiro-local-secret")
+            && kiro["mcpServers"]["updated"]["cwd"].as_str() == Some("/synthetic/kiro/preserved")
+            && kiro["mcpServers"]["updated"]["autoApprove"][0].as_str() == Some("read")
+            && kiro["mcpServers"]["updated"]["disabledTools"][0].as_str() == Some("write")
+            && kiro["mcpServers"]["kiro-remote-only"]["headers"]["Authorization"].as_str()
+                == Some("Bearer fixture-kiro-remote-secret")
+            && kiro["mcpServers"]["kiro-reference-only"]["command"].as_str()
+                == Some("${KIRO_FIXTURE_RUNNER}")
+            && kiro["mcpServers"]["kiro-numeric-env"]["env"]["PORT"].as_u64() == Some(43117),
         "unowned, drift, and unmanaged native values should be preserved"
     );
     for comment in [
@@ -384,6 +472,15 @@ fn assert_native_result(home: &SyntheticHome, process_command: &str) {
         assert!(
             codex_text.contains(comment),
             "Codex structural editing should preserve fixture comments"
+        );
+    }
+    for comment in [
+        "// Kiro global-user fixture comment",
+        "// compatible local entries are owned only at command, args, and env",
+    ] {
+        assert!(
+            kiro_text.contains(comment),
+            "Kiro CST editing should preserve every fixture comment"
         );
     }
     assert!(
@@ -404,6 +501,11 @@ fn assert_native_result(home: &SyntheticHome, process_command: &str) {
                 .as_number()
                 .is_some_and(|number| {
                     number.as_str() == "1234567890123456789012345678901234567890"
+                })
+            && kiro["futureTopLevel"]["preciseNumber"]
+                .as_number()
+                .is_some_and(|number| {
+                    number.as_str() == "1234567890123456789012345678901234567890"
                 }),
         "arbitrary-precision unowned numbers should be preserved"
     );
@@ -418,15 +520,17 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
     let windsurf_backup = backup_path(&home.windsurf_configuration());
     let vscode_backup = backup_path(&home.vscode_configuration());
     let codex_backup = backup_path(&home.codex_configuration());
+    let kiro_backup = backup_path(&home.kiro_configuration());
 
     let dry_output = stdout(&run_success(sync_command(&home, true)));
 
-    assert!(dry_output.starts_with("Dry run validated 5 targets; no files changed.\n"));
+    assert!(dry_output.starts_with("Dry run validated 6 targets; no files changed.\n"));
     assert!(dry_output.contains("Claude Desktop: would update with recoverable backup"));
     assert!(dry_output.contains("Cursor: would update with recoverable backup"));
     assert!(dry_output.contains("Windsurf: would update with recoverable backup"));
     assert!(dry_output.contains("VS Code: would update with recoverable backup"));
     assert!(dry_output.contains("Codex: would update with recoverable backup"));
+    assert!(dry_output.contains("Kiro: would update with recoverable backup"));
     assert_eq!(
         dry_output
             .matches("Claude Desktop: would update with recoverable backup")
@@ -450,6 +554,9 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
     assert!(dry_output.contains("environment keys updated \"ROTATE\""));
     assert!(dry_output.contains("preserve target-only \"target-only\""));
     assert!(dry_output.contains("preserve unmanaged \"remote-only\""));
+    assert!(dry_output.contains("preserve unmanaged \"kiro-numeric-env\""));
+    assert!(dry_output.contains("preserve unmanaged \"kiro-reference-only\""));
+    assert!(dry_output.contains("preserve unmanaged \"kiro-remote-only\""));
     assert!(dry_output.contains("preserve unmanaged \"windsurf-remote-only\""));
     assert!(dry_output.contains("preserve unmanaged \"numeric-env\""));
     assert!(dry_output.contains("preserve unmanaged \"vscode-remote-only\""));
@@ -488,6 +595,11 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
         "dry-run should preserve Codex bytes",
     );
     assert_file_matches(
+        &home.kiro_configuration(),
+        &fixture.kiro,
+        "dry-run should preserve exact Kiro JSONC bytes",
+    );
+    assert_file_matches(
         &fixture.project_path,
         PROJECT_CURSOR,
         "dry-run should preserve project Cursor bytes",
@@ -498,21 +610,24 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
         "dry-run should preserve project VS Code bytes",
     );
     assert_codex_exclusions_unchanged(&fixture, "dry-run");
+    assert_kiro_exclusions_unchanged(&fixture, "dry-run");
     assert!(!claude_backup.exists());
     assert!(!cursor_backup.exists());
     assert!(!windsurf_backup.exists());
     assert!(!vscode_backup.exists());
     assert!(!codex_backup.exists());
+    assert!(!kiro_backup.exists());
     assert!(!fixture.process_marker.exists());
 
     let apply_output = stdout(&run_success(sync_command(&home, false)));
 
-    assert!(apply_output.starts_with("Sync completed for 5 targets.\n"));
+    assert!(apply_output.starts_with("Sync completed for 6 targets.\n"));
     assert!(apply_output.contains("Claude Desktop: updated with recoverable backup"));
     assert!(apply_output.contains("Cursor: updated with recoverable backup"));
     assert!(apply_output.contains("Windsurf: updated with recoverable backup"));
     assert!(apply_output.contains("VS Code: updated with recoverable backup"));
     assert!(apply_output.contains("Codex: updated with recoverable backup"));
+    assert!(apply_output.contains("Kiro: updated with recoverable backup"));
     assert_output_omits(&apply_output, &fixture.private_values());
     assert_file_matches(
         &claude_backup,
@@ -540,6 +655,11 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
         "Codex backup should contain exact prior bytes",
     );
     assert_file_matches(
+        &kiro_backup,
+        &fixture.kiro,
+        "Kiro backup should contain exact prior comment-bearing bytes",
+    );
+    assert_file_matches(
         &home.canonical_configuration(),
         &fixture.canonical,
         "apply should preserve canonical bytes",
@@ -555,6 +675,7 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
         "apply should preserve project VS Code bytes",
     );
     assert_codex_exclusions_unchanged(&fixture, "apply");
+    assert_kiro_exclusions_unchanged(&fixture, "apply");
     assert!(!fixture.process_marker.exists());
     assert_native_result(&home, &fixture.process_command);
     assert_no_temporary_files(&home.claude_desktop_configuration());
@@ -562,24 +683,27 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
     assert_no_temporary_files(&home.windsurf_configuration());
     assert_no_temporary_files(&home.vscode_configuration());
     assert_no_temporary_files(&home.codex_configuration());
+    assert_no_temporary_files(&home.kiro_configuration());
 
     let claude_after_apply = fs::read(home.claude_desktop_configuration()).unwrap();
     let cursor_after_apply = fs::read(home.cursor_configuration()).unwrap();
     let windsurf_after_apply = fs::read(home.windsurf_configuration()).unwrap();
     let vscode_after_apply = fs::read(home.vscode_configuration()).unwrap();
     let codex_after_apply = fs::read(home.codex_configuration()).unwrap();
+    let kiro_after_apply = fs::read(home.kiro_configuration()).unwrap();
     let claude_backup_after_apply = fs::read(&claude_backup).unwrap();
     let cursor_backup_after_apply = fs::read(&cursor_backup).unwrap();
     let windsurf_backup_after_apply = fs::read(&windsurf_backup).unwrap();
     let vscode_backup_after_apply = fs::read(&vscode_backup).unwrap();
     let codex_backup_after_apply = fs::read(&codex_backup).unwrap();
+    let kiro_backup_after_apply = fs::read(&kiro_backup).unwrap();
     let no_op_output = stdout(&run_success(sync_command(&home, false)));
 
     assert_eq!(
         no_op_output
             .matches("unchanged; no write or backup")
             .count(),
-        5
+        6
     );
     assert_eq!(
         no_op_output
@@ -625,6 +749,11 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
         "no-op should preserve Codex bytes",
     );
     assert_file_matches(
+        &home.kiro_configuration(),
+        &kiro_after_apply,
+        "no-op should preserve exact Kiro bytes",
+    );
+    assert_file_matches(
         &claude_backup,
         &claude_backup_after_apply,
         "no-op should preserve Claude backup bytes",
@@ -650,6 +779,11 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
         "no-op should preserve Codex backup bytes",
     );
     assert_file_matches(
+        &kiro_backup,
+        &kiro_backup_after_apply,
+        "no-op should preserve Kiro backup bytes",
+    );
+    assert_file_matches(
         &fixture.project_path,
         PROJECT_CURSOR,
         "no-op should preserve project Cursor bytes",
@@ -660,7 +794,87 @@ fn dry_run_apply_and_repeat_no_op_share_one_redacted_per_target_contract() {
         "no-op should preserve project VS Code bytes",
     );
     assert_codex_exclusions_unchanged(&fixture, "no-op");
+    assert_kiro_exclusions_unchanged(&fixture, "no-op");
     assert!(!fixture.process_marker.exists());
+}
+
+#[test]
+fn sync_uses_only_the_absolute_kiro_home_profile_selected_for_the_process() {
+    let home = SyntheticHome::new();
+    let kiro_home = home.root().join("selected-kiro-profile");
+    let selected_path = kiro_home.join("settings/mcp.json");
+    let selected_crew_path = kiro_home.join("crew/mcp.json");
+    let selected_agent_path = kiro_home.join("agents/kirocrew.json");
+    let default_bytes = b"default Kiro file must not be inspected\n";
+    let excluded_bytes = b"{\"private\":\"selected-profile-exclusion\"}\n";
+
+    home.write_file(&home.canonical_configuration(), CANONICAL_DESIRED);
+    home.write_file(&home.kiro_configuration(), default_bytes);
+    home.write_file(&selected_path, KIRO_CURRENT);
+    home.write_file(&selected_crew_path, excluded_bytes);
+    home.write_file(&selected_agent_path, excluded_bytes);
+
+    let command = |dry_run: bool| {
+        let mut process = home.command();
+        process.env("KIRO_HOME", &kiro_home);
+        let mut command = AssertCommand::from_std(process);
+        command.arg("sync");
+        if dry_run {
+            command.arg("--dry-run");
+        }
+        command.timeout(COMMAND_TIMEOUT);
+        command
+    };
+
+    let dry_output = stdout(&run_success(command(true)));
+
+    assert!(dry_output.contains("Kiro: would update with recoverable backup"));
+    assert!(!dry_output.contains("selected-profile-exclusion"));
+    assert_file_matches(
+        &home.kiro_configuration(),
+        default_bytes,
+        "KIRO_HOME dry-run must not inspect or mutate the default Kiro profile",
+    );
+    assert_file_matches(
+        &selected_path,
+        KIRO_CURRENT,
+        "KIRO_HOME dry-run must preserve exact selected-profile bytes",
+    );
+    assert!(!backup_path(&selected_path).exists());
+
+    let apply_output = stdout(&run_success(command(false)));
+
+    assert!(apply_output.contains("Kiro: updated with recoverable backup"));
+    assert!(!apply_output.contains("selected-profile-exclusion"));
+    assert_file_matches(
+        &home.kiro_configuration(),
+        default_bytes,
+        "KIRO_HOME apply must leave the default Kiro profile untouched",
+    );
+    assert!(!backup_path(&home.kiro_configuration()).exists());
+    assert_file_matches(
+        &backup_path(&selected_path),
+        KIRO_CURRENT,
+        "KIRO_HOME apply must retain exact prior selected-profile bytes",
+    );
+    for path in [&selected_crew_path, &selected_agent_path] {
+        assert_file_matches(
+            path,
+            excluded_bytes,
+            "KIRO_HOME apply must not mutate Crew-only or generated-agent stores",
+        );
+        assert!(!backup_path(path).exists());
+    }
+    let (selected_text, selected) = parse_kiro(&selected_path);
+    assert!(selected_text.contains("// Kiro global-user fixture comment"));
+    assert_eq!(
+        selected["mcpServers"]["updated"]["command"].as_str(),
+        Some("/synthetic/bin/new")
+    );
+    assert_eq!(
+        selected["mcpServers"]["reference-only"]["command"].as_str(),
+        Some("${KIRO_FIXTURE_RUNNER}")
+    );
 }
 
 #[test]
@@ -682,6 +896,7 @@ fn a_real_second_target_failure_restores_the_first_target_and_its_prior_backup()
     assert!(diagnostic.contains("Windsurf: not attempted after an earlier failure"));
     assert!(diagnostic.contains("VS Code: not attempted after an earlier failure"));
     assert!(diagnostic.contains("Codex: not attempted after an earlier failure"));
+    assert!(diagnostic.contains("Kiro: not attempted after an earlier failure"));
     assert!(diagnostic.contains("Per-target outcomes:"));
     assert_output_omits(&diagnostic, &fixture.private_values());
     assert!(!diagnostic.contains("older private Claude backup bytes"));
@@ -720,6 +935,12 @@ fn a_real_second_target_failure_restores_the_first_target_and_its_prior_backup()
     );
     assert!(!backup_path(&home.codex_configuration()).exists());
     assert_file_matches(
+        &home.kiro_configuration(),
+        &fixture.kiro,
+        "a second-target failure should preserve Kiro bytes",
+    );
+    assert!(!backup_path(&home.kiro_configuration()).exists());
+    assert_file_matches(
         &home.canonical_configuration(),
         &fixture.canonical,
         "failed sync should preserve canonical bytes",
@@ -735,12 +956,14 @@ fn a_real_second_target_failure_restores_the_first_target_and_its_prior_backup()
         "failed sync should preserve project VS Code bytes",
     );
     assert_codex_exclusions_unchanged(&fixture, "second-target failure");
+    assert_kiro_exclusions_unchanged(&fixture, "second-target failure");
     assert!(!fixture.process_marker.exists());
     assert_no_temporary_files(&home.claude_desktop_configuration());
     assert_no_temporary_files(&home.cursor_configuration());
     assert_no_temporary_files(&home.windsurf_configuration());
     assert_no_temporary_files(&home.vscode_configuration());
     assert_no_temporary_files(&home.codex_configuration());
+    assert_no_temporary_files(&home.kiro_configuration());
 }
 
 #[test]
@@ -765,6 +988,7 @@ fn a_real_third_target_failure_restores_both_prior_targets_and_backups() {
     assert!(diagnostic.contains("Windsurf: update failed: refusing to replace directory"));
     assert!(diagnostic.contains("VS Code: not attempted after an earlier failure"));
     assert!(diagnostic.contains("Codex: not attempted after an earlier failure"));
+    assert!(diagnostic.contains("Kiro: not attempted after an earlier failure"));
     assert_output_omits(&diagnostic, &fixture.private_values());
     assert!(!diagnostic.contains("older private Claude backup bytes"));
     assert!(!diagnostic.contains("older private Cursor backup bytes"));
@@ -807,6 +1031,12 @@ fn a_real_third_target_failure_restores_both_prior_targets_and_backups() {
     );
     assert!(!backup_path(&home.codex_configuration()).exists());
     assert_file_matches(
+        &home.kiro_configuration(),
+        &fixture.kiro,
+        "a third-target failure should preserve Kiro bytes",
+    );
+    assert!(!backup_path(&home.kiro_configuration()).exists());
+    assert_file_matches(
         &home.canonical_configuration(),
         &fixture.canonical,
         "failed four-target sync should preserve canonical bytes",
@@ -822,6 +1052,7 @@ fn a_real_third_target_failure_restores_both_prior_targets_and_backups() {
         "failed five-target sync should preserve project VS Code bytes",
     );
     assert_codex_exclusions_unchanged(&fixture, "third-target failure");
+    assert_kiro_exclusions_unchanged(&fixture, "third-target failure");
     assert!(!fixture.process_marker.exists());
     for target in [
         home.claude_desktop_configuration(),
@@ -829,6 +1060,7 @@ fn a_real_third_target_failure_restores_both_prior_targets_and_backups() {
         home.windsurf_configuration(),
         home.vscode_configuration(),
         home.codex_configuration(),
+        home.kiro_configuration(),
     ] {
         assert_no_temporary_files(&target);
     }
@@ -859,6 +1091,7 @@ fn a_real_fourth_target_failure_restores_all_prior_targets_and_backups_in_revers
     assert!(diagnostic.contains("Windsurf: rolled back after update"));
     assert!(diagnostic.contains("VS Code: update failed: refusing to replace directory"));
     assert!(diagnostic.contains("Codex: not attempted after an earlier failure"));
+    assert!(diagnostic.contains("Kiro: not attempted after an earlier failure"));
     assert_output_omits(&diagnostic, &fixture.private_values());
     for private_backup in [
         "older private Claude backup bytes",
@@ -893,6 +1126,7 @@ fn a_real_fourth_target_failure_restores_all_prior_targets_and_backups_in_revers
             fixture.codex.as_slice(),
             "Codex",
         ),
+        (home.kiro_configuration(), fixture.kiro.as_slice(), "Kiro"),
     ] {
         assert_file_matches(
             &path,
@@ -918,6 +1152,7 @@ fn a_real_fourth_target_failure_restores_all_prior_targets_and_backups_in_revers
     );
     assert!(vscode_backup.is_dir());
     assert!(!backup_path(&home.codex_configuration()).exists());
+    assert!(!backup_path(&home.kiro_configuration()).exists());
     assert_file_matches(
         &home.canonical_configuration(),
         &fixture.canonical,
@@ -929,6 +1164,7 @@ fn a_real_fourth_target_failure_restores_all_prior_targets_and_backups_in_revers
         "failed fourth-target sync should preserve project VS Code bytes",
     );
     assert_codex_exclusions_unchanged(&fixture, "fourth-target failure");
+    assert_kiro_exclusions_unchanged(&fixture, "fourth-target failure");
     assert!(!fixture.process_marker.exists());
 }
 
@@ -960,6 +1196,7 @@ fn a_real_fifth_target_failure_restores_all_prior_targets_and_backups_in_reverse
     assert!(diagnostic.contains("Windsurf: rolled back after update"));
     assert!(diagnostic.contains("VS Code: rolled back after update"));
     assert!(diagnostic.contains("Codex: update failed: refusing to replace directory"));
+    assert!(diagnostic.contains("Kiro: not attempted after an earlier failure"));
     assert_output_omits(&diagnostic, &fixture.private_values());
     for private_backup in [
         "older private Claude backup bytes",
@@ -995,6 +1232,7 @@ fn a_real_fifth_target_failure_restores_all_prior_targets_and_backups_in_reverse
             fixture.codex.as_slice(),
             "Codex",
         ),
+        (home.kiro_configuration(), fixture.kiro.as_slice(), "Kiro"),
     ] {
         assert_file_matches(
             &path,
@@ -1020,6 +1258,7 @@ fn a_real_fifth_target_failure_restores_all_prior_targets_and_backups_in_reverse
         );
     }
     assert!(codex_backup.is_dir());
+    assert!(!backup_path(&home.kiro_configuration()).exists());
     assert_file_matches(
         &home.canonical_configuration(),
         &fixture.canonical,
@@ -1036,6 +1275,115 @@ fn a_real_fifth_target_failure_restores_all_prior_targets_and_backups_in_reverse
         "failed fifth-target sync should preserve project VS Code bytes",
     );
     assert_codex_exclusions_unchanged(&fixture, "fifth-target failure");
+    assert_kiro_exclusions_unchanged(&fixture, "fifth-target failure");
+    assert!(!fixture.process_marker.exists());
+}
+
+#[test]
+fn a_real_sixth_target_failure_restores_all_five_prior_targets_and_backups_in_reverse() {
+    let home = SyntheticHome::new();
+    let fixture = prepare_existing_journey(&home);
+    let backups = [
+        (
+            backup_path(&home.claude_desktop_configuration()),
+            b"older private Claude backup bytes\n".as_slice(),
+            "Claude Desktop",
+        ),
+        (
+            backup_path(&home.cursor_configuration()),
+            b"older private Cursor backup bytes\n".as_slice(),
+            "Cursor",
+        ),
+        (
+            backup_path(&home.windsurf_configuration()),
+            b"older private Windsurf backup bytes\n".as_slice(),
+            "Windsurf",
+        ),
+        (
+            backup_path(&home.vscode_configuration()),
+            b"older private VS Code backup bytes\n".as_slice(),
+            "VS Code",
+        ),
+        (
+            backup_path(&home.codex_configuration()),
+            b"older private Codex backup bytes\n".as_slice(),
+            "Codex",
+        ),
+    ];
+    for (path, bytes, _) in &backups {
+        home.write_file(path, bytes);
+    }
+    let kiro_backup = backup_path(&home.kiro_configuration());
+    fs::create_dir(&kiro_backup).expect("the blocking Kiro backup should be created");
+
+    let diagnostic = stderr(&run_failure(sync_command(&home, false)));
+
+    assert!(diagnostic.starts_with("error: sync transaction failed while applying Kiro:"));
+    for target in ["Claude Desktop", "Cursor", "Windsurf", "VS Code", "Codex"] {
+        assert!(diagnostic.contains(&format!("{target}: rolled back after update")));
+    }
+    assert!(diagnostic.contains("Kiro: update failed: refusing to replace directory"));
+    assert_output_omits(&diagnostic, &fixture.private_values());
+    for private_backup in [
+        "older private Claude backup bytes",
+        "older private Cursor backup bytes",
+        "older private Windsurf backup bytes",
+        "older private VS Code backup bytes",
+        "older private Codex backup bytes",
+    ] {
+        assert!(!diagnostic.contains(private_backup));
+    }
+
+    for (path, bytes, label) in [
+        (
+            home.claude_desktop_configuration(),
+            fixture.claude.as_slice(),
+            "Claude Desktop",
+        ),
+        (
+            home.cursor_configuration(),
+            fixture.cursor.as_slice(),
+            "Cursor",
+        ),
+        (
+            home.windsurf_configuration(),
+            fixture.windsurf.as_slice(),
+            "Windsurf",
+        ),
+        (
+            home.vscode_configuration(),
+            fixture.vscode.as_slice(),
+            "VS Code",
+        ),
+        (
+            home.codex_configuration(),
+            fixture.codex.as_slice(),
+            "Codex",
+        ),
+        (home.kiro_configuration(), fixture.kiro.as_slice(), "Kiro"),
+    ] {
+        assert_file_matches(
+            &path,
+            bytes,
+            &format!("sixth-target rollback should restore or preserve {label} bytes"),
+        );
+        assert_no_temporary_files(&path);
+    }
+    for (path, bytes, label) in &backups {
+        assert_file_matches(
+            path,
+            bytes,
+            &format!("sixth-target rollback should restore the previous {label} backup"),
+        );
+    }
+    assert!(kiro_backup.is_dir());
+    assert_file_matches(
+        &home.canonical_configuration(),
+        &fixture.canonical,
+        "failed sixth-target sync should preserve canonical bytes",
+    );
+    assert_codex_exclusions_unchanged(&fixture, "sixth-target failure");
+    assert_kiro_exclusions_unchanged(&fixture, "sixth-target failure");
     assert!(!fixture.process_marker.exists());
 }
 
@@ -1056,6 +1404,7 @@ fn a_created_first_target_is_removed_when_the_second_target_fails() {
     assert!(diagnostic.contains("Windsurf: not attempted after an earlier failure"));
     assert!(diagnostic.contains("VS Code: not attempted after an earlier failure"));
     assert!(diagnostic.contains("Codex: not attempted after an earlier failure"));
+    assert!(diagnostic.contains("Kiro: not attempted after an earlier failure"));
     assert_output_omits(&diagnostic, &fixture.private_values());
     assert!(!home.claude_desktop_configuration().exists());
     assert!(!backup_path(&home.claude_desktop_configuration()).exists());
@@ -1084,6 +1433,12 @@ fn a_created_first_target_is_removed_when_the_second_target_fails() {
     );
     assert!(!backup_path(&home.codex_configuration()).exists());
     assert_file_matches(
+        &home.kiro_configuration(),
+        &fixture.kiro,
+        "creation rollback should preserve Kiro bytes",
+    );
+    assert!(!backup_path(&home.kiro_configuration()).exists());
+    assert_file_matches(
         &home.vscode_configuration(),
         &fixture.vscode,
         "creation rollback should preserve VS Code bytes",
@@ -1100,12 +1455,14 @@ fn a_created_first_target_is_removed_when_the_second_target_fails() {
         "creation rollback should preserve project VS Code bytes",
     );
     assert_codex_exclusions_unchanged(&fixture, "creation rollback");
+    assert_kiro_exclusions_unchanged(&fixture, "creation rollback");
     assert!(!fixture.process_marker.exists());
     assert_no_temporary_files(&home.claude_desktop_configuration());
     assert_no_temporary_files(&home.cursor_configuration());
     assert_no_temporary_files(&home.windsurf_configuration());
     assert_no_temporary_files(&home.vscode_configuration());
     assert_no_temporary_files(&home.codex_configuration());
+    assert_no_temporary_files(&home.kiro_configuration());
 }
 
 #[test]
@@ -1148,11 +1505,17 @@ fn malformed_final_vscode_state_stops_before_any_apply_mutation() {
         &fixture.codex,
         "VS Code preflight failure should preserve Codex bytes",
     );
+    assert_file_matches(
+        &home.kiro_configuration(),
+        &fixture.kiro,
+        "VS Code preflight failure should preserve Kiro bytes",
+    );
     assert!(!backup_path(&home.claude_desktop_configuration()).exists());
     assert!(!backup_path(&home.cursor_configuration()).exists());
     assert!(!backup_path(&home.windsurf_configuration()).exists());
     assert!(!backup_path(&home.vscode_configuration()).exists());
     assert!(!backup_path(&home.codex_configuration()).exists());
+    assert!(!backup_path(&home.kiro_configuration()).exists());
     assert_file_matches(
         &fixture.project_path,
         PROJECT_CURSOR,
@@ -1164,6 +1527,7 @@ fn malformed_final_vscode_state_stops_before_any_apply_mutation() {
         "preflight failure should preserve project VS Code bytes",
     );
     assert_codex_exclusions_unchanged(&fixture, "VS Code preflight failure");
+    assert_kiro_exclusions_unchanged(&fixture, "VS Code preflight failure");
     assert!(!fixture.process_marker.exists());
 }
 
@@ -1204,6 +1568,7 @@ fn malformed_final_codex_state_stops_before_any_apply_mutation_without_value_out
             "VS Code",
         ),
         (home.codex_configuration(), malformed.as_slice(), "Codex"),
+        (home.kiro_configuration(), fixture.kiro.as_slice(), "Kiro"),
     ] {
         assert_file_matches(
             &path,
@@ -1228,6 +1593,71 @@ fn malformed_final_codex_state_stops_before_any_apply_mutation_without_value_out
         "Codex preflight failure should preserve project VS Code bytes",
     );
     assert_codex_exclusions_unchanged(&fixture, "Codex preflight failure");
+    assert_kiro_exclusions_unchanged(&fixture, "Codex preflight failure");
+    assert!(!fixture.process_marker.exists());
+}
+
+#[test]
+fn malformed_final_kiro_state_stops_before_any_apply_mutation_without_value_output() {
+    let home = SyntheticHome::new();
+    let fixture = prepare_existing_journey(&home);
+    let malformed =
+        b"{\n// private-kiro-malformed-comment\n\"mcpServers\":{\"bad\":{\"command\":\"private-kiro-malformed-command\"";
+    home.write_file(&home.kiro_configuration(), malformed);
+
+    let diagnostic = stderr(&run_failure(sync_command(&home, false)));
+
+    assert!(diagnostic.starts_with("error: cannot plan Kiro sync: invalid Kiro JSON:"));
+    assert!(diagnostic.ends_with("; no target files were changed\n"));
+    for private in [
+        "private-kiro-malformed-comment",
+        "private-kiro-malformed-command",
+    ] {
+        assert!(!diagnostic.contains(private));
+    }
+    assert_output_omits(&diagnostic, &fixture.private_values());
+    for (path, bytes, label) in [
+        (
+            home.claude_desktop_configuration(),
+            fixture.claude.as_slice(),
+            "Claude Desktop",
+        ),
+        (
+            home.cursor_configuration(),
+            fixture.cursor.as_slice(),
+            "Cursor",
+        ),
+        (
+            home.windsurf_configuration(),
+            fixture.windsurf.as_slice(),
+            "Windsurf",
+        ),
+        (
+            home.vscode_configuration(),
+            fixture.vscode.as_slice(),
+            "VS Code",
+        ),
+        (
+            home.codex_configuration(),
+            fixture.codex.as_slice(),
+            "Codex",
+        ),
+        (home.kiro_configuration(), malformed.as_slice(), "Kiro"),
+    ] {
+        assert_file_matches(
+            &path,
+            bytes,
+            &format!("Kiro preflight failure should preserve {label} bytes"),
+        );
+        assert!(!backup_path(&path).exists());
+    }
+    assert_file_matches(
+        &home.canonical_configuration(),
+        &fixture.canonical,
+        "Kiro preflight failure should preserve canonical bytes",
+    );
+    assert_codex_exclusions_unchanged(&fixture, "Kiro preflight failure");
+    assert_kiro_exclusions_unchanged(&fixture, "Kiro preflight failure");
     assert!(!fixture.process_marker.exists());
 }
 
@@ -1239,11 +1669,13 @@ fn missing_or_malformed_canonical_state_fails_before_native_discovery() {
     let windsurf = b"Windsurf target must not be parsed before canonical validation\n";
     let vscode = b"VS Code target must not be parsed before canonical validation\n";
     let codex = b"Codex target must not be parsed before canonical validation\n";
+    let kiro = b"Kiro target must not be parsed before canonical validation\n";
     home.write_file(&home.claude_desktop_configuration(), claude);
     home.write_file(&home.cursor_configuration(), cursor);
     home.write_file(&home.windsurf_configuration(), windsurf);
     home.write_file(&home.vscode_configuration(), vscode);
     home.write_file(&home.codex_configuration(), codex);
+    home.write_file(&home.kiro_configuration(), kiro);
 
     let missing = stderr(&run_failure(sync_command(&home, true)));
     assert!(missing.contains("canonical configuration does not exist"));
@@ -1281,11 +1713,17 @@ fn missing_or_malformed_canonical_state_fails_before_native_discovery() {
         codex,
         "canonical validation failure should preserve Codex bytes",
     );
+    assert_file_matches(
+        &home.kiro_configuration(),
+        kiro,
+        "canonical validation failure should preserve Kiro bytes",
+    );
     assert!(!backup_path(&home.claude_desktop_configuration()).exists());
     assert!(!backup_path(&home.cursor_configuration()).exists());
     assert!(!backup_path(&home.windsurf_configuration()).exists());
     assert!(!backup_path(&home.vscode_configuration()).exists());
     assert!(!backup_path(&home.codex_configuration()).exists());
+    assert!(!backup_path(&home.kiro_configuration()).exists());
 }
 
 #[test]
@@ -1333,11 +1771,17 @@ fn an_unmanaged_cursor_name_collision_fails_the_complete_plan_before_apply() {
         &fixture.codex,
         "Cursor collision should preserve Codex bytes",
     );
+    assert_file_matches(
+        &home.kiro_configuration(),
+        &fixture.kiro,
+        "Cursor collision should preserve Kiro bytes",
+    );
     assert!(!backup_path(&home.claude_desktop_configuration()).exists());
     assert!(!backup_path(&home.cursor_configuration()).exists());
     assert!(!backup_path(&home.windsurf_configuration()).exists());
     assert!(!backup_path(&home.vscode_configuration()).exists());
     assert!(!backup_path(&home.codex_configuration()).exists());
+    assert!(!backup_path(&home.kiro_configuration()).exists());
     assert_file_matches(
         &fixture.project_path,
         PROJECT_CURSOR,
@@ -1349,6 +1793,7 @@ fn an_unmanaged_cursor_name_collision_fails_the_complete_plan_before_apply() {
         "collision failure should preserve project VS Code bytes",
     );
     assert_codex_exclusions_unchanged(&fixture, "Cursor collision");
+    assert_kiro_exclusions_unchanged(&fixture, "Cursor collision");
     assert!(!fixture.process_marker.exists());
 }
 
@@ -1417,6 +1862,7 @@ fn an_unmanaged_windsurf_name_collision_fails_the_complete_plan_before_apply() {
         "Windsurf collision should preserve project VS Code bytes",
     );
     assert_codex_exclusions_unchanged(&fixture, "Windsurf collision");
+    assert_kiro_exclusions_unchanged(&fixture, "Windsurf collision");
     assert!(!fixture.process_marker.exists());
 }
 
@@ -1480,6 +1926,13 @@ fn an_unmanaged_vscode_name_collision_fails_the_complete_plan_before_apply() {
         "VS Code collision should preserve project VS Code bytes",
     );
     assert_codex_exclusions_unchanged(&fixture, "VS Code collision");
+    assert_file_matches(
+        &home.kiro_configuration(),
+        &fixture.kiro,
+        "VS Code collision should preserve Kiro bytes",
+    );
+    assert!(!backup_path(&home.kiro_configuration()).exists());
+    assert_kiro_exclusions_unchanged(&fixture, "VS Code collision");
     assert!(!fixture.process_marker.exists());
 }
 
@@ -1548,6 +2001,72 @@ fn an_unmanaged_codex_name_collision_fails_the_complete_plan_before_apply() {
         "Codex collision should preserve project VS Code bytes",
     );
     assert_codex_exclusions_unchanged(&fixture, "Codex collision");
+    assert_file_matches(
+        &home.kiro_configuration(),
+        &fixture.kiro,
+        "Codex collision should preserve Kiro bytes",
+    );
+    assert!(!backup_path(&home.kiro_configuration()).exists());
+    assert_kiro_exclusions_unchanged(&fixture, "Codex collision");
+    assert!(!fixture.process_marker.exists());
+}
+
+#[test]
+fn an_unmanaged_kiro_reference_collision_fails_the_complete_plan_before_apply() {
+    let home = SyntheticHome::new();
+    let fixture = prepare_existing_journey(&home);
+    let mut canonical: Value =
+        serde_json::from_slice(&fixture.canonical).expect("canonical fixture should parse");
+    canonical["servers"]["kiro-reference-only"] = canonical["servers"]["added"].clone();
+    let mut canonical =
+        serde_json::to_vec_pretty(&canonical).expect("collision fixture should serialize");
+    canonical.push(b'\n');
+    home.write_file(&home.canonical_configuration(), &canonical);
+
+    let diagnostic = stderr(&run_failure(sync_command(&home, false)));
+
+    assert!(diagnostic.contains(
+        "cannot render the validated Kiro sync plan: cannot reconcile local server \"kiro-reference-only\" because Kiro already has an unmanaged entry with that name"
+    ));
+    assert!(diagnostic.ends_with("; no target files were changed\n"));
+    assert_output_omits(&diagnostic, &fixture.private_values());
+    for (path, bytes, label) in [
+        (
+            home.claude_desktop_configuration(),
+            fixture.claude.as_slice(),
+            "Claude Desktop",
+        ),
+        (
+            home.cursor_configuration(),
+            fixture.cursor.as_slice(),
+            "Cursor",
+        ),
+        (
+            home.windsurf_configuration(),
+            fixture.windsurf.as_slice(),
+            "Windsurf",
+        ),
+        (
+            home.vscode_configuration(),
+            fixture.vscode.as_slice(),
+            "VS Code",
+        ),
+        (
+            home.codex_configuration(),
+            fixture.codex.as_slice(),
+            "Codex",
+        ),
+        (home.kiro_configuration(), fixture.kiro.as_slice(), "Kiro"),
+    ] {
+        assert_file_matches(
+            &path,
+            bytes,
+            &format!("Kiro collision should preserve {label} bytes"),
+        );
+        assert!(!backup_path(&path).exists());
+    }
+    assert_codex_exclusions_unchanged(&fixture, "Kiro collision");
+    assert_kiro_exclusions_unchanged(&fixture, "Kiro collision");
     assert!(!fixture.process_marker.exists());
 }
 
@@ -1585,6 +2104,7 @@ fn a_second_target_permission_failure_rolls_back_the_first_target() {
     assert!(diagnostic.contains("VS Code: not attempted after an earlier failure"));
     assert!(diagnostic.contains("Codex: not attempted after an earlier failure"));
     assert!(diagnostic.contains("Permission denied"));
+    assert!(diagnostic.contains("Kiro: not attempted after an earlier failure"));
     assert_output_omits(&diagnostic, &fixture.private_values());
     assert_file_matches(
         &home.claude_desktop_configuration(),
@@ -1617,6 +2137,12 @@ fn a_second_target_permission_failure_rolls_back_the_first_target() {
     );
     assert!(!backup_path(&home.codex_configuration()).exists());
     assert_file_matches(
+        &home.kiro_configuration(),
+        &fixture.kiro,
+        "permission failure should preserve Kiro bytes",
+    );
+    assert!(!backup_path(&home.kiro_configuration()).exists());
+    assert_file_matches(
         &fixture.project_path,
         PROJECT_CURSOR,
         "permission failure should preserve project Cursor bytes",
@@ -1627,5 +2153,6 @@ fn a_second_target_permission_failure_rolls_back_the_first_target() {
         "permission failure should preserve project VS Code bytes",
     );
     assert_codex_exclusions_unchanged(&fixture, "permission failure");
+    assert_kiro_exclusions_unchanged(&fixture, "permission failure");
     assert!(!fixture.process_marker.exists());
 }

@@ -156,6 +156,10 @@ impl SyntheticHome {
         self.user_root.join(".codex/config.toml")
     }
 
+    pub fn kiro_configuration(&self) -> PathBuf {
+        self.user_root.join(".kiro/settings/mcp.json")
+    }
+
     pub fn write_file(&self, path: &Path, contents: impl AsRef<[u8]>) {
         assert!(
             path.starts_with(self.root.path()),

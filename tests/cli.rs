@@ -42,7 +42,7 @@ fn restore_help_limits_selection_and_exposes_dry_run() {
     assert!(output.stderr.is_empty());
     let stdout = String::from_utf8(output.stdout).expect("restore help should be UTF-8");
     assert!(stdout.contains("validated adjacent backup"));
-    assert!(stdout.contains("canonical, claude-desktop, cursor, windsurf, vscode, codex"));
+    assert!(stdout.contains("canonical, claude-desktop, cursor, windsurf, vscode, codex, kiro"));
     assert!(stdout.contains("--dry-run"));
     assert!(stdout.contains("without changing the target or backup"));
 }

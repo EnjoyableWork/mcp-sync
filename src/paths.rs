@@ -4,6 +4,7 @@ use std::fmt;
 use std::path::{Component, Path, PathBuf};
 
 const HOME: &str = "HOME";
+const KIRO_HOME: &str = "KIRO_HOME";
 const XDG_CONFIG_HOME: &str = "XDG_CONFIG_HOME";
 const USER_PROFILE: &str = "USERPROFILE";
 const LOCAL_APP_DATA: &str = "LOCALAPPDATA";
@@ -46,6 +47,7 @@ impl Platform {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConfigurationPaths {
     user_home: PathBuf,
+    kiro_home: PathBuf,
     configuration_home: PathBuf,
     user_data_home: PathBuf,
     canonical_configuration: PathBuf,
@@ -79,12 +81,15 @@ impl ConfigurationPaths {
                 required_absolute_path(environment, APP_DATA)?,
             ),
         };
+        let kiro_home = optional_absolute_path(environment, KIRO_HOME)?
+            .unwrap_or_else(|| user_home.join(".kiro"));
         let canonical_root = configuration_home.join("mcp-sync");
         let canonical_configuration = canonical_root.join("config.json");
         let operation_lock = canonical_root.join("operation.lock");
 
         Ok(Self {
             user_home,
+            kiro_home,
             configuration_home,
             user_data_home,
             canonical_configuration,
@@ -94,6 +99,10 @@ impl ConfigurationPaths {
 
     pub fn user_home(&self) -> &Path {
         &self.user_home
+    }
+
+    pub fn kiro_home(&self) -> &Path {
+        &self.kiro_home
     }
 
     #[cfg(test)]
@@ -282,6 +291,7 @@ mod tests {
             paths.canonical_configuration(),
             fixture.user_home.join(".config/mcp-sync/config.json")
         );
+        assert_eq!(paths.kiro_home(), fixture.user_home.join(".kiro"));
         assert_eq!(
             paths.operation_lock(),
             fixture.user_home.join(".config/mcp-sync/operation.lock")
@@ -289,6 +299,7 @@ mod tests {
 
         for path in [
             paths.user_home(),
+            paths.kiro_home(),
             paths.configuration_home(),
             paths.user_data_home(),
             paths.canonical_configuration(),
@@ -315,6 +326,7 @@ mod tests {
             paths.canonical_configuration(),
             fixture.user_home.join(".config/mcp-sync/config.json")
         );
+        assert_eq!(paths.kiro_home(), fixture.user_home.join(".kiro"));
         assert_eq!(
             paths.operation_lock(),
             fixture.user_home.join(".config/mcp-sync/operation.lock")
@@ -322,6 +334,7 @@ mod tests {
 
         for path in [
             paths.user_home(),
+            paths.kiro_home(),
             paths.configuration_home(),
             paths.user_data_home(),
             paths.canonical_configuration(),
@@ -352,6 +365,7 @@ mod tests {
             paths.canonical_configuration(),
             fixture.user_home.join("AppData/Local/mcp-sync/config.json")
         );
+        assert_eq!(paths.kiro_home(), fixture.user_home.join(".kiro"));
         assert_eq!(
             paths.operation_lock(),
             fixture
@@ -361,6 +375,7 @@ mod tests {
 
         for path in [
             paths.user_home(),
+            paths.kiro_home(),
             paths.configuration_home(),
             paths.user_data_home(),
             paths.canonical_configuration(),
@@ -432,6 +447,35 @@ mod tests {
     }
 
     #[test]
+    fn all_platforms_honor_an_absolute_kiro_home_override() {
+        let fixture = PathFixture::new();
+        let kiro_home = fixture.root.path().join("kiro-profile");
+        let cases = [
+            (
+                Platform::MacOs,
+                fixture.environment().with_path("KIRO_HOME", &kiro_home),
+            ),
+            (
+                Platform::Linux,
+                fixture.environment().with_path("KIRO_HOME", &kiro_home),
+            ),
+            (
+                Platform::Windows,
+                fixture
+                    .windows_environment()
+                    .with_path("KIRO_HOME", &kiro_home),
+            ),
+        ];
+
+        for (platform, environment) in cases {
+            let paths = ConfigurationPaths::resolve_for(platform, &environment)
+                .expect("the Kiro home override should resolve");
+            assert_eq!(paths.kiro_home(), kiro_home);
+            fixture.assert_isolated(paths.kiro_home());
+        }
+    }
+
+    #[test]
     fn an_empty_xdg_configuration_home_uses_the_home_default() {
         let fixture = PathFixture::new();
         let environment = fixture
@@ -452,6 +496,20 @@ mod tests {
         assert_eq!(paths.user_data_home(), fixture.user_home.join(".config"));
         fixture.assert_isolated(paths.canonical_configuration());
         fixture.assert_isolated(paths.operation_lock());
+    }
+
+    #[test]
+    fn an_empty_kiro_home_uses_the_user_home_default() {
+        let fixture = PathFixture::new();
+        let environment = fixture
+            .environment()
+            .with_value("KIRO_HOME", OsString::new());
+
+        let paths = ConfigurationPaths::resolve_for(Platform::Linux, &environment)
+            .expect("an empty Kiro home should use the default");
+
+        assert_eq!(paths.kiro_home(), fixture.user_home.join(".kiro"));
+        fixture.assert_isolated(paths.kiro_home());
     }
 
     #[test]
@@ -519,6 +577,12 @@ mod tests {
                     .with_path("XDG_CONFIG_HOME", "relative-config"),
                 "XDG_CONFIG_HOME",
             ),
+            (
+                fixture
+                    .environment()
+                    .with_path("KIRO_HOME", "relative-kiro"),
+                "KIRO_HOME",
+            ),
         ];
 
         for (environment, variable) in cases {
@@ -554,6 +618,25 @@ mod tests {
         assert_eq!(
             error,
             PathResolutionError::ParentTraversal { variable: "HOME" }
+        );
+    }
+
+    #[test]
+    fn parent_traversal_in_kiro_home_is_rejected() {
+        let fixture = PathFixture::new();
+        let traversing_home = fixture.root.path().join("kiro/../outside");
+        let environment = fixture
+            .environment()
+            .with_path("KIRO_HOME", traversing_home);
+
+        let error = ConfigurationPaths::resolve_for(Platform::Linux, &environment)
+            .expect_err("parent traversal in KIRO_HOME should fail");
+
+        assert_eq!(
+            error,
+            PathResolutionError::ParentTraversal {
+                variable: "KIRO_HOME"
+            }
         );
     }
 

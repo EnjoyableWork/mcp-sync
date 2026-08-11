@@ -69,7 +69,7 @@ fn canonical(command: &str) -> Vec<u8> {
     }))
 }
 
-fn target_bytes(command: &str) -> [Vec<u8>; 5] {
+fn target_bytes(command: &str) -> [Vec<u8>; 6] {
     let common = json!({
         "shared": {
             "command": command,
@@ -94,16 +94,18 @@ fn target_bytes(command: &str) -> [Vec<u8>; 5] {
             value = format!("{command}-private-value")
         )
         .into_bytes(),
+        json_bytes(json!({"mcpServers": common})),
     ]
 }
 
-fn target_paths(home: &SyntheticHome) -> [PathBuf; 5] {
+fn target_paths(home: &SyntheticHome) -> [PathBuf; 6] {
     [
         home.claude_desktop_configuration(),
         home.cursor_configuration(),
         home.windsurf_configuration(),
         home.vscode_configuration(),
         home.codex_configuration(),
+        home.kiro_configuration(),
     ]
 }
 
@@ -415,8 +417,8 @@ fn issue_45_partial_generation_cannot_be_observed_by_a_second_sync() {
     }
     let settled = run_success(&home, &["sync", "--dry-run"]);
     let settled = String::from_utf8(settled.stdout).expect("dry-run output should be UTF-8");
-    assert!(settled.contains("Dry run validated 5 targets; no files changed."));
-    assert_eq!(settled.matches("unchanged; no write or backup").count(), 5);
+    assert!(settled.contains("Dry run validated 6 targets; no files changed."));
+    assert_eq!(settled.matches("unchanged; no write or backup").count(), 6);
 }
 
 #[test]

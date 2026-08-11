@@ -203,6 +203,33 @@ url = "https://codex.invalid.example.test/mixed"
 enabled = false
 future_transport = "codex-future-private-value"
 "#;
+    let kiro = br#"{
+  // global Kiro fixture comment
+  "mcpServers": {
+    "zeta": {
+      "command": "zeta-server",
+      "args": ["--zeta"],
+      "env": {"KIRO_TOKEN": "kiro-synthetic-value"},
+      "disabled": false
+    },
+    "shared": {
+      "command": "shared-server",
+      "args": ["--stdio"],
+      "env": {"MODE": "synthetic"},
+      "autoApprove": ["read"]
+    },
+    "remote-kiro": {
+      "url": "https://kiro.invalid.example.test/mcp",
+      "headers": {"Authorization": "Bearer kiro-remote-synthetic-value"}
+    },
+    "reference-kiro": {
+      "command": "${KIRO_SYNTHETIC_RUNNER}",
+      "env": {"TOKEN": "${KIRO_SYNTHETIC_TOKEN}"},
+      "disabled": true
+    },
+  },
+}
+"#;
     let cursor_project_path = home.user_root().join("workspace/.cursor/mcp.json");
     let cursor_project_bytes = b"{\"projectSentinel\":true}\n";
     let codex_project_path = home.user_root().join("workspace/.codex/config.toml");
@@ -211,6 +238,13 @@ future_transport = "codex-future-private-value"
     let codex_profile_bytes = b"model = \"profile-sentinel\"\n";
     let codex_auth_path = home.user_root().join(".codex/auth.json");
     let codex_auth_bytes = b"{\"credentialSentinel\":\"must-remain-private\"}\n";
+    let excluded_kiro_bytes = b"{\"kiroExcludedSentinel\":\"must-remain-private\"}\n";
+    let excluded_kiro_paths = [
+        home.user_root().join("workspace/.kiro/settings/mcp.json"),
+        home.user_root().join(".kiro/crew/mcp.json"),
+        home.user_root().join(".kiro/agents/kirocrew.json"),
+        home.user_root().join(".kiro/agents/synthetic.json"),
+    ];
     let excluded_vscode_bytes = b"not native default-profile VS Code configuration\n";
     let excluded_vscode_paths = [
         home.user_root().join("workspace/.vscode/mcp.json"),
@@ -230,10 +264,14 @@ future_transport = "codex-future-private-value"
     home.write_file(&home.windsurf_configuration(), &windsurf);
     home.write_file(&home.vscode_configuration(), &vscode);
     home.write_file(&home.codex_configuration(), codex);
+    home.write_file(&home.kiro_configuration(), kiro);
     home.write_file(&cursor_project_path, cursor_project_bytes);
     home.write_file(&codex_project_path, codex_project_bytes);
     home.write_file(&codex_profile_path, codex_profile_bytes);
     home.write_file(&codex_auth_path, codex_auth_bytes);
+    for path in &excluded_kiro_paths {
+        home.write_file(path, excluded_kiro_bytes);
+    }
     for path in &excluded_vscode_paths {
         home.write_file(path, excluded_vscode_bytes);
     }
@@ -241,11 +279,12 @@ future_transport = "codex-future-private-value"
     let output = stdout(&run_success(init_command(&home)));
     assert!(
         output
-            == "Initialized canonical configuration with 6 servers from 5 client configurations.\n\
+            == "Initialized canonical configuration with 7 servers from 6 client configurations.\n\
                 Skipped 1 unsupported Cursor entry: \"remote-only\".\n\
                 Skipped 1 unsupported Windsurf entry: \"remote-windsurf\".\n\
                 Skipped 2 unsupported VS Code entries: \"native-env\", \"remote-vscode\".\n\
-                Skipped 3 unsupported Codex entries: \"mixed-codex\", \"opaque-codex\", \"remote-codex\".\n",
+                Skipped 3 unsupported Codex entries: \"mixed-codex\", \"opaque-codex\", \"remote-codex\".\n\
+                Skipped 2 unsupported Kiro entries: \"reference-kiro\", \"remote-kiro\".\n",
         "init success output should be exact and structural"
     );
 
@@ -288,6 +327,11 @@ future_transport = "codex-future-private-value"
                         "command": "shared-server",
                         "args": ["--stdio"],
                         "env": {"MODE": "synthetic"}
+                    },
+                    "zeta": {
+                        "command": "zeta-server",
+                        "args": ["--zeta"],
+                        "env": {"KIRO_TOKEN": "kiro-synthetic-value"}
                     }
                 }
             }),
@@ -320,6 +364,11 @@ future_transport = "codex-future-private-value"
         "init should preserve global Codex bytes",
     );
     assert_file_matches(
+        &home.kiro_configuration(),
+        kiro,
+        "init should preserve global Kiro bytes including comments",
+    );
+    assert_file_matches(
         &cursor_project_path,
         cursor_project_bytes,
         "init should preserve project Cursor bytes",
@@ -344,6 +393,13 @@ future_transport = "codex-future-private-value"
             path,
             excluded_vscode_bytes,
             "init should preserve every excluded VS Code configuration shape",
+        );
+    }
+    for path in &excluded_kiro_paths {
+        assert_file_matches(
+            path,
+            excluded_kiro_bytes,
+            "init should preserve every excluded Kiro workspace, agent, and Crew file",
         );
     }
     assert!(!marker.exists(), "init must not execute configured servers");
@@ -597,6 +653,65 @@ fn init_rejects_malformed_codex_toml_without_exposing_values_or_mutating_any_lay
 }
 
 #[test]
+fn init_rejects_malformed_kiro_jsonc_without_exposing_values_or_mutating_any_layer() {
+    let home = SyntheticHome::new();
+    let claude = json_document(&json!({
+        "mcpServers": {"claude-only": {"command": "synthetic-claude-command"}}
+    }));
+    let codex = b"[mcp_servers.codex-only]\ncommand = \"synthetic-codex-command\"\n";
+    let malformed = b"{\n// kiro-private-malformed-comment\n\"mcpServers\":{\"bad\":{\"command\":\"kiro-private-malformed-command\"";
+    let workspace_path = home.user_root().join("workspace/.kiro/settings/mcp.json");
+    let workspace_bytes = b"{\"workspacePrivate\":\"must-remain-private\"}\n";
+    let crew_path = home.user_root().join(".kiro/crew/mcp.json");
+    let crew_bytes = b"{\"crewPrivate\":\"must-remain-private\"}\n";
+    home.write_file(&home.claude_desktop_configuration(), &claude);
+    home.write_file(&home.codex_configuration(), codex);
+    home.write_file(&home.kiro_configuration(), malformed);
+    home.write_file(&workspace_path, workspace_bytes);
+    home.write_file(&crew_path, crew_bytes);
+
+    let diagnostic = stderr(&run_failure(init_command(&home)));
+
+    assert!(diagnostic.starts_with("error: cannot import Kiro configuration: invalid Kiro JSON:"));
+    assert!(
+        diagnostic.ends_with("; fix the file or its permissions, then rerun `mcp-sync init`\n")
+    );
+    for private in [
+        "kiro-private-malformed-comment",
+        "kiro-private-malformed-command",
+        "must-remain-private",
+    ] {
+        assert!(!diagnostic.contains(private));
+    }
+    assert!(!home.canonical_configuration().exists());
+    assert_file_matches(
+        &home.claude_desktop_configuration(),
+        &claude,
+        "malformed Kiro input should preserve Claude Desktop bytes",
+    );
+    assert_file_matches(
+        &home.codex_configuration(),
+        codex,
+        "malformed Kiro input should preserve Codex bytes",
+    );
+    assert_file_matches(
+        &home.kiro_configuration(),
+        malformed,
+        "malformed Kiro input should remain exact",
+    );
+    assert_file_matches(
+        &workspace_path,
+        workspace_bytes,
+        "malformed global input should preserve workspace Kiro bytes",
+    );
+    assert_file_matches(
+        &crew_path,
+        crew_bytes,
+        "malformed global input should preserve Crew-only bytes",
+    );
+}
+
+#[test]
 fn init_rejects_a_local_collision_with_an_unmanaged_vscode_entry() {
     let home = SyntheticHome::new();
     let claude = json_document(&json!({
@@ -702,6 +817,111 @@ http_headers = { Authorization = "Bearer codex-private-value" }
         project_bytes,
         "Codex collision handling should preserve project Codex bytes",
     );
+}
+
+#[test]
+fn init_rejects_a_local_collision_with_an_unmanaged_kiro_reference() {
+    let home = SyntheticHome::new();
+    let claude = json_document(&json!({
+        "mcpServers": {
+            "reference-collision": {
+                "command": "local-private-command",
+                "args": ["--local-private-argument"],
+                "env": {"TOKEN": "local-private-value"}
+            }
+        }
+    }));
+    let kiro = br#"{
+  "mcpServers": {
+    "reference-collision": {
+      "command": "${KIRO_PRIVATE_RUNNER}",
+      "env": {"TOKEN": "${KIRO_PRIVATE_TOKEN}"},
+      "disabled": true
+    }
+  }
+}
+"#;
+    home.write_file(&home.claude_desktop_configuration(), &claude);
+    home.write_file(&home.kiro_configuration(), kiro);
+
+    let diagnostic = stderr(&run_failure(init_command(&home)));
+
+    assert_eq!(
+        diagnostic,
+        "error: cannot initialize because server \"reference-collision\" is both a local Claude Desktop definition and an unsupported Kiro entry; make the definitions identical, rename one, or remove one, then rerun `mcp-sync init`\n"
+    );
+    for private in [
+        "local-private-command",
+        "--local-private-argument",
+        "local-private-value",
+        "${KIRO_PRIVATE_RUNNER}",
+        "${KIRO_PRIVATE_TOKEN}",
+    ] {
+        assert!(!diagnostic.contains(private));
+    }
+    assert!(!home.canonical_configuration().exists());
+    assert_file_matches(
+        &home.claude_desktop_configuration(),
+        &claude,
+        "Kiro collision handling should preserve Claude Desktop bytes",
+    );
+    assert_file_matches(
+        &home.kiro_configuration(),
+        kiro,
+        "Kiro collision handling should preserve exact Kiro bytes",
+    );
+}
+
+#[test]
+fn init_uses_only_the_absolute_kiro_home_profile_selected_for_the_process() {
+    let home = SyntheticHome::new();
+    let default_bytes = b"default Kiro file must not be inspected\n";
+    let kiro_home = home.root().join("kiro-profile");
+    let relocated_path = kiro_home.join("settings/mcp.json");
+    let relocated = br#"{
+  // relocated global profile
+  "mcpServers": {
+    "relocated": {
+      "command": "relocated-command",
+      "args": ["--stdio"],
+      "env": {"TOKEN": "relocated-private-value"},
+      "disabled": false
+    }
+  }
+}
+"#;
+    home.write_file(&home.kiro_configuration(), default_bytes);
+    home.write_file(&relocated_path, relocated);
+    let mut process = home.command();
+    process.env("KIRO_HOME", &kiro_home);
+    let mut command = AssertCommand::from_std(process);
+    command.arg("init").timeout(COMMAND_TIMEOUT);
+
+    let output = stdout(&run_success(command));
+
+    assert_eq!(
+        output,
+        "Initialized canonical configuration with 1 server from 1 client configuration.\n"
+    );
+    let canonical: Value = serde_json::from_slice(
+        &fs::read(home.canonical_configuration()).expect("canonical output should exist"),
+    )
+    .expect("canonical output should parse");
+    assert_eq!(
+        canonical["servers"]["relocated"]["command"].as_str(),
+        Some("relocated-command")
+    );
+    assert_file_matches(
+        &home.kiro_configuration(),
+        default_bytes,
+        "KIRO_HOME init must leave the default Kiro file untouched",
+    );
+    assert_file_matches(
+        &relocated_path,
+        relocated,
+        "KIRO_HOME init must read but never mutate the selected profile",
+    );
+    assert!(!output.contains("relocated-private-value"));
 }
 
 #[test]

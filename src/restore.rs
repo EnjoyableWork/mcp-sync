@@ -7,6 +7,7 @@ use crate::cursor::{CursorAdapter, CursorAdapterError, CursorDocument};
 use crate::filesystem::{
     BackupRestorer, ExpectedFile, FileMutationError, RestoreFileSystem, backup_path,
 };
+use crate::kiro::{KiroAdapter, KiroAdapterError, KiroDocument};
 use crate::paths::ConfigurationPaths;
 use crate::vscode::{VsCodeAdapter, VsCodeAdapterError, VsCodeDocument};
 use crate::windsurf::{WindsurfAdapter, WindsurfAdapterError, WindsurfDocument};
@@ -24,6 +25,7 @@ pub enum RestoreTarget {
     Windsurf,
     VsCode,
     Codex,
+    Kiro,
 }
 
 impl RestoreTarget {
@@ -45,6 +47,9 @@ impl RestoreTarget {
             Self::Codex => CodexAdapter::from_paths(paths)
                 .configuration_path()
                 .to_owned(),
+            Self::Kiro => KiroAdapter::from_paths(paths)
+                .configuration_path()
+                .to_owned(),
         }
     }
 }
@@ -58,6 +63,7 @@ impl fmt::Display for RestoreTarget {
             Self::Windsurf => "Windsurf",
             Self::VsCode => "VS Code",
             Self::Codex => "Codex",
+            Self::Kiro => "Kiro",
         })
     }
 }
@@ -156,6 +162,9 @@ fn validate_backup(target: RestoreTarget, backup: &[u8]) -> Result<(), BackupVal
         RestoreTarget::Codex => CodexDocument::parse(backup)
             .map(drop)
             .map_err(BackupValidationError::Codex),
+        RestoreTarget::Kiro => KiroDocument::parse(backup)
+            .map(drop)
+            .map_err(BackupValidationError::Kiro),
     }
 }
 
@@ -312,6 +321,7 @@ pub(crate) enum BackupValidationError {
     Windsurf(WindsurfAdapterError),
     VsCode(VsCodeAdapterError),
     Codex(CodexAdapterError),
+    Kiro(KiroAdapterError),
 }
 
 impl fmt::Debug for BackupValidationError {
@@ -336,6 +346,7 @@ impl Error for BackupValidationError {
             Self::Windsurf(source) => Some(source),
             Self::VsCode(source) => Some(source),
             Self::Codex(source) => Some(source),
+            Self::Kiro(source) => Some(source),
         }
     }
 }
@@ -513,7 +524,8 @@ mod tests {
             RestoreTarget::ClaudeDesktop
             | RestoreTarget::Cursor
             | RestoreTarget::Windsurf
-            | RestoreTarget::VsCode => b"{}\n",
+            | RestoreTarget::VsCode
+            | RestoreTarget::Kiro => b"{}\n",
             RestoreTarget::Codex => b"# retained Codex configuration\n",
         }
     }
@@ -543,6 +555,7 @@ mod tests {
                 RestoreTarget::Windsurf,
                 RestoreTarget::VsCode,
                 RestoreTarget::Codex,
+                RestoreTarget::Kiro,
             ] {
                 let path = target.configuration_path(&paths);
                 let filesystem =
@@ -634,6 +647,7 @@ mod tests {
             RestoreTarget::Windsurf,
             RestoreTarget::VsCode,
             RestoreTarget::Codex,
+            RestoreTarget::Kiro,
         ] {
             let path = target.configuration_path(&paths);
             let missing_filesystem = MemoryFileSystem {

@@ -87,6 +87,24 @@ cwd = "codex-private-value"
 TOKEN = "old-private-token"
 "#;
 
+const OLD_KIRO: &[u8] = br#"{
+  // retained Kiro private configuration comment
+  "mcpServers": {
+    "recovery-server": {
+      "command": "old-private-command",
+      "args": ["--old-private-argument"],
+      "env": {"TOKEN": "old-private-token"},
+      "cwd": "kiro-private-value",
+      "disabled": false
+    },
+    "remote-private": {
+      "url": "https://kiro-restore-private.invalid/mcp",
+      "headers": {"Authorization": "Bearer kiro-restore-private-token"}
+    },
+  },
+}
+"#;
+
 const PRIVATE_VALUES: &[&str] = &[
     "old-private-command",
     "--old-private-argument",
@@ -102,6 +120,9 @@ const PRIVATE_VALUES: &[&str] = &[
     "vscode-input-private-value",
     "codex-root-private-value",
     "codex-private-value",
+    "kiro-private-value",
+    "https://kiro-restore-private.invalid/mcp",
+    "kiro-restore-private-token",
     "private-invalid-backup-sentinel",
     "corrupt-current-private-sentinel",
 ];
@@ -210,6 +231,7 @@ fn targets(home: &SyntheticHome) -> Vec<(&'static str, PathBuf, &'static [u8])> 
         ("windsurf", home.windsurf_configuration(), OLD_WINDSURF),
         ("vscode", home.vscode_configuration(), OLD_VSCODE),
         ("codex", home.codex_configuration(), OLD_CODEX),
+        ("kiro", home.kiro_configuration(), OLD_KIRO),
     ]
 }
 
@@ -282,6 +304,78 @@ fn built_binary_restore_journey_is_dry_run_safe_exact_redacted_and_reversible() 
         );
         assert_no_temporary_files(&path);
     }
+}
+
+#[test]
+fn kiro_restore_uses_only_the_absolute_kiro_home_profile_selected_for_the_process() {
+    let home = SyntheticHome::new();
+    let default = b"default Kiro target must not be inspected\n";
+    let kiro_home = home.root().join("kiro-restore-profile");
+    let path = kiro_home.join("settings/mcp.json");
+    let backup = backup_path(&path);
+    let current = br#"{
+  // current relocated Kiro profile
+  "mcpServers": {
+    "current": {"command": "new-private-command"}
+  }
+}
+"#;
+    home.write_file(&home.kiro_configuration(), default);
+    home.write_file(&path, current);
+    home.write_file(&backup, OLD_KIRO);
+
+    let command = |dry_run: bool| {
+        let mut process = home.command();
+        process.env("KIRO_HOME", &kiro_home);
+        let mut command = AssertCommand::from_std(process);
+        command.arg("restore").arg("kiro");
+        if dry_run {
+            command.arg("--dry-run");
+        }
+        command.timeout(COMMAND_TIMEOUT);
+        command
+    };
+
+    let dry_output = stdout(&run_success(command(true)));
+    assert!(dry_output.contains("Kiro"));
+    assert!(dry_output.contains("would be restored"));
+    assert_redacted(&dry_output);
+    assert_file_matches(
+        &home.kiro_configuration(),
+        default,
+        "KIRO_HOME restore dry-run must not inspect or change the default target",
+    );
+    assert_file_matches(
+        &path,
+        current,
+        "dry-run must preserve relocated target bytes",
+    );
+    assert_file_matches(
+        &backup,
+        OLD_KIRO,
+        "dry-run must preserve relocated backup bytes",
+    );
+
+    let output = stdout(&run_success(command(false)));
+    assert!(output.contains("Kiro"));
+    assert!(output.contains("restored from"));
+    assert_redacted(&output);
+    assert_file_matches(
+        &home.kiro_configuration(),
+        default,
+        "KIRO_HOME restore must leave the default target untouched",
+    );
+    assert_file_matches(
+        &path,
+        OLD_KIRO,
+        "KIRO_HOME restore must publish the selected retained bytes exactly",
+    );
+    assert_file_matches(
+        &backup,
+        current,
+        "KIRO_HOME restore must retain the selected profile's exact prior target",
+    );
+    assert_no_temporary_files(&path);
 }
 
 #[test]
