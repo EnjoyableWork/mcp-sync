@@ -176,7 +176,7 @@ fn private_evidence_preparation_outputs_only_aggregate_false_by_default_fields()
 }
 
 #[test]
-fn completed_release_kiro_and_mcp_040_state_is_preserved_while_mcp_041_is_active() {
+fn completed_release_kiro_mcp_040_and_mcp_041_state_is_preserved() {
     let project = repository_file("PROJECT.md");
     let readme = repository_file("README.md");
 
@@ -184,10 +184,10 @@ fn completed_release_kiro_and_mcp_040_state_is_preserved_while_mcp_041_is_active
     assert!(project.contains("| MCP-034 | Establish organization access, credential, and ownership recovery policy | M3 | P1 | Codex | Done |"));
     assert!(project.contains("| MCP-035 | Self-assess, publish, and showcase the zero-cost enterprise assurance baseline | M3 | P1 | Codex | Done |"));
     assert!(project.contains("| Done — `MCP-030` through `MCP-035` Done |"));
-    assert!(project.contains("M0 through M3, `MCP-001` through `MCP-020`, `MCP-028` through `MCP-037`, `MCP-039`, and `MCP-040` are `Done`"));
+    assert!(project.contains("M0 through M3, `MCP-001` through `MCP-020`, `MCP-028` through `MCP-037`, and `MCP-039` through `MCP-041` are `Done`"));
     assert!(project.contains("`MCP-037` and D-18 are `Done`"));
-    assert!(project.contains("`MCP-041` is in progress as the required repeat-release correction"));
-    assert!(project.contains("no side quest is active"));
+    assert!(project.contains("`MCP-037`, `MCP-040`, and `MCP-041` are\ncompleted"));
+    assert!(project.contains("no main-story ticket or side quest is active"));
     assert!(project.contains("| MCP-036 | Serialize every mutating operation per canonical configuration root | Post-M3 corrective maintenance | P0 | Codex | Done |"));
     assert!(project.contains("| MCP-039 | Replace Cargo publication tokens with crates.io Trusted Publishing | Post-M3 release maintenance | P1 | Codex | Done | `MCP-036` |"));
     assert!(project.contains("| MCP-039 | Complete MCP-039: replace reusable crates.io credentials for every Cargo version after 0.1.0"));
@@ -204,6 +204,7 @@ fn completed_release_kiro_and_mcp_040_state_is_preserved_while_mcp_041_is_active
     assert!(project.contains("| D-17 | Tokenless crates.io publication for every version after `0.1.0` | Post-M3 release maintenance | Codex | 2026-08-11 | Done |"));
     assert!(project.contains("| D-18 | Global-user Kiro adapter with inherited Kiro Crew coverage | M4 | Codex | 2026-08-11 | Done |"));
     assert!(project.contains("| D-19 | Crash-consistent existing-file target and backup replacement | Post-M4 corrective maintenance | Codex | 2026-08-11 | Done |"));
+    assert!(project.contains("| D-20 | Repeatable protected source/GNU/Linux release lifecycle after `0.1.0` | Post-M4 release maintenance | Codex | 2026-08-11 | Done |"));
     assert!(project.contains("Complete SIDE-008: make pull-request CI deterministic"));
     assert!(project.contains("| MCP-037 | Add a global-user Kiro MCP adapter with inherited Kiro Crew coverage | M4 | P1 | Codex | Done | `MCP-039` |"));
     assert!(project.contains(
@@ -224,7 +225,16 @@ fn completed_release_kiro_and_mcp_040_state_is_preserved_while_mcp_041_is_active
     assert!(project.contains("`MCP-037` must never discover or"));
     assert!(project.contains("mutate either Crew-specific file."));
     assert!(project.contains("| MCP-040 | Make existing-file target and backup replacement crash-consistent | Post-M4 corrective maintenance | P0 | Codex | Done | `MCP-037` |"));
-    assert!(project.contains("| MCP-041 | Make post-`0.1.0` source and GNU/Linux releases repeatable | Post-M4 release maintenance | P1 | Codex | In progress | `MCP-040` |"));
+    assert!(project.contains("| MCP-041 | Make post-`0.1.0` source and GNU/Linux releases repeatable | Post-M4 release maintenance | P1 | Codex | Done | `MCP-040` |"));
+    assert!(project.contains("https://github.com/EnjoyableWork/mcp-sync/pull/63"));
+    assert!(project.contains("93549198af5cad21651d9391f4d4c23a995e7656"));
+    for exact_main_run in ["31542055279", "31542054634", "31542055233", "31542055251"] {
+        assert!(
+            project.contains(exact_main_run),
+            "MCP-041 closure must retain exact-main run {exact_main_run}"
+        );
+    }
+    assert!(project.contains("31542683304"));
     assert!(project.contains("| MCP-040 | Complete MCP-040: fix GitHub issue #47 by making every existing-file mcp-sync target"));
     assert!(project.contains("| DEC-048 | Make target publication the commit point for recoverable existing-file replacement | Accepted |"));
     assert!(!project.contains("| MCP-036 | Serialize every mutating operation per canonical configuration root | Post-M3 corrective maintenance | P0 | Codex | In progress |"));
@@ -233,6 +243,7 @@ fn completed_release_kiro_and_mcp_040_state_is_preserved_while_mcp_041_is_active
     assert!(!project.contains("| MCP-037 | Add a global-user Kiro MCP adapter with inherited Kiro Crew coverage | M4 | P1 | Unassigned | Ready |"));
     assert!(!project.contains("| MCP-037 | Add a global-user Kiro MCP adapter with inherited Kiro Crew coverage | M4 | P1 | Codex | In progress |"));
     assert!(!project.contains("| MCP-040 | Make existing-file target and backup replacement crash-consistent | Post-M4 corrective maintenance | P0 | Codex | In progress |"));
+    assert!(!project.contains("| MCP-041 | Make post-`0.1.0` source and GNU/Linux releases repeatable | Post-M4 release maintenance | P1 | Codex | In progress |"));
     assert!(!project.contains("| SIDE-006 | Activate the funded six-target signed-native distribution pipeline | P2 | Codex | In progress |"));
 
     let unsupported_client = "kilo";
