@@ -4,6 +4,8 @@ use std::io;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+mod replacement_transaction;
+
 /// Read operations required above the operating-system boundary.
 pub trait FileSystem {
     fn read(&self, path: &Path) -> Result<Vec<u8>, FileIoError>;
@@ -97,6 +99,7 @@ pub struct OsFileSystem;
 
 impl FileSystem for OsFileSystem {
     fn read(&self, path: &Path) -> Result<Vec<u8>, FileIoError> {
+        replacement_transaction::ensure_no_pending_for_read(path)?;
         std::fs::read(path).map_err(|source| FileIoError::read(path, source))
     }
 }
@@ -167,6 +170,7 @@ impl RestoreFileSystem for OsFileSystem {
         &self,
         path: &Path,
     ) -> Result<Option<Vec<u8>>, FileMutationError> {
+        replacement_transaction::ensure_no_pending_for_read(path)?;
         match snapshot_optional_regular_file(path)? {
             FileSnapshot::Missing => Ok(None),
             FileSnapshot::Existing(bytes) => Ok(Some(bytes)),
@@ -174,6 +178,7 @@ impl RestoreFileSystem for OsFileSystem {
     }
 
     fn read_required_regular_file(&self, path: &Path) -> Result<Vec<u8>, FileMutationError> {
+        replacement_transaction::ensure_no_pending_for_read(path)?;
         match snapshot_optional_regular_file(path)? {
             FileSnapshot::Missing => Err(FileIoError::new(
                 FileOperation::InspectFile,
@@ -299,7 +304,7 @@ fn replace_existing_with_backup_after(
     path: &Path,
     expected_current: &[u8],
     replacement: &[u8],
-    after_backup: impl FnOnce(),
+    after_prepared: impl FnOnce(),
 ) -> Result<FileSnapshot, FileMutationError> {
     ensure_regular_file(path, true)?;
     let backup_path = backup_path(path);
@@ -310,7 +315,7 @@ fn replace_existing_with_backup_after(
         expected_current,
         replacement,
         previous_backup,
-        after_backup,
+        after_prepared,
     )
 }
 
@@ -319,52 +324,51 @@ fn replace_existing_with_backup_snapshot_after(
     expected_current: &[u8],
     replacement: &[u8],
     previous_backup: FileSnapshot,
-    after_backup: impl FnOnce(),
+    after_prepared: impl FnOnce(),
+) -> Result<FileSnapshot, FileMutationError> {
+    replacement_transaction::replace_existing_with_backup_snapshot_after(
+        path,
+        expected_current,
+        replacement,
+        previous_backup,
+        after_prepared,
+        || {},
+    )
+}
+
+#[cfg(test)]
+fn replace_existing_with_backup_after_target(
+    path: &Path,
+    expected_current: &[u8],
+    replacement: &[u8],
+    after_target_published: impl FnOnce(),
 ) -> Result<FileSnapshot, FileMutationError> {
     ensure_regular_file(path, true)?;
-    let backup_path = backup_path(path);
+    let previous_backup = snapshot_optional_regular_file(&backup_path(path))?;
+    replacement_transaction::replace_existing_with_backup_snapshot_after(
+        path,
+        expected_current,
+        replacement,
+        previous_backup,
+        || {},
+        after_target_published,
+    )
+}
 
-    let replacement_file = prepare_temporary_file(path, replacement)?;
-    let backup_file = prepare_temporary_file(&backup_path, expected_current)?;
+pub(crate) fn recover_pending_replacements<'a>(
+    paths: impl IntoIterator<Item = &'a Path>,
+) -> Result<(), FileMutationError> {
+    replacement_transaction::recover_pending_replacements(paths)
+}
 
-    ensure_expected_bytes(path, expected_current)?;
-    ensure_snapshot_unchanged(&backup_path, &previous_backup)?;
-    match &previous_backup {
-        FileSnapshot::Missing => backup_file
-            .persist_noclobber(&backup_path)
-            .map_err(|error| {
-                FileIoError::new(FileOperation::PublishNewFile, &backup_path, error.error)
-            })?,
-        FileSnapshot::Existing(_) => backup_file.persist(&backup_path).map_err(|error| {
-            FileIoError::new(FileOperation::ReplaceFile, &backup_path, error.error)
-        })?,
-    };
+#[cfg(test)]
+pub(crate) fn replacement_transaction_path(path: &Path) -> PathBuf {
+    replacement_transaction::transaction_path(path)
+}
 
-    after_backup();
-
-    // Check again after publishing the backup so an edit observed during
-    // preparation cannot be overwritten by the final atomic rename.
-    let replacement_result = ensure_regular_file(path, true)
-        .and_then(|()| ensure_expected_bytes(path, expected_current))
-        .and_then(|()| {
-            replacement_file.persist(path).map(|_| ()).map_err(|error| {
-                FileIoError::new(FileOperation::ReplaceFile, path, error.error).into()
-            })
-        });
-
-    if let Err(failure) = replacement_result {
-        return match restore_snapshot_if_unchanged(&backup_path, expected_current, &previous_backup)
-        {
-            Ok(()) => Err(failure),
-            Err(recovery) => Err(FileMutationError::RecoveryFailed {
-                path: path.to_owned(),
-                failure: Box::new(failure),
-                recovery: Box::new(recovery),
-            }),
-        };
-    }
-
-    Ok(previous_backup)
+#[cfg(test)]
+pub(crate) fn replacement_recovery_test_shape(path: &Path) -> String {
+    replacement_transaction::test_recovery_shape(path)
 }
 
 fn restore_missing_from_backup(
@@ -568,12 +572,19 @@ pub(crate) fn backup_path(path: &Path) -> PathBuf {
 pub enum FileOperation {
     Read,
     InspectFile,
+    InspectTransaction,
+    ReadTransaction,
     CreateParentDirectory,
     CreateTemporaryFile,
     WriteTemporaryFile,
     SyncTemporaryFile,
+    SyncDirectory,
     PublishNewFile,
+    PublishTransaction,
     ReplaceFile,
+    ReplaceTransaction,
+    PreserveTransactionStage,
+    OpenTransactionStage,
     RemoveFile,
 }
 
@@ -582,12 +593,21 @@ impl fmt::Display for FileOperation {
         match self {
             Self::Read => formatter.write_str("read"),
             Self::InspectFile => formatter.write_str("inspect"),
+            Self::InspectTransaction => formatter.write_str("inspect replacement transaction for"),
+            Self::ReadTransaction => formatter.write_str("read replacement transaction for"),
             Self::CreateParentDirectory => formatter.write_str("create parent directory for"),
             Self::CreateTemporaryFile => formatter.write_str("create temporary file for"),
             Self::WriteTemporaryFile => formatter.write_str("write temporary file for"),
             Self::SyncTemporaryFile => formatter.write_str("synchronize temporary file for"),
+            Self::SyncDirectory => formatter.write_str("synchronize containing directory for"),
             Self::PublishNewFile => formatter.write_str("create"),
+            Self::PublishTransaction => formatter.write_str("publish replacement transaction for"),
             Self::ReplaceFile => formatter.write_str("atomically replace"),
+            Self::ReplaceTransaction => formatter.write_str("advance replacement transaction for"),
+            Self::PreserveTransactionStage => {
+                formatter.write_str("make replacement stage process-durable for")
+            }
+            Self::OpenTransactionStage => formatter.write_str("open replacement stage for"),
             Self::RemoveFile => formatter.write_str("remove"),
         }
     }
@@ -673,6 +693,15 @@ pub enum FileMutationError {
         path: PathBuf,
         kind: UnsupportedFileKind,
     },
+    PendingReplacement {
+        path: PathBuf,
+    },
+    InvalidReplacementTransaction {
+        path: PathBuf,
+    },
+    AmbiguousReplacementTransaction {
+        path: PathBuf,
+    },
     RecoveryFailed {
         path: PathBuf,
         failure: Box<FileMutationError>,
@@ -694,13 +723,28 @@ impl fmt::Display for FileMutationError {
                 "refusing to replace {kind} `{}`; a regular file is required",
                 path.display()
             ),
+            Self::PendingReplacement { path } => write!(
+                formatter,
+                "file `{}` has an incomplete mcp-sync replacement; run a mutating command to recover it before retrying",
+                path.display()
+            ),
+            Self::InvalidReplacementTransaction { path } => write!(
+                formatter,
+                "file `{}` has invalid or unsafe mcp-sync replacement metadata; no recovery was attempted",
+                path.display()
+            ),
+            Self::AmbiguousReplacementTransaction { path } => write!(
+                formatter,
+                "file `{}` no longer matches a recoverable mcp-sync replacement state; no file was overwritten or removed",
+                path.display()
+            ),
             Self::RecoveryFailed {
                 path,
                 failure,
                 recovery,
             } => write!(
                 formatter,
-                "file update for `{}` failed ({failure}) and its prior backup state could not be restored ({recovery})",
+                "file update for `{}` failed ({failure}) and recovery could not complete ({recovery})",
                 path.display()
             ),
         }
@@ -712,7 +756,11 @@ impl Error for FileMutationError {
         match self {
             Self::Io(source) => Some(source),
             Self::RecoveryFailed { failure, .. } => Some(failure.as_ref()),
-            Self::ConcurrentModification { .. } | Self::UnsupportedFileType { .. } => None,
+            Self::ConcurrentModification { .. }
+            | Self::UnsupportedFileType { .. }
+            | Self::PendingReplacement { .. }
+            | Self::InvalidReplacementTransaction { .. }
+            | Self::AmbiguousReplacementTransaction { .. } => None,
         }
     }
 }
@@ -729,7 +777,8 @@ mod tests {
         BackupRestorer, ExpectedFile, FileCreator, FileIoError, FileMutationError, FileOperation,
         FileReplacer, FileSnapshot, FileSystem, OsFileSystem, TransactionalFileUpdater,
         UnsupportedFileKind, backup_path, ensure_regular_file, ensure_snapshot_unchanged,
-        replace_existing_with_backup_after, restore_missing_from_backup_after,
+        replace_existing_with_backup_after, replace_existing_with_backup_after_target,
+        restore_missing_from_backup_after,
     };
     use std::error::Error;
     use std::io;
@@ -1163,7 +1212,7 @@ mod tests {
     }
 
     #[test]
-    fn interrupted_replacement_restores_the_backup_state_without_clobbering_a_concurrent_edit() {
+    fn prepared_replacement_preserves_the_backup_without_clobbering_a_concurrent_edit() {
         let fixture = tempfile::tempdir().expect("temporary filesystem fixture should be created");
         let path = fixture.path().join("config.json");
         let backup = backup_path(&path);
@@ -1179,7 +1228,7 @@ mod tests {
                 std::fs::write(&path, concurrent)
                     .expect("the injected interruption should change the target")
             })
-            .expect_err("a change after backup publication must abort replacement");
+            .expect_err("a change after journal preparation must abort replacement");
 
         assert!(matches!(
             error,
@@ -1199,7 +1248,7 @@ mod tests {
     }
 
     #[test]
-    fn interrupted_replacement_reports_an_explicit_backup_recovery_failure() {
+    fn precommit_replacement_refuses_concurrent_target_and_backup_edits_without_compensation() {
         let fixture = tempfile::tempdir().expect("temporary filesystem fixture should be created");
         let path = fixture.path().join("config.json");
         let backup = backup_path(&path);
@@ -1222,35 +1271,18 @@ mod tests {
                     .expect("the injected interruption should change the backup");
             },
         )
-        .expect_err("concurrent target and backup edits must keep recovery unsuccessful");
+        .expect_err("concurrent target and backup edits must abort before the commit point");
 
-        let FileMutationError::RecoveryFailed {
-            path: error_path,
-            failure,
-            recovery,
-        } = &error
-        else {
-            panic!("a failed compensation should retain both failure causes");
-        };
-        assert!(error_path == &path);
         assert!(matches!(
-            failure.as_ref(),
+            &error,
             FileMutationError::ConcurrentModification {
                 path: failure_path,
             } if failure_path == &path
         ));
-        assert!(matches!(
-            recovery.as_ref(),
-            FileMutationError::ConcurrentModification {
-                path: recovery_path,
-            } if recovery_path == &backup
-        ));
-        assert!(std::error::Error::source(&error).is_some());
         let diagnostic = error.to_string();
         assert!(
-            diagnostic.contains("failed")
-                && diagnostic.contains("prior backup state could not be restored"),
-            "recovery failure should remain explicit and actionable"
+            diagnostic.contains("changed while the update was being prepared"),
+            "the precommit refusal should remain explicit and actionable"
         );
         for private in [
             "original private configuration",
@@ -1272,6 +1304,79 @@ mod tests {
             "recovery must not clobber a concurrent backup edit"
         );
         assert_no_temporary_files(fixture.path());
+    }
+
+    #[test]
+    fn postcommit_backup_edit_compensates_the_target_without_clobbering_the_edit() {
+        for previous_backup in [None, Some(b"older private backup\n".as_slice())] {
+            let fixture =
+                tempfile::tempdir().expect("temporary filesystem fixture should be created");
+            let path = fixture.path().join("config.json");
+            let backup = backup_path(&path);
+            let original = b"original private configuration\n";
+            let replacement = b"planned private replacement\n";
+            let concurrent_backup = b"concurrent private backup\n";
+            std::fs::write(&path, original).unwrap();
+            if let Some(previous) = previous_backup {
+                std::fs::write(&backup, previous).unwrap();
+            }
+
+            let error =
+                replace_existing_with_backup_after_target(&path, original, replacement, || {
+                    std::fs::write(&backup, concurrent_backup).unwrap()
+                })
+                .expect_err("a postcommit backup edit must fail with safe target compensation");
+
+            assert!(matches!(
+                error,
+                FileMutationError::ConcurrentModification {
+                    path: ref error_path,
+                } if error_path == &backup
+            ));
+            assert_eq!(std::fs::read(&path).unwrap(), original);
+            assert_eq!(std::fs::read(&backup).unwrap(), concurrent_backup);
+            assert!(!super::replacement_transaction_path(&path).exists());
+            assert_no_temporary_files(fixture.path());
+        }
+    }
+
+    #[test]
+    fn postcommit_target_edit_preserves_the_original_stage_and_fails_redacted() {
+        let fixture = tempfile::tempdir().expect("temporary filesystem fixture should be created");
+        let path = fixture.path().join("config.json");
+        let backup = backup_path(&path);
+        let original = b"original private configuration\n";
+        let previous_backup = b"older private backup\n";
+        let replacement = b"planned private replacement\n";
+        let concurrent_target = b"concurrent private target\n";
+        std::fs::write(&path, original).unwrap();
+        std::fs::write(&backup, previous_backup).unwrap();
+
+        let error = replace_existing_with_backup_after_target(&path, original, replacement, || {
+            std::fs::write(&path, concurrent_target).unwrap()
+        })
+        .expect_err("a postcommit target edit must make compensation fail closed");
+
+        assert!(matches!(&error, FileMutationError::RecoveryFailed { .. }));
+        assert_eq!(std::fs::read(&path).unwrap(), concurrent_target);
+        assert_eq!(std::fs::read(&backup).unwrap(), previous_backup);
+        let transaction = super::replacement_transaction_path(&path);
+        let journal_bytes = std::fs::read(&transaction).unwrap();
+        let journal: serde_json::Value = serde_json::from_slice(&journal_bytes).unwrap();
+        let stage_name = journal["backup_stage"].as_str().unwrap();
+        let original_stage = path.parent().unwrap().join(stage_name);
+        assert_eq!(std::fs::read(&original_stage).unwrap(), original);
+
+        let diagnostic = error.to_string();
+        for private in [
+            "original private configuration",
+            "older private backup",
+            "planned private replacement",
+            "concurrent private target",
+            "sha256",
+        ] {
+            assert!(!diagnostic.contains(private));
+        }
     }
 
     #[test]
