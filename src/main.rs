@@ -622,15 +622,27 @@ mod tests {
             .command("recover")
             .output()
             .expect("the recovery child should finish");
+        assert_redacted(&recovery_output);
         assert!(
             recovery_output.status.success(),
-            "the child recovery assertion should pass"
+            "the child recovery assertion should pass for {journey:?}, previous backup \
+             {has_previous_backup}, and {boundary:?}: {}",
+            String::from_utf8_lossy(&recovery_output.stderr)
         );
-        assert_redacted(&recovery_output);
 
         if boundary.target_committed() {
             assert_eq!(fs::read(&target).unwrap(), committed_target);
-            assert_eq!(fs::read(&backup).unwrap(), original);
+            let recovered_backup = fs::read(&backup).unwrap_or_else(|source| {
+                panic!(
+                    "the recovered backup should exist for {journey:?}, previous backup \
+                     {has_previous_backup}, and {boundary:?}: {source}"
+                )
+            });
+            assert_eq!(
+                recovered_backup, original,
+                "recovery should publish the original target for {journey:?}, previous backup \
+                 {has_previous_backup}, and {boundary:?}"
+            );
         } else {
             assert_eq!(fs::read(&target).unwrap(), original);
             match previous_backup.as_deref() {
@@ -814,12 +826,35 @@ mod tests {
                 dry_run: true,
             })),
             "recover" => match run(Command::Init) {
-                Ok(_) => panic!("init should remain create-only after transaction recovery"),
-                Err(error) => {
-                    let diagnostic = error.to_string();
-                    assert!(!diagnostic.contains("incomplete mcp-sync replacement"));
-                    assert!(!diagnostic.contains("private-command"));
+                Err(super::ApplicationError::Init(
+                    super::init::InitError::AlreadyInitialized { .. },
+                )) => {}
+                Err(super::ApplicationError::ReplacementRecovery(error)) => panic!(
+                    "replacement recovery failed structurally: {}",
+                    mutation_error_shape(&error)
+                ),
+                Err(super::ApplicationError::ResolvePaths(_)) => {
+                    panic!("post-recovery init returned a path-resolution error")
                 }
+                Err(super::ApplicationError::OperationLock(_)) => {
+                    panic!("post-recovery init returned an operation-lock error")
+                }
+                Err(super::ApplicationError::Init(_)) => {
+                    panic!("post-recovery init returned an unexpected init error")
+                }
+                Err(super::ApplicationError::Catalog(_)) => {
+                    panic!("post-recovery init returned a catalog error")
+                }
+                Err(super::ApplicationError::Health(_)) => {
+                    panic!("post-recovery init returned a health error")
+                }
+                Err(super::ApplicationError::Restore(_)) => {
+                    panic!("post-recovery init returned a restore error")
+                }
+                Err(super::ApplicationError::Sync(_)) => {
+                    panic!("post-recovery init returned a sync error")
+                }
+                Ok(_) => panic!("init should remain create-only after transaction recovery"),
             },
             "recover-contended" => match run(Command::Init) {
                 Ok(_) => panic!("same-root recovery must not bypass the operation lock"),
@@ -843,6 +878,38 @@ mod tests {
                 assert!(!diagnostic.contains("private-command"));
                 assert!(!diagnostic.contains("sha256"));
             }
+        }
+    }
+
+    fn mutation_error_shape(error: &filesystem::FileMutationError) -> String {
+        match error {
+            filesystem::FileMutationError::Io(source) => format!(
+                "io(operation={}, kind={:?})",
+                source.operation(),
+                source.kind()
+            ),
+            filesystem::FileMutationError::ConcurrentModification { .. } => {
+                "concurrent-modification".to_owned()
+            }
+            filesystem::FileMutationError::UnsupportedFileType { kind, .. } => {
+                format!("unsupported-file-type({kind})")
+            }
+            filesystem::FileMutationError::PendingReplacement { .. } => {
+                "pending-replacement".to_owned()
+            }
+            filesystem::FileMutationError::InvalidReplacementTransaction { .. } => {
+                "invalid-replacement-transaction".to_owned()
+            }
+            filesystem::FileMutationError::AmbiguousReplacementTransaction { .. } => {
+                "ambiguous-replacement-transaction".to_owned()
+            }
+            filesystem::FileMutationError::RecoveryFailed {
+                failure, recovery, ..
+            } => format!(
+                "recovery-failed(failure={}, recovery={})",
+                mutation_error_shape(failure),
+                mutation_error_shape(recovery)
+            ),
         }
     }
 }
