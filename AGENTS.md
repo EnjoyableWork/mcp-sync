@@ -139,10 +139,12 @@ health fixtures, and complete native MSVC x64/ARM64 whole-suite CI pass under
 `MCP-019`. There is no Windows current-client smoke claim. Windsurf, VS Code,
 and Codex have no current-client smoke claim on any implemented platform.
 Distribution remains later-ticket scope.
-`MCP-039` is the active post-M3 release-maintenance ticket. Approved M4
-successor `MCP-037` will add Kiro only after `MCP-039` is `Done`; it has no
-`v0.1.0` adoption-evidence prerequisite, remains unimplemented, and must not be
-described as supported before its complete adapter, native-platform, and
+`MCP-039` is `Done`: every Cargo version after `0.1.0` must use its exact
+protected crates.io Trusted Publishing path with trusted-publishing-only
+enforcement and no API-token fallback. Approved M4 successor `MCP-037` is
+`Ready` for deliberate activation under its own canonical Goal; it has no
+`v0.1.0` adoption-evidence prerequisite, remains unimplemented, and must not
+be described as supported before its complete adapter, native-platform, and
 current-client evidence passes.
 Use the existing Clap command tree as CLI behavior grows; do not introduce a
 second parser.
