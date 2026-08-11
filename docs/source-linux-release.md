@@ -254,43 +254,79 @@ never copy or persist account-session data.
 
 Before a real publication, configure the exact trusted publisher above while
 signed in to crates.io. Do not create an API token. The `MCP-039` foundation
-rehearsal targets the existing immutable `v0.1.0` tag without creating or
-moving a ref. Create one GitHub deployment with this exact request:
+rehearsal verifies the existing immutable `v0.1.0` tag without creating or
+moving a ref. Because `cargo-publish.yml` did not exist at that historical tag,
+GitHub cannot dispatch that workflow on `v0.1.0`. Run the one-time
+authorization-only bootstrap from exact protected `main`; real publication
+remains restricted to an exact protected release tag.
+
+The `release` environment normally admits only the `v*` tag pattern. Immediately
+before the bootstrap, require the strict repository-control verifier to pass,
+then temporarily add only the exact `main` branch policy:
 
 ```sh
-gh api --method POST repos/EnjoyableWork/mcp-sync/deployments \
-  --input - <<'JSON'
-{
-  "ref": "v0.1.0",
-  "task": "mcp-sync:cargo-publish-authorization",
-  "auto_merge": false,
-  "required_contexts": [],
-  "payload": {
-    "contract": "MCP-039",
-    "version": "0.1.0",
-    "tag": "v0.1.0",
-    "release_kind": "source-linux",
-    "mode": "authorization-only"
-  },
-  "environment": "release",
-  "description": "MCP-039 authorization-only rehearsal",
-  "transient_environment": false,
-  "production_environment": true
-}
-JSON
+main_commit="$(
+  gh api repos/EnjoyableWork/mcp-sync/commits/main \
+    -H 'X-GitHub-Api-Version: 2026-03-10' \
+    --jq .sha
+)"
+./scripts/verify-release-repository-controls.sh "$main_commit"
+
+rehearsal_policy_id="$(
+  gh api --method POST \
+    repos/EnjoyableWork/mcp-sync/environments/release/deployment-branch-policies \
+    -H 'X-GitHub-Api-Version: 2026-03-10' \
+    -f name=main \
+    -f type=branch \
+    --jq .id
+)"
+case "$rehearsal_policy_id" in
+  '' | *[!0-9]*)
+    echo 'The exact temporary main policy was not created.' >&2
+    exit 1
+    ;;
+esac
+./scripts/verify-release-repository-controls.sh \
+  "$main_commit" \
+  --allow-mcp-039-main-rehearsal
+
+gh workflow run cargo-publish.yml \
+  --repo EnjoyableWork/mcp-sync \
+  --ref main \
+  -f version=0.1.0 \
+  -f tag=v0.1.0 \
+  -f release_kind=source-linux \
+  -f mode=authorization-only
 ```
 
-GitHub loads the `deployment` event workflow from protected `main` while the
-deployment's `GITHUB_REF` remains the existing tag, so the tag-only `release`
-environment contract stays intact. The unprivileged validator accepts only the
-task and payload above; any other deployment event skips the protected path.
-Review the pending `release` job and approve it only after the repository-control
-verifier still passes for exact `main`. The workflow verifies the immutable
-seven-asset release, its release attestation, the `.crate` provenance, and two
-deterministic local packages before requesting OIDC. In authorization-only mode
-it never runs `cargo publish`, re-reads crates.io to require that unyanked
-`0.1.0` remains the sole version, and then relies on successful action cleanup
-to revoke the temporary credential.
+Do not start any other release workflow while the temporary policy exists.
+Review the pending `release` job and approve it only after the rehearsal-mode
+repository-control verifier still passes for that same exact current `main`.
+The unprivileged validator accepts authorization-only mode only for protected
+`main`, exact workflow/source SHA equality, `0.1.0`, `v0.1.0`, and
+`source-linux`; publication mode remains tag-only. The protected job rechecks
+that the run and workflow revision still equal current `main`, then verifies the
+historical immutable seven-asset release, its release attestation, the `.crate`
+provenance, and two deterministic local packages before requesting OIDC. It
+never runs `cargo publish`, re-reads crates.io to require that unyanked `0.1.0`
+remains the sole version, and relies on successful action cleanup to revoke the
+temporary credential.
+
+Whether the rehearsal succeeds or fails, remove the exact temporary rule before
+doing anything else, and require the strict verifier to prove that `v*` is once
+again the sole `release` environment policy:
+
+```sh
+gh api --method DELETE \
+  "repos/EnjoyableWork/mcp-sync/environments/release/deployment-branch-policies/$rehearsal_policy_id" \
+  -H 'X-GitHub-Api-Version: 2026-03-10'
+./scripts/verify-release-repository-controls.sh "$main_commit"
+```
+
+If the shell variables are no longer available, first list the policies, select
+only the single record whose name is `main` and type is `branch`, delete that
+numeric policy ID, and then run the same strict verifier. Never delete or alter
+the `v*` tag policy to make the rehearsal pass.
 
 After that rehearsal succeeds, enable **Require trusted publishing for all new versions**
 on `enjoyable-mcp-sync`. Read back the authenticated trusted-publisher

@@ -12,15 +12,12 @@ cargo_publish_request_event=${REQUEST_EVENT:-}
 cargo_publish_request_ref=${REQUEST_REF:-}
 cargo_publish_request_ref_type=${REQUEST_REF_TYPE:-}
 cargo_publish_request_sha=${REQUEST_SHA:-}
+cargo_publish_request_workflow_sha=${REQUEST_WORKFLOW_SHA:-}
+cargo_publish_request_ref_protected=${REQUEST_REF_PROTECTED:-}
 cargo_publish_request_version=${REQUEST_VERSION:-}
 cargo_publish_request_tag=${REQUEST_TAG:-}
 cargo_publish_request_kind=${REQUEST_RELEASE_KIND:-}
 cargo_publish_request_mode=${REQUEST_MODE:-}
-cargo_publish_request_deployment_ref=${DEPLOYMENT_REF:-}
-cargo_publish_request_deployment_sha=${DEPLOYMENT_SHA:-}
-cargo_publish_request_deployment_task=${DEPLOYMENT_TASK:-}
-cargo_publish_request_deployment_environment=${DEPLOYMENT_ENVIRONMENT:-}
-cargo_publish_request_contract=${DEPLOYMENT_CONTRACT:-}
 
 cargo_publish_request_fail() {
   echo "$1" >&2
@@ -36,10 +33,6 @@ fi
 if [[ "$cargo_publish_request_tag" != "v$cargo_publish_request_version" ]]; then
   cargo_publish_request_fail "Cargo publication tag must exactly match the requested version"
 fi
-if [[ "$cargo_publish_request_ref_type" != tag ]] ||
-  [[ "$cargo_publish_request_ref" != "refs/tags/$cargo_publish_request_tag" ]]; then
-  cargo_publish_request_fail "Cargo publication must target the exact existing release tag"
-fi
 case "$cargo_publish_request_kind" in
   source-linux | funded) ;;
   *) cargo_publish_request_fail "Cargo publication release kind is not supported" ;;
@@ -49,35 +42,27 @@ case "$cargo_publish_request_mode" in
   *) cargo_publish_request_fail "Cargo publication mode is not supported" ;;
 esac
 
-case "$cargo_publish_request_event" in
-  workflow_dispatch)
-    if [[ -n "$cargo_publish_request_deployment_ref" ||
-      -n "$cargo_publish_request_deployment_sha" ||
-      -n "$cargo_publish_request_deployment_task" ||
-      -n "$cargo_publish_request_deployment_environment" ||
-      -n "$cargo_publish_request_contract" ]]; then
-      cargo_publish_request_fail "Manual Cargo publication received unexpected deployment data"
-    fi
-    ;;
-  deployment)
-    if [[ "$cargo_publish_request_deployment_task" != mcp-sync:cargo-publish-authorization ]] ||
-      [[ "$cargo_publish_request_deployment_environment" != release ]] ||
-      [[ "$cargo_publish_request_contract" != MCP-039 ]]; then
-      cargo_publish_request_fail "Cargo authorization deployment does not match the rehearsal contract"
-    fi
-    if [[ "$cargo_publish_request_deployment_ref" != "$cargo_publish_request_tag" ]] ||
-      [[ "$cargo_publish_request_deployment_sha" != "$cargo_publish_request_sha" ]]; then
-      cargo_publish_request_fail "Cargo authorization deployment does not match its exact tag commit"
-    fi
-    if [[ "$cargo_publish_request_mode" != authorization-only ||
-      "$cargo_publish_request_version" != 0.1.0 ||
-      "$cargo_publish_request_tag" != v0.1.0 ||
-      "$cargo_publish_request_kind" != source-linux ]]; then
-      cargo_publish_request_fail "Deployment events are limited to the non-publishing v0.1.0 rehearsal"
-    fi
-    ;;
-  *) cargo_publish_request_fail "Cargo publication event is not authorized" ;;
-esac
+if [[ "$cargo_publish_request_event" != workflow_dispatch ]]; then
+  cargo_publish_request_fail "Cargo publication event is not authorized"
+fi
+
+if [[ "$cargo_publish_request_mode" == authorization-only ]]; then
+  if [[ "$cargo_publish_request_version" != 0.1.0 ||
+    "$cargo_publish_request_tag" != v0.1.0 ||
+    "$cargo_publish_request_kind" != source-linux ]]; then
+    cargo_publish_request_fail "Authorization-only mode is limited to the fixed MCP-039 v0.1.0 rehearsal"
+  fi
+  if [[ "$cargo_publish_request_ref_type" != branch ||
+    "$cargo_publish_request_ref" != refs/heads/main ||
+    "$cargo_publish_request_ref_protected" != true ||
+    "$cargo_publish_request_sha" != "$cargo_publish_request_workflow_sha" ]]; then
+    cargo_publish_request_fail "The MCP-039 rehearsal must use the exact protected main workflow revision"
+  fi
+elif [[ "$cargo_publish_request_ref_type" != tag ||
+  "$cargo_publish_request_ref" != "refs/tags/$cargo_publish_request_tag" ||
+  "$cargo_publish_request_ref_protected" != true ]]; then
+  cargo_publish_request_fail "Cargo publication must target the exact existing release tag"
+fi
 
 if [[ "$cargo_publish_request_mode" == publish &&
   "$cargo_publish_request_version" == 0.1.0 ]]; then

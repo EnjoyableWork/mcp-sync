@@ -161,8 +161,9 @@ official `rust-lang/crates-io-auth-action` at reviewed commit
 credential, and has no API-token fallback. The owner-side check records only an
 aggregate zero-token result from crates.io before and after rehearsal.
 Configure and read back the exact publisher, complete the authorization-only
-existing-`v0.1.0` deployment
-rehearsal, enable **Require trusted publishing for all new versions**, and run
+existing-`v0.1.0` protected-`main` bootstrap rehearsal, restore the `release`
+environment to its sole `v*` tag rule, enable
+**Require trusted publishing for all new versions**, and run
 `scripts/verify-cargo-publishing-controls.sh` exactly as described in the
 [source/GNU/Linux runbook](source-linux-release.md#cargo-publication-after-010).
 

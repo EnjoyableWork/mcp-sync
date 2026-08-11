@@ -51,8 +51,9 @@ fn cargo_publisher_confines_oidc_and_the_temporary_token_to_one_protected_job() 
         "tag:",
         "release_kind:",
         "mode:",
-        "mcp-sync:cargo-publish-authorization",
         "REQUEST_REF: ${{ github.ref }}",
+        "REQUEST_WORKFLOW_SHA: ${{ github.workflow_sha }}",
+        "REQUEST_REF_PROTECTED: ${{ github.ref_protected }}",
         "scripts/validate-cargo-publish-request.sh",
     ] {
         assert!(
@@ -66,6 +67,7 @@ fn cargo_publisher_confines_oidc_and_the_temporary_token_to_one_protected_job() 
         "push:",
         "repository_dispatch:",
         "workflow_run:",
+        "\n  deployment:\n",
         "secrets.",
         "CRATES_IO_TOKEN",
         "cargo login",
@@ -171,10 +173,10 @@ fn cargo_request_and_workflow_policy_have_acceptance_and_rejection_exercises() {
     let ci = repository_file(".github/workflows/ci.yml");
 
     for required in [
-        "workflow_dispatch)",
-        "deployment)",
-        "mcp-sync:cargo-publish-authorization",
-        "Deployment events are limited to the non-publishing v0.1.0 rehearsal",
+        "\"$cargo_publish_request_event\" != workflow_dispatch",
+        "Authorization-only mode is limited to the fixed MCP-039 v0.1.0 rehearsal",
+        "The MCP-039 rehearsal must use the exact protected main workflow revision",
+        "Cargo publication must target the exact existing release tag",
         "Cargo 0.1.0 is immutable and cannot be republished",
     ] {
         assert!(
@@ -182,11 +184,7 @@ fn cargo_request_and_workflow_policy_have_acceptance_and_rejection_exercises() {
             "validator should contain {required}"
         );
     }
-    for accepted in [
-        "manual-authorization",
-        "manual-publication",
-        "deployment-authorization",
-    ] {
+    for accepted in ["manual-authorization", "manual-publication"] {
         assert!(request_test.contains(accepted));
     }
     for rejected in [
@@ -195,8 +193,12 @@ fn cargo_request_and_workflow_policy_have_acceptance_and_rejection_exercises() {
         "mismatched-tag",
         "immutable-version",
         "token-mode",
-        "deployment-publication",
-        "wrong-deployment-task",
+        "deployment-event",
+        "authorization-tag-ref",
+        "authorization-unprotected-main",
+        "authorization-wrong-workflow-sha",
+        "authorization-wrong-version",
+        "publication-unprotected-tag",
     ] {
         assert!(request_test.contains(rejected));
     }
@@ -209,6 +211,7 @@ fn cargo_request_and_workflow_policy_have_acceptance_and_rejection_exercises() {
         "missing-trusted-only-publication-gate",
         "reusable-token-fallback",
         "untrusted-trigger",
+        "historical-deployment-trigger",
         "missing-oidc",
     ] {
         assert!(workflow_test.contains(rejected));

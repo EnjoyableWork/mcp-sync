@@ -4,10 +4,18 @@ set -euo pipefail
 
 release_control_repository=EnjoyableWork/mcp-sync
 release_control_commit=${1:-}
+release_control_mode=${2:-}
 
-if [[ ! "$release_control_commit" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "usage: $0 <exact-current-main-commit>" >&2
+if [[ ! "$release_control_commit" =~ ^[0-9a-f]{40}$ ]] ||
+  [[ $# -gt 2 ]] ||
+  [[ -n "$release_control_mode" &&
+    "$release_control_mode" != --allow-mcp-039-main-rehearsal ]]; then
+  echo "usage: $0 <exact-current-main-commit> [--allow-mcp-039-main-rehearsal]" >&2
   exit 2
+fi
+release_control_allow_rehearsal=false
+if [[ "$release_control_mode" == --allow-mcp-039-main-rehearsal ]]; then
+  release_control_allow_rehearsal=true
 fi
 if ! gh auth status --hostname github.com >/dev/null 2>&1; then
   echo "GitHub CLI must be authenticated as a repository administrator" >&2
@@ -64,6 +72,7 @@ verify_release_environment() {
   local environment_name=$1
   local policy_name=$2
   local policy_type=$3
+  local allow_rehearsal=${4:-false}
   local environment_state
   local environment_policies
 
@@ -89,21 +98,36 @@ verify_release_environment() {
       "repos/$release_control_repository/environments/$environment_name/deployment-branch-policies" \
       -H 'X-GitHub-Api-Version: 2022-11-28'
   )"
-  jq -e \
-    --arg name "$policy_name" \
-    --arg type "$policy_type" '
-      .total_count == 1 and
-      (.branch_policies | length) == 1 and
-      .branch_policies[0].name == $name and
-      .branch_policies[0].type == $type
-    ' <<<"$environment_policies" >/dev/null
+  if [[ "$allow_rehearsal" == true ]]; then
+    jq -e '
+        .total_count == 2 and
+        ([.branch_policies[] | {name, type}] | sort_by(.type, .name)) ==
+          ([{name: "main", type: "branch"}, {name: "v*", type: "tag"}] |
+            sort_by(.type, .name))
+      ' <<<"$environment_policies" >/dev/null
+  else
+    jq -e \
+      --arg name "$policy_name" \
+      --arg type "$policy_type" '
+        .total_count == 1 and
+        (.branch_policies | length) == 1 and
+        .branch_policies[0].name == $name and
+        .branch_policies[0].type == $type
+      ' <<<"$environment_policies" >/dev/null
+  fi
 }
 
 "$release_control_script_directory/verify-public-stable-tag-ruleset.sh" \
   "$release_control_repository" >/dev/null
 verify_release_environment release-control main branch
-verify_release_environment release 'v*' tag
+verify_release_environment release 'v*' tag "$release_control_allow_rehearsal"
 
-printf 'Verified release repository controls for %s at %s.\n' \
-  "$release_control_repository" \
-  "$release_control_commit"
+if [[ "$release_control_allow_rehearsal" == true ]]; then
+  printf 'Verified release repository controls with the exact temporary MCP-039 main rehearsal policy for %s at %s.\n' \
+    "$release_control_repository" \
+    "$release_control_commit"
+else
+  printf 'Verified release repository controls for %s at %s.\n' \
+    "$release_control_repository" \
+    "$release_control_commit"
+fi

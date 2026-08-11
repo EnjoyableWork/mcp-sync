@@ -110,6 +110,9 @@ cargo_workflow_expect_rejection reusable-token-fallback \
 cargo_workflow_expect_rejection untrusted-trigger \
   'workflow_dispatch:' \
   'pull_request:'
+cargo_workflow_expect_rejection historical-deployment-trigger \
+  'workflow_dispatch:' \
+  'deployment:'
 cargo_workflow_expect_rejection missing-oidc \
   'id-token: write' \
   'contents: read'

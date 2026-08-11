@@ -95,10 +95,13 @@ making its tap-scoped deploy key available.
 
 The Cargo request validator similarly accepts only an explicit, fully matched
 version, annotated tag, release kind, and mode before the protected job can
-start. Its `deployment` trigger is restricted to the exact MCP-039
-authorization-only rehearsal against the existing immutable `v0.1.0` tag; it
-cannot select publication mode, create another version, or weaken the same
-repository, ref, and release-environment checks.
+start. It has only a manual trigger. Publication mode requires the exact
+protected release tag. Authorization-only mode is fixed to the MCP-039
+`v0.1.0` rehearsal from exact protected `main`, where the triggering and
+workflow SHAs must match; it cannot select another version or publication mode.
+The one-time bootstrap temporarily adds only `main` beside the environment's
+normal `v*` tag policy, retains required review, and must restore and verify the
+sole tag policy immediately after the run.
 
 Privileged publishing remains limited to explicit tag or manual workflows,
 least-privilege job permissions, protected environments, exact repository and

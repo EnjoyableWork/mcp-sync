@@ -29,11 +29,8 @@ cargo_publish_test_base=(
   REQUEST_REPOSITORY=EnjoyableWork/mcp-sync
   REQUEST_REF_TYPE=tag
   REQUEST_SHA=1111111111111111111111111111111111111111
-  DEPLOYMENT_REF=
-  DEPLOYMENT_SHA=
-  DEPLOYMENT_TASK=
-  DEPLOYMENT_ENVIRONMENT=
-  DEPLOYMENT_CONTRACT=
+  REQUEST_WORKFLOW_SHA=1111111111111111111111111111111111111111
+  REQUEST_REF_PROTECTED=true
 )
 
 cargo_publish_expect_acceptance() {
@@ -76,7 +73,8 @@ cargo_publish_expect_rejection() {
 
 cargo_publish_expect_acceptance manual-authorization \
   REQUEST_EVENT=workflow_dispatch \
-  REQUEST_REF=refs/tags/v0.1.0 \
+  REQUEST_REF=refs/heads/main \
+  REQUEST_REF_TYPE=branch \
   REQUEST_VERSION=0.1.0 \
   REQUEST_TAG=v0.1.0 \
   REQUEST_RELEASE_KIND=source-linux \
@@ -89,19 +87,6 @@ cargo_publish_expect_acceptance manual-publication \
   REQUEST_TAG=v1.2.3 \
   REQUEST_RELEASE_KIND=funded \
   REQUEST_MODE=publish
-
-cargo_publish_expect_acceptance deployment-authorization \
-  REQUEST_EVENT=deployment \
-  REQUEST_REF=refs/tags/v0.1.0 \
-  REQUEST_VERSION=0.1.0 \
-  REQUEST_TAG=v0.1.0 \
-  REQUEST_RELEASE_KIND=source-linux \
-  REQUEST_MODE=authorization-only \
-  DEPLOYMENT_REF=v0.1.0 \
-  DEPLOYMENT_SHA=1111111111111111111111111111111111111111 \
-  DEPLOYMENT_TASK=mcp-sync:cargo-publish-authorization \
-  DEPLOYMENT_ENVIRONMENT=release \
-  DEPLOYMENT_CONTRACT=MCP-039
 
 cargo_publish_expect_rejection wrong-repository \
   REQUEST_REPOSITORY=somewhere/mcp-sync \
@@ -145,30 +130,59 @@ cargo_publish_expect_rejection token-mode \
   REQUEST_RELEASE_KIND=funded \
   REQUEST_MODE=api-token
 
-cargo_publish_expect_rejection deployment-publication \
+cargo_publish_expect_rejection deployment-event \
   REQUEST_EVENT=deployment \
-  REQUEST_REF=refs/tags/v1.2.3 \
-  REQUEST_VERSION=1.2.3 \
-  REQUEST_TAG=v1.2.3 \
-  REQUEST_RELEASE_KIND=funded \
-  REQUEST_MODE=publish \
-  DEPLOYMENT_REF=v1.2.3 \
-  DEPLOYMENT_SHA=1111111111111111111111111111111111111111 \
-  DEPLOYMENT_TASK=mcp-sync:cargo-publish-authorization \
-  DEPLOYMENT_ENVIRONMENT=release \
-  DEPLOYMENT_CONTRACT=MCP-039
+  REQUEST_REF=refs/heads/main \
+  REQUEST_REF_TYPE=branch \
+  REQUEST_VERSION=0.1.0 \
+  REQUEST_TAG=v0.1.0 \
+  REQUEST_RELEASE_KIND=source-linux \
+  REQUEST_MODE=authorization-only
 
-cargo_publish_expect_rejection wrong-deployment-task \
-  REQUEST_EVENT=deployment \
+cargo_publish_expect_rejection authorization-tag-ref \
+  REQUEST_EVENT=workflow_dispatch \
   REQUEST_REF=refs/tags/v0.1.0 \
   REQUEST_VERSION=0.1.0 \
   REQUEST_TAG=v0.1.0 \
   REQUEST_RELEASE_KIND=source-linux \
-  REQUEST_MODE=authorization-only \
-  DEPLOYMENT_REF=v0.1.0 \
-  DEPLOYMENT_SHA=1111111111111111111111111111111111111111 \
-  DEPLOYMENT_TASK=deploy \
-  DEPLOYMENT_ENVIRONMENT=release \
-  DEPLOYMENT_CONTRACT=MCP-039
+  REQUEST_MODE=authorization-only
+
+cargo_publish_expect_rejection authorization-unprotected-main \
+  REQUEST_EVENT=workflow_dispatch \
+  REQUEST_REF=refs/heads/main \
+  REQUEST_REF_TYPE=branch \
+  REQUEST_REF_PROTECTED=false \
+  REQUEST_VERSION=0.1.0 \
+  REQUEST_TAG=v0.1.0 \
+  REQUEST_RELEASE_KIND=source-linux \
+  REQUEST_MODE=authorization-only
+
+cargo_publish_expect_rejection authorization-wrong-workflow-sha \
+  REQUEST_EVENT=workflow_dispatch \
+  REQUEST_REF=refs/heads/main \
+  REQUEST_REF_TYPE=branch \
+  REQUEST_WORKFLOW_SHA=2222222222222222222222222222222222222222 \
+  REQUEST_VERSION=0.1.0 \
+  REQUEST_TAG=v0.1.0 \
+  REQUEST_RELEASE_KIND=source-linux \
+  REQUEST_MODE=authorization-only
+
+cargo_publish_expect_rejection authorization-wrong-version \
+  REQUEST_EVENT=workflow_dispatch \
+  REQUEST_REF=refs/heads/main \
+  REQUEST_REF_TYPE=branch \
+  REQUEST_VERSION=1.2.3 \
+  REQUEST_TAG=v1.2.3 \
+  REQUEST_RELEASE_KIND=source-linux \
+  REQUEST_MODE=authorization-only
+
+cargo_publish_expect_rejection publication-unprotected-tag \
+  REQUEST_EVENT=workflow_dispatch \
+  REQUEST_REF=refs/tags/v1.2.3 \
+  REQUEST_REF_PROTECTED=false \
+  REQUEST_VERSION=1.2.3 \
+  REQUEST_TAG=v1.2.3 \
+  REQUEST_RELEASE_KIND=funded \
+  REQUEST_MODE=publish
 
 printf 'Verified Cargo publisher request acceptance and fail-closed rejection policy.\n'
