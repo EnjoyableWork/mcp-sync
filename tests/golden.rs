@@ -172,6 +172,68 @@ fn add_codex_target_only_server(path: &Path, command: &str, private_value: &str)
     fs::write(path, document).expect("the Codex fixture should be updated");
 }
 
+fn kiro_parse_options() -> jsonc_parser::ParseOptions {
+    jsonc_parser::ParseOptions {
+        allow_comments: true,
+        allow_loose_object_property_names: false,
+        allow_trailing_commas: true,
+        allow_missing_commas: false,
+        allow_single_quoted_strings: false,
+        allow_hexadecimal_numbers: false,
+        allow_unary_plus_numbers: false,
+    }
+}
+
+fn parse_kiro_bytes(bytes: &[u8]) -> (String, Value) {
+    let text = String::from_utf8(bytes.to_vec()).expect("Kiro bytes should be UTF-8");
+    let root = jsonc_parser::cst::CstRootNode::parse(&text, &kiro_parse_options())
+        .expect("Kiro bytes should be valid comment-bearing JSON");
+    let value = root
+        .value()
+        .and_then(|value| value.to_serde_value())
+        .expect("Kiro bytes should contain one JSON value");
+    (text, value)
+}
+
+fn add_kiro_target_only_server(path: &Path, command: &str, private_value: &str) {
+    use jsonc_parser::cst::CstInputValue;
+
+    let text = String::from_utf8(read(path)).expect("the Kiro fixture should be UTF-8");
+    let root = jsonc_parser::cst::CstRootNode::parse(&text, &kiro_parse_options())
+        .expect("the Kiro fixture should parse");
+    let servers = root
+        .object_value()
+        .and_then(|root| root.object_value("mcpServers"))
+        .expect("the Kiro fixture should contain mcpServers");
+    servers.append(
+        "target-only",
+        CstInputValue::Object(vec![
+            (
+                "command".to_owned(),
+                CstInputValue::String(command.to_owned()),
+            ),
+            (
+                "args".to_owned(),
+                CstInputValue::Array(vec![CstInputValue::String(
+                    "--target-only-private-argument".to_owned(),
+                )]),
+            ),
+            (
+                "env".to_owned(),
+                CstInputValue::Object(vec![(
+                    "TARGET_ONLY_TOKEN".to_owned(),
+                    CstInputValue::String(private_value.to_owned()),
+                )]),
+            ),
+            (
+                "futureNativeField".to_owned(),
+                CstInputValue::String("target-only-unowned-private-value".to_owned()),
+            ),
+        ]),
+    );
+    fs::write(path, root.to_string()).expect("the Kiro fixture should be updated");
+}
+
 #[test]
 fn golden_source_checkout_journey_runs_all_commands_as_one_safe_flow() {
     let home = SyntheticHome::new();
@@ -317,6 +379,42 @@ private = "codex-plugin-private-value"
 "#
     )
     .into_bytes();
+    let kiro = format!(
+        r#"{{
+  // Kiro global comment must survive.
+  "kiroMetadata": {{"private": "kiro-unowned-private-value"}},
+  "mcpServers": {{
+    "zeta": {{
+      "command": "zeta-private-command",
+      "args": ["--zeta-private-argument"],
+      "env": {{"ZETA_TOKEN": "zeta-private-value"}},
+      "disabled": false
+    }},
+    "shared": {{
+      "command": {quoted_imported_command},
+      "args": ["--shared-imported-private-argument"],
+      "env": {{"SHARED_TOKEN": "shared-imported-private-value"}},
+      "cwd": "/synthetic/kiro-shared-unowned-private",
+      "autoApprove": ["read"]
+    }},
+    "kiro-remote-only": {{
+      "url": "https://kiro-remote-private.invalid/mcp",
+      "headers": {{"Authorization": "Bearer kiro-remote-private-value"}}
+    }},
+    "kiro-reference-only": {{
+      "command": "${{KIRO_GOLDEN_RUNNER}}",
+      "env": {{"TOKEN": "${{KIRO_GOLDEN_TOKEN}}"}},
+      "disabled": true
+    }},
+    "kiro-native-env": {{
+      "command": "kiro-native-private-command",
+      "env": {{"PORT": 43118}}
+    }},
+  }},
+}}
+"#
+    )
+    .into_bytes();
     let cursor_project_path = home.user_root().join("workspace/.cursor/mcp.json");
     let cursor_project = b"{\"projectPrivateSentinel\":\"project-unowned-private-value\"}\n";
     let codex_project_path = home.user_root().join("workspace/.codex/config.toml");
@@ -326,15 +424,25 @@ private = "codex-plugin-private-value"
     let codex_profile = b"profile_private = \"codex-profile-private-value\"\n";
     let codex_auth_path = home.user_root().join(".codex/auth.json");
     let codex_auth = b"{\"tokens\":{\"access_token\":\"codex-auth-private-value\"}}\n";
+    let kiro_workspace_path = home.user_root().join("workspace/.kiro/settings/mcp.json");
+    let kiro_workspace = b"{\"workspacePrivate\":\"kiro-workspace-private-value\"}\n";
+    let kiro_crew_path = home.user_root().join(".kiro/crew/mcp.json");
+    let kiro_crew = b"{\"crewPrivate\":\"kiro-crew-private-value\"}\n";
+    let kiro_agent_path = home.user_root().join(".kiro/agents/kirocrew.json");
+    let kiro_agent = b"{\"agentPrivate\":\"kiro-agent-private-value\"}\n";
     home.write_file(&home.claude_desktop_configuration(), &claude);
     home.write_file(&home.cursor_configuration(), &cursor);
     home.write_file(&home.windsurf_configuration(), &windsurf);
     home.write_file(&home.vscode_configuration(), &vscode);
     home.write_file(&home.codex_configuration(), &codex);
+    home.write_file(&home.kiro_configuration(), &kiro);
     home.write_file(&cursor_project_path, cursor_project);
     home.write_file(&codex_project_path, codex_project);
     home.write_file(&codex_profile_path, codex_profile);
     home.write_file(&codex_auth_path, codex_auth);
+    home.write_file(&kiro_workspace_path, kiro_workspace);
+    home.write_file(&kiro_crew_path, kiro_crew);
+    home.write_file(&kiro_agent_path, kiro_agent);
 
     let private_values = [
         imported_command.as_str(),
@@ -375,6 +483,15 @@ private = "codex-plugin-private-value"
         "--codex-mixed-private-argument",
         "https://codex-mixed-private.invalid/mcp",
         "codex-opaque-private-value",
+        "zeta-private-command",
+        "--zeta-private-argument",
+        "zeta-private-value",
+        "kiro-native-private-command",
+        "43118",
+        "https://kiro-remote-private.invalid/mcp",
+        "Bearer kiro-remote-private-value",
+        "${KIRO_GOLDEN_RUNNER}",
+        "${KIRO_GOLDEN_TOKEN}",
         "/synthetic/alpha-unowned-private",
         "/synthetic/beta-unowned-private.env",
         "/synthetic/epsilon-unowned-private",
@@ -388,29 +505,36 @@ private = "codex-plugin-private-value"
         "codex-unowned-private-model",
         "codex-unowned-private-value",
         "codex-plugin-private-value",
+        "kiro-unowned-private-value",
+        "/synthetic/kiro-shared-unowned-private",
         "vscode-unowned-private-input",
         "vscode-unowned-private.invalid",
         "project-unowned-private-value",
         "codex-project-private-command",
         "codex-profile-private-value",
         "codex-auth-private-value",
+        "kiro-workspace-private-value",
+        "kiro-crew-private-value",
+        "kiro-agent-private-value",
         "claude-target-only-private-command",
         "cursor-target-only-private-command",
         "windsurf-target-only-private-command",
         "vscode-target-only-private-command",
         "codex-target-only-private-command",
+        "kiro-target-only-private-command",
         "claude-target-only-private-value",
         "cursor-target-only-private-value",
         "windsurf-target-only-private-value",
         "vscode-target-only-private-value",
         "codex-target-only-private-value",
+        "kiro-target-only-private-value",
         "target-only-unowned-private-value",
     ];
 
     let init_output = stdout(&run_success(cli_command(&home, &["init"])));
     assert!(
         init_output.starts_with(
-            "Initialized canonical configuration with 6 servers from 5 client configurations.\n"
+            "Initialized canonical configuration with 7 servers from 6 client configurations.\n"
         ),
         "init should report the deterministic imported shape"
     );
@@ -433,6 +557,12 @@ private = "codex-plugin-private-value"
             "Skipped 3 unsupported Codex entries: \"codex-mixed-transport\", \"codex-opaque\", \"codex-remote-only\"."
         ),
         "init should report unsupported Codex structures by name"
+    );
+    assert!(
+        init_output.contains(
+            "Skipped 3 unsupported Kiro entries: \"kiro-native-env\", \"kiro-reference-only\", \"kiro-remote-only\"."
+        ),
+        "init should report unsupported Kiro structures by name"
     );
     assert_private_values_absent(&[&init_output], &private_values);
     assert_file_matches(
@@ -461,6 +591,11 @@ private = "codex-plugin-private-value"
         "init must preserve Codex bytes",
     );
     assert_file_matches(
+        &home.kiro_configuration(),
+        &kiro,
+        "init must preserve exact Kiro JSONC bytes",
+    );
+    assert_file_matches(
         &cursor_project_path,
         cursor_project,
         "init must preserve project Cursor bytes",
@@ -479,6 +614,21 @@ private = "codex-plugin-private-value"
         &codex_auth_path,
         codex_auth,
         "init must preserve Codex credential-store bytes",
+    );
+    assert_file_matches(
+        &kiro_workspace_path,
+        kiro_workspace,
+        "init must preserve workspace Kiro bytes",
+    );
+    assert_file_matches(
+        &kiro_crew_path,
+        kiro_crew,
+        "init must preserve Crew-only bytes",
+    );
+    assert_file_matches(
+        &kiro_agent_path,
+        kiro_agent,
+        "init must preserve generated-agent bytes",
     );
 
     let update_output = stdout(&run_success(add_command(
@@ -514,6 +664,7 @@ private = "codex-plugin-private-value"
         "\"epsilon\":",
         "\"gamma\":",
         "\"shared\":",
+        "\"zeta\":",
     ];
     let listed_offsets = listed_names.map(|name| {
         list_output
@@ -564,6 +715,11 @@ private = "codex-plugin-private-value"
         "codex-target-only-private-command",
         "codex-target-only-private-value",
     );
+    add_kiro_target_only_server(
+        &home.kiro_configuration(),
+        "kiro-target-only-private-command",
+        "kiro-target-only-private-value",
+    );
 
     let canonical_path = home.canonical_configuration();
     let canonical_backup = backup_path(&canonical_path);
@@ -572,11 +728,13 @@ private = "codex-plugin-private-value"
     let windsurf_path = home.windsurf_configuration();
     let vscode_path = home.vscode_configuration();
     let codex_path = home.codex_configuration();
+    let kiro_path = home.kiro_configuration();
     let claude_backup = backup_path(&claude_path);
     let cursor_backup = backup_path(&cursor_path);
     let windsurf_backup = backup_path(&windsurf_path);
     let vscode_backup = backup_path(&vscode_path);
     let codex_backup = backup_path(&codex_path);
+    let kiro_backup = backup_path(&kiro_path);
     let canonical_before_sync = read(&canonical_path);
     let canonical_backup_before_sync = read(&canonical_backup);
     let claude_before_sync = read(&claude_path);
@@ -584,11 +742,12 @@ private = "codex-plugin-private-value"
     let windsurf_before_sync = read(&windsurf_path);
     let vscode_before_sync = read(&vscode_path);
     let codex_before_sync = read(&codex_path);
+    let kiro_before_sync = read(&kiro_path);
 
     let dry_output = stdout(&run_success(cli_command(&home, &["sync", "--dry-run"])));
     assert!(
-        dry_output.starts_with("Dry run validated 5 targets; no files changed.\n"),
-        "dry-run should validate the complete five-target plan"
+        dry_output.starts_with("Dry run validated 6 targets; no files changed.\n"),
+        "dry-run should validate the complete six-target plan"
     );
     assert!(
         dry_output.contains("Claude Desktop: would update with recoverable backup")
@@ -596,6 +755,7 @@ private = "codex-plugin-private-value"
             && dry_output.contains("Windsurf: would update with recoverable backup")
             && dry_output.contains("VS Code: would update with recoverable backup")
             && dry_output.contains("Codex: would update with recoverable backup")
+            && dry_output.contains("Kiro: would update with recoverable backup")
             && dry_output.contains("preserve target-only \"target-only\"")
             && dry_output.contains("preserve unmanaged \"remote-only\"")
             && dry_output.contains("preserve unmanaged \"windsurf-remote-only\"")
@@ -603,7 +763,10 @@ private = "codex-plugin-private-value"
             && dry_output.contains("preserve unmanaged \"vscode-remote-only\"")
             && dry_output.contains("preserve unmanaged \"codex-mixed-transport\"")
             && dry_output.contains("preserve unmanaged \"codex-opaque\"")
-            && dry_output.contains("preserve unmanaged \"codex-remote-only\""),
+            && dry_output.contains("preserve unmanaged \"codex-remote-only\"")
+            && dry_output.contains("preserve unmanaged \"kiro-native-env\"")
+            && dry_output.contains("preserve unmanaged \"kiro-reference-only\"")
+            && dry_output.contains("preserve unmanaged \"kiro-remote-only\""),
         "dry-run should report every target and preservation outcome"
     );
     assert_private_values_absent(&[&dry_output], &private_values);
@@ -643,6 +806,11 @@ private = "codex-plugin-private-value"
         "dry-run must preserve Codex",
     );
     assert_file_matches(
+        &kiro_path,
+        &kiro_before_sync,
+        "dry-run must preserve exact Kiro bytes",
+    );
+    assert_file_matches(
         &codex_project_path,
         codex_project,
         "dry-run must preserve project Codex bytes",
@@ -657,22 +825,39 @@ private = "codex-plugin-private-value"
         codex_auth,
         "dry-run must preserve Codex credential-store bytes",
     );
+    assert_file_matches(
+        &kiro_workspace_path,
+        kiro_workspace,
+        "dry-run must preserve workspace Kiro bytes",
+    );
+    assert_file_matches(
+        &kiro_crew_path,
+        kiro_crew,
+        "dry-run must preserve Crew-only bytes",
+    );
+    assert_file_matches(
+        &kiro_agent_path,
+        kiro_agent,
+        "dry-run must preserve generated-agent bytes",
+    );
     assert!(
         !claude_backup.exists()
             && !cursor_backup.exists()
             && !windsurf_backup.exists()
             && !vscode_backup.exists()
             && !codex_backup.exists()
+            && !kiro_backup.exists()
     );
 
     let apply_output = stdout(&run_success(cli_command(&home, &["sync"])));
     assert!(
-        apply_output.starts_with("Sync completed for 5 targets.\n")
+        apply_output.starts_with("Sync completed for 6 targets.\n")
             && apply_output.contains("Claude Desktop: updated with recoverable backup")
             && apply_output.contains("Cursor: updated with recoverable backup")
             && apply_output.contains("Windsurf: updated with recoverable backup")
             && apply_output.contains("VS Code: updated with recoverable backup")
-            && apply_output.contains("Codex: updated with recoverable backup"),
+            && apply_output.contains("Codex: updated with recoverable backup")
+            && apply_output.contains("Kiro: updated with recoverable backup"),
         "sync should report successful per-target application"
     );
     assert_private_values_absent(&[&apply_output], &private_values);
@@ -700,6 +885,11 @@ private = "codex-plugin-private-value"
         &codex_backup,
         &codex_before_sync,
         "Codex backup must contain exact pre-sync bytes",
+    );
+    assert_file_matches(
+        &kiro_backup,
+        &kiro_before_sync,
+        "Kiro backup must contain exact pre-sync comment-bearing bytes",
     );
     assert_file_matches(
         &canonical_path,
@@ -731,6 +921,21 @@ private = "codex-plugin-private-value"
         codex_auth,
         "sync must preserve Codex credential-store bytes",
     );
+    assert_file_matches(
+        &kiro_workspace_path,
+        kiro_workspace,
+        "sync must preserve workspace Kiro bytes",
+    );
+    assert_file_matches(
+        &kiro_crew_path,
+        kiro_crew,
+        "sync must preserve Crew-only bytes",
+    );
+    assert_file_matches(
+        &kiro_agent_path,
+        kiro_agent,
+        "sync must preserve generated-agent bytes",
+    );
 
     let claude_after: Value =
         serde_json::from_slice(&read(&claude_path)).expect("Claude output should be valid JSON");
@@ -746,6 +951,7 @@ private = "codex-plugin-private-value"
     let codex_after = codex_after_text
         .parse::<toml_edit::DocumentMut>()
         .expect("Codex output should be valid TOML");
+    let (kiro_after_text, kiro_after) = parse_kiro_bytes(&read(&kiro_path));
     for target in [&claude_after, &cursor_after, &windsurf_after] {
         assert!(
             target["mcpServers"]["shared"]["command"].as_str() == Some(updated_command.as_str())
@@ -755,7 +961,8 @@ private = "codex-plugin-private-value"
                 && target["mcpServers"]["beta"].is_object()
                 && target["mcpServers"]["delta"].is_object()
                 && target["mcpServers"]["epsilon"].is_object()
-                && target["mcpServers"]["gamma"].is_object(),
+                && target["mcpServers"]["gamma"].is_object()
+                && target["mcpServers"]["zeta"].is_object(),
             "each native target should contain the complete desired managed definitions"
         );
     }
@@ -798,7 +1005,8 @@ private = "codex-plugin-private-value"
             && vscode_after["servers"]["beta"].is_object()
             && vscode_after["servers"]["delta"].is_object()
             && vscode_after["servers"]["epsilon"].is_object()
-            && vscode_after["servers"]["gamma"].is_object(),
+            && vscode_after["servers"]["gamma"].is_object()
+            && vscode_after["servers"]["zeta"].is_object(),
         "VS Code should contain the complete desired managed definitions"
     );
     assert!(
@@ -822,7 +1030,7 @@ private = "codex-plugin-private-value"
         codex_after["mcp_servers"]["shared"]["command"].as_str() == Some(updated_command.as_str())
             && codex_after["mcp_servers"]["added"]["command"].as_str()
                 == Some(added_command.as_str())
-            && ["alpha", "beta", "delta", "epsilon", "gamma"]
+            && ["alpha", "beta", "delta", "epsilon", "gamma", "zeta"]
                 .into_iter()
                 .all(|name| codex_servers.contains_key(name)),
         "Codex should contain the complete desired managed definitions"
@@ -848,23 +1056,49 @@ private = "codex-plugin-private-value"
             && codex_after_text.contains("# unrelated inline comment"),
         "Codex comments, root settings, unowned local fields, unmanaged entries, plug-ins, and target-only data should survive"
     );
+    assert!(
+        kiro_after["mcpServers"]["shared"]["command"].as_str() == Some(updated_command.as_str())
+            && kiro_after["mcpServers"]["added"]["command"].as_str()
+                == Some(added_command.as_str())
+            && ["alpha", "beta", "delta", "epsilon", "gamma", "zeta"]
+                .into_iter()
+                .all(|name| kiro_after["mcpServers"][name].is_object()),
+        "Kiro should contain the complete desired managed definitions"
+    );
+    assert!(
+        kiro_after["kiroMetadata"]["private"].as_str() == Some("kiro-unowned-private-value")
+            && kiro_after["mcpServers"]["shared"]["cwd"].as_str()
+                == Some("/synthetic/kiro-shared-unowned-private")
+            && kiro_after["mcpServers"]["shared"]["autoApprove"][0].as_str() == Some("read")
+            && kiro_after["mcpServers"]["kiro-remote-only"]["headers"]["Authorization"].as_str()
+                == Some("Bearer kiro-remote-private-value")
+            && kiro_after["mcpServers"]["kiro-reference-only"]["command"].as_str()
+                == Some("${KIRO_GOLDEN_RUNNER}")
+            && kiro_after["mcpServers"]["kiro-native-env"]["env"]["PORT"].as_u64() == Some(43118)
+            && kiro_after["mcpServers"]["target-only"]["env"]["TARGET_ONLY_TOKEN"].as_str()
+                == Some("kiro-target-only-private-value")
+            && kiro_after_text.contains("// Kiro global comment must survive."),
+        "Kiro comments, root settings, unowned fields, references, remote entries, native values, and target-only data should survive"
+    );
 
     let claude_after_bytes = read(&claude_path);
     let cursor_after_bytes = read(&cursor_path);
     let windsurf_after_bytes = read(&windsurf_path);
     let vscode_after_bytes = read(&vscode_path);
+    let kiro_after_bytes = read(&kiro_path);
     let claude_backup_after = read(&claude_backup);
     let cursor_backup_after = read(&cursor_backup);
     let windsurf_backup_after = read(&windsurf_backup);
     let vscode_backup_after = read(&vscode_backup);
     let codex_backup_after = read(&codex_backup);
+    let kiro_backup_after = read(&kiro_backup);
     let no_op_output = stdout(&run_success(cli_command(&home, &["sync"])));
     assert!(
         no_op_output
             .matches("unchanged; no write or backup")
             .count()
-            == 5,
-        "repeat sync should report five target no-ops"
+            == 6,
+        "repeat sync should report six target no-ops"
     );
     assert_private_values_absent(&[&no_op_output], &private_values);
     assert_file_matches(
@@ -893,6 +1127,11 @@ private = "codex-plugin-private-value"
         "repeat sync must preserve Codex bytes",
     );
     assert_file_matches(
+        &kiro_path,
+        &kiro_after_bytes,
+        "repeat sync must preserve exact Kiro bytes",
+    );
+    assert_file_matches(
         &claude_backup,
         &claude_backup_after,
         "repeat sync must preserve the Claude backup",
@@ -918,6 +1157,11 @@ private = "codex-plugin-private-value"
         "repeat sync must preserve the Codex backup",
     );
     assert_file_matches(
+        &kiro_backup,
+        &kiro_backup_after,
+        "repeat sync must preserve the Kiro backup",
+    );
+    assert_file_matches(
         &codex_project_path,
         codex_project,
         "repeat sync must preserve project Codex bytes",
@@ -932,6 +1176,21 @@ private = "codex-plugin-private-value"
         codex_auth,
         "repeat sync must preserve Codex credential-store bytes",
     );
+    assert_file_matches(
+        &kiro_workspace_path,
+        kiro_workspace,
+        "repeat sync must preserve workspace Kiro bytes",
+    );
+    assert_file_matches(
+        &kiro_crew_path,
+        kiro_crew,
+        "repeat sync must preserve Crew-only bytes",
+    );
+    assert_file_matches(
+        &kiro_agent_path,
+        kiro_agent,
+        "repeat sync must preserve generated-agent bytes",
+    );
     for marker in [&imported_marker, &updated_marker, &added_marker] {
         assert!(
             !marker.exists(),
@@ -945,6 +1204,7 @@ private = "codex-plugin-private-value"
         &windsurf_path,
         &vscode_path,
         &codex_path,
+        &kiro_path,
     ] {
         assert_no_temporary_files(path);
     }
@@ -974,6 +1234,11 @@ fn built_binary_import_is_deterministic_when_client_assignments_are_reversed() {
         "command": "delta-private-command",
         "args": ["--delta-private-argument"],
         "env": {"DELTA_TOKEN": "delta-private-value"}
+    });
+    let zeta = json!({
+        "command": "zeta-private-command",
+        "args": ["--zeta-private-argument"],
+        "env": {"ZETA_TOKEN": "zeta-private-value"}
     });
     let shared = json!({
         "command": "shared-private-command",
@@ -1007,6 +1272,10 @@ env = { SHARED_TOKEN = "shared-private-value" }
         json_document(&json!({"servers": {"delta": delta, "shared": shared}})),
     );
     first.write_file(&first.codex_configuration(), codex);
+    first.write_file(
+        &first.kiro_configuration(),
+        json_document(&json!({"mcpServers": {"zeta": zeta, "shared": shared}})),
+    );
     second.write_file(
         &second.claude_desktop_configuration(),
         json_document(&json!({"mcpServers": {"delta": {
@@ -1028,6 +1297,10 @@ env = { SHARED_TOKEN = "shared-private-value" }
         json_document(&json!({"servers": {"alpha": alpha, "shared": shared}})),
     );
     second.write_file(&second.codex_configuration(), codex);
+    second.write_file(
+        &second.kiro_configuration(),
+        json_document(&json!({"mcpServers": {"zeta": zeta, "shared": shared}})),
+    );
 
     let first_output = stdout(&run_success(cli_command(&first, &["init"])));
     let second_output = stdout(&run_success(cli_command(&second, &["init"])));
@@ -1047,6 +1320,9 @@ env = { SHARED_TOKEN = "shared-private-value" }
         "epsilon-private-command",
         "--epsilon-private-argument",
         "epsilon-private-value",
+        "zeta-private-command",
+        "--zeta-private-argument",
+        "zeta-private-value",
         "shared-private-command",
         "--shared-private-argument",
         "shared-private-value",
@@ -1069,6 +1345,7 @@ fn built_binary_failure_matrix_is_nonzero_non_mutating_and_redacted() {
         home.write_file(&home.windsurf_configuration(), native);
         home.write_file(&home.vscode_configuration(), native);
         home.write_file(&home.codex_configuration(), native);
+        home.write_file(&home.kiro_configuration(), native);
         let diagnostic = stderr(&run_failure(cli_command(&home, &["sync", "--dry-run"])));
         assert!(
             diagnostic.contains("canonical configuration does not exist")
@@ -1100,6 +1377,11 @@ fn built_binary_failure_matrix_is_nonzero_non_mutating_and_redacted() {
             &home.codex_configuration(),
             native,
             "missing canonical failure must preserve Codex",
+        );
+        assert_file_matches(
+            &home.kiro_configuration(),
+            native,
+            "missing canonical failure must preserve Kiro",
         );
     }
 
@@ -1227,12 +1509,14 @@ fn built_binary_failure_matrix_is_nonzero_non_mutating_and_redacted() {
         let malformed_vscode =
             b"{\"servers\":{\"shared\":{\"type\":\"stdio\",\"command\":\"malformed-private-command\"";
         let codex = b"[mcp_servers.shared]\ncommand = \"codex-current-private-command\"\nargs = [\"--codex-current-private-argument\"]\nenv = { TOKEN = \"codex-current-private-value\" }\n";
+        let kiro = b"{\n  // Kiro preflight preservation\n  \"mcpServers\": {\n    \"shared\": {\n      \"command\": \"kiro-current-private-command\",\n      \"args\": [\"--kiro-current-private-argument\"],\n      \"env\": {\"TOKEN\": \"kiro-current-private-value\"},\n      \"disabled\": false\n    }\n  }\n}\n";
         home.write_file(&home.canonical_configuration(), &canonical);
         home.write_file(&home.claude_desktop_configuration(), &claude);
         home.write_file(&home.cursor_configuration(), &cursor);
         home.write_file(&home.windsurf_configuration(), &windsurf);
         home.write_file(&home.vscode_configuration(), malformed_vscode);
         home.write_file(&home.codex_configuration(), codex);
+        home.write_file(&home.kiro_configuration(), kiro);
         let diagnostic = stderr(&run_failure(cli_command(&home, &["sync"])));
         assert!(
             diagnostic.contains("cannot plan VS Code sync: invalid VS Code JSON:")
@@ -1258,6 +1542,9 @@ fn built_binary_failure_matrix_is_nonzero_non_mutating_and_redacted() {
                 "codex-current-private-command",
                 "--codex-current-private-argument",
                 "codex-current-private-value",
+                "kiro-current-private-command",
+                "--kiro-current-private-argument",
+                "kiro-current-private-value",
             ],
         );
         assert_file_matches(
@@ -1285,11 +1572,17 @@ fn built_binary_failure_matrix_is_nonzero_non_mutating_and_redacted() {
             codex,
             "preflight failure must preserve Codex",
         );
+        assert_file_matches(
+            &home.kiro_configuration(),
+            kiro,
+            "preflight failure must preserve Kiro",
+        );
         assert!(!backup_path(&home.claude_desktop_configuration()).exists());
         assert!(!backup_path(&home.cursor_configuration()).exists());
         assert!(!backup_path(&home.windsurf_configuration()).exists());
         assert!(!backup_path(&home.vscode_configuration()).exists());
         assert!(!backup_path(&home.codex_configuration()).exists());
+        assert!(!backup_path(&home.kiro_configuration()).exists());
     }
 
     {

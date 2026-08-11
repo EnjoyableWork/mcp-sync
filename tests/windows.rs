@@ -107,6 +107,7 @@ fn a_copied_portable_binary_uses_windows_profile_roots_and_safe_replacement() {
         home.windsurf_configuration(),
         home.vscode_configuration(),
         home.codex_configuration(),
+        home.kiro_configuration(),
     ] {
         assert!(
             target.is_file(),

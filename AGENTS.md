@@ -57,18 +57,19 @@ The implemented foundation is one Rust 2024 binary crate with a package named
 `enjoyable-mcp-sync` and an installed binary named `mcp-sync`. The CLI now
 supports help, version, create-only `init`, complete-definition canonical
 `add`, structurally redacted `list`, bounded named-server `test`, and
-five-target `sync --dry-run` / `sync` journeys plus fixed-selection
+six-target `sync --dry-run` / `sync` journeys plus fixed-selection
 `restore <configuration> --dry-run` / `restore <configuration>`. It also
 contains the strict canonical JSON v1 model, an injected
 macOS/GNU/Linux/Windows configuration-path resolver, a replaceable filesystem
 boundary with read, regular-file restore inspection, no-clobber creation,
 guarded replacement, one-generation backup restore, and reversible transaction
 ports, and a pure deterministic reconciliation engine with structurally
-redacted plans. Fixture-backed global Claude Desktop, Cursor, Windsurf, and VS
-Code adapters discover and parse native JSON on all three platforms, while the
-global Codex adapter performs TOML-native structural edits; all five render
-plan-driven updates in memory while preserving unowned fields. Canonical state
-uses the XDG configuration root on macOS/Linux and `%LOCALAPPDATA%` on Windows.
+redacted plans. Fixture-backed global Claude Desktop, Cursor, Windsurf, VS
+Code, and Kiro adapters discover and parse native JSON on all three platforms,
+while the global Codex adapter performs TOML-native structural edits; all six
+render plan-driven updates in memory while preserving unowned fields. Canonical
+state uses the XDG configuration root on macOS/Linux and `%LOCALAPPDATA%` on
+Windows.
 Claude Desktop and VS Code use the macOS application-support root, Linux XDG
 configuration root, or Windows roaming application-data root; Cursor,
 Windsurf, and Codex retain their home-relative paths. The Windsurf
@@ -84,23 +85,34 @@ Agent Host/Copilot CLI configuration. The Codex adapter manages only global
 app, Codex CLI, and IDE extension. It owns only `command`, `args`, and `env` in
 unambiguous local STDIO entries, preserves every other TOML setting and entry,
 never discovers trusted-project layers or OAuth credential stores, and makes no
-current-client smoke claim. `init` deterministically imports compatible local
-definitions, reports structural conflicts without writing, skips named
-unmanaged Cursor, Windsurf, VS Code, and Codex entries that canonical v1 cannot
-represent, and creates only a previously missing canonical file through a
-same-directory temporary file. `add` validates one complete definition before
+current-client smoke claim. The Kiro adapter manages only the selected
+global-user `<kiro-home>/settings/mcp.json`, using `~/.kiro` by default or an
+absolute, traversal-free `KIRO_HOME`. It performs lossless structural edits on
+comment-bearing JSON with trailing commas, owns only `command`, `args`, and
+string-valued `env` in unambiguous local STDIO entries, preserves every other
+field and comment, and leaves reference-bearing, remote, mixed, opaque, or
+otherwise unrepresentable entries unmanaged. It never expands `${VARIABLE}`
+references or discovers workspace, agent, Crew-only, generated-agent,
+organization-managed, remote-service, or credential stores. `init`
+deterministically imports compatible local definitions, reports structural
+conflicts without writing, skips named
+unmanaged Cursor, Windsurf, VS Code, Codex, and Kiro entries that canonical v1
+cannot represent, and creates only a previously missing canonical file through
+a same-directory temporary file. `add` validates one complete definition before
 reading canonical state, performs a deterministic add/update, skips semantic
 no-ops, and backs up then atomically replaces only the canonical regular file;
 `list` exposes names, counts, and escaped environment key names but no process
 values. `sync --dry-run` validates and structurally reports one fully rendered
-five-target plan without mutation; `sync` applies those exact bytes with no-op
+six-target plan without mutation; `sync` applies those exact bytes with no-op
 detection, recoverable backups, atomic replacement, per-target outcomes, and
 reverse-order rollback after a later failure. It preserves target-only and
 unowned native data, reports unmanaged native entries without exposing their
-values, and never touches project-level Cursor, VS Code, or Codex files.
-`restore` accepts only canonical, Claude Desktop, Cursor, Windsurf, VS Code, or
-Codex global selections. It validates the adjacent regular `.bak` with the
-owning parser before mutation, treats equal bytes as a no-op, recreates a
+values, and never touches project-level Cursor, VS Code, or Codex files or
+excluded Kiro stores.
+
+`restore` accepts only canonical, Claude Desktop, Cursor, Windsurf, VS Code,
+Codex, or Kiro global selections. It validates the adjacent regular `.bak` with
+the owning parser before mutation, treats equal bytes as a no-op, recreates a
 missing target without consuming the backup, and atomically swaps an existing
 target so its immediately preceding exact bytes become the one retained
 generation. Missing, malformed, symbolic-link, non-regular, stale, or
@@ -118,34 +130,43 @@ raw stdout, stderr, commands, arguments, environment values, and server error
 data never reach diagnostics. `init`, `sync`, and `restore` remain
 configuration-only. A
 combined built-binary synthetic-home suite proves the complete configuration
-flow, deterministic five-client import, health success and failure behavior,
+flow, deterministic six-client import, health success and failure behavior,
 redaction, idempotence, native preservation, non-zero failures, and
-five-target transaction rollback plus exact six-file restore and retention.
+six-target transaction rollback plus exact seven-file restore and retention.
 Cross-process regressions additionally prove same-root contention, independent
 roots, process-exit release, every mutating command, and the issue #45
 partial-generation refusal with coherent final backups.
 Controlled current-stable Cursor and Claude Desktop smokes on macOS both accept
 the rendered global definitions and complete MCP initialization; the Claude
 journey uses a no-clobber backup and verified exact restore around its temporary
-native file. The source-checkout usage and recovery guide documents the current
-workflow, redaction boundary, bounded health behavior, one-slot backups,
-transaction recovery, mutation serialization, validated built-in restoration,
-manual fallbacks, and current limitations without turning the README into a
-progress report. All five Linux targets have
-deterministic path, fixture, built-binary behavior, and native x64/ARM64
-whole-suite CI coverage under `MCP-018`; there is no Linux current-client smoke
-claim. All five Windows paths, the copied-binary journey, native PowerShell
-health fixtures, and complete native MSVC x64/ARM64 whole-suite CI pass under
-`MCP-019`. There is no Windows current-client smoke claim. Windsurf, VS Code,
+native file. Controlled Kiro IDE `1.0.288` and Kiro Crew `0.1.3` macOS smokes
+accept the same mcp-sync-rendered global definition and complete MCP
+initialization. The IDE journey uses a previously absent global path, a
+restricted synthetic workspace, verified process cleanup, and exact restoration
+to absence; the isolated Crew gateway lists and probes the global entry, copies
+it exactly into its generated agent with `includeMcpJson: false`, leaves its
+override absent, and preserves the global bytes. The source-checkout usage and
+recovery guide documents the current workflow, redaction boundary, bounded
+health behavior, one-slot backups, transaction recovery, mutation
+serialization, validated built-in restoration, manual fallbacks, and current
+limitations without turning the README into a progress report. All six Linux
+targets have deterministic path, fixture,
+built-binary behavior, and native x64/ARM64 whole-suite CI coverage through the
+retained `MCP-018` matrix expanded by `MCP-037`; there is no Linux
+current-client smoke claim. All six Windows paths, the copied-binary journey,
+native PowerShell health fixtures, and complete native MSVC x64/ARM64
+whole-suite CI pass through the retained `MCP-019` matrix expanded by
+`MCP-037`. There is no Windows current-client smoke claim. Windsurf, VS Code,
 and Codex have no current-client smoke claim on any implemented platform.
 Distribution remains later-ticket scope.
 `MCP-039` is `Done`: every Cargo version after `0.1.0` must use its exact
 protected crates.io Trusted Publishing path with trusted-publishing-only
 enforcement and no API-token fallback. Approved M4 successor `MCP-037` is
 `In progress` under Codex and its exact canonical Goal; it has no `v0.1.0`
-adoption-evidence prerequisite, remains unimplemented, and must not be
-described as supported before its complete adapter, native-platform, and
-current-client Kiro IDE plus inherited Kiro Crew evidence passes.
+adoption-evidence prerequisite. Its adapter, local and hosted native matrix,
+and controlled Kiro IDE plus inherited Kiro Crew evidence pass on the active
+implementation branch; protected merge, exact-main verification, durable
+ticket closure, and Goal completion remain before `MCP-037` is `Done`.
 Use the existing Clap command tree as CLI behavior grows; do not introduce a
 second parser.
 

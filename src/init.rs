@@ -5,6 +5,7 @@ use crate::codex::{CodexAdapter, CodexAdapterError, CodexDiscovery};
 use crate::config::{CanonicalConfig, CanonicalServer, ConfigError};
 use crate::cursor::{CursorAdapter, CursorAdapterError, CursorDiscovery};
 use crate::filesystem::{FileCreator, FileIoError, FileSystem};
+use crate::kiro::{KiroAdapter, KiroAdapterError, KiroDiscovery};
 use crate::paths::ConfigurationPaths;
 use crate::vscode::{VsCodeAdapter, VsCodeAdapterError, VsCodeDiscovery};
 use crate::windsurf::{WindsurfAdapter, WindsurfAdapterError, WindsurfDiscovery};
@@ -50,8 +51,11 @@ pub fn initialize(
     let codex = CodexAdapter::from_paths(paths)
         .discover(filesystem)
         .map_err(|source| InitError::DiscoverCodex { source })?;
+    let kiro = KiroAdapter::from_paths(paths)
+        .discover(filesystem)
+        .map_err(|source| InitError::DiscoverKiro { source })?;
 
-    let mut imports = Vec::with_capacity(5);
+    let mut imports = Vec::with_capacity(6);
     let mut unmanaged_entries = BTreeMap::<Client, BTreeSet<String>>::new();
     if let ClaudeDesktopDiscovery::Found(document) = claude {
         imports.push(ClientImport::new(
@@ -113,6 +117,20 @@ pub fn initialize(
         );
         imports.push(ClientImport::new(
             Client::Codex,
+            document.canonical_config().clone(),
+        ));
+    }
+    if let KiroDiscovery::Found(document) = kiro {
+        unmanaged_entries.insert(
+            Client::Kiro,
+            document
+                .unmanaged_server_names()
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+        );
+        imports.push(ClientImport::new(
+            Client::Kiro,
             document.canonical_config().clone(),
         ));
     }
@@ -199,6 +217,7 @@ pub enum InitError {
     DiscoverWindsurf { source: WindsurfAdapterError },
     DiscoverVsCode { source: VsCodeAdapterError },
     DiscoverCodex { source: CodexAdapterError },
+    DiscoverKiro { source: KiroAdapterError },
     Conflicts { source: ImportConflicts },
     BuildCanonical { source: ConfigError },
     SerializeCanonical { source: ConfigError },
@@ -237,6 +256,10 @@ impl fmt::Display for InitError {
                 formatter,
                 "cannot import Codex configuration: {source}; fix the file or its permissions, then rerun `mcp-sync init`"
             ),
+            Self::DiscoverKiro { source } => write!(
+                formatter,
+                "cannot import Kiro configuration: {source}; fix the file or its permissions, then rerun `mcp-sync init`"
+            ),
             Self::Conflicts { source } => source.fmt(formatter),
             Self::BuildCanonical { source } => {
                 write!(
@@ -267,6 +290,7 @@ impl Error for InitError {
             Self::DiscoverWindsurf { source } => Some(source),
             Self::DiscoverVsCode { source } => Some(source),
             Self::DiscoverCodex { source } => Some(source),
+            Self::DiscoverKiro { source } => Some(source),
             Self::Conflicts { source } => Some(source),
             Self::BuildCanonical { source } | Self::SerializeCanonical { source } => Some(source),
         }
@@ -280,6 +304,7 @@ enum Client {
     Windsurf,
     VsCode,
     Codex,
+    Kiro,
 }
 
 impl fmt::Display for Client {
@@ -290,6 +315,7 @@ impl fmt::Display for Client {
             Self::Windsurf => formatter.write_str("Windsurf"),
             Self::VsCode => formatter.write_str("VS Code"),
             Self::Codex => formatter.write_str("Codex"),
+            Self::Kiro => formatter.write_str("Kiro"),
         }
     }
 }
@@ -593,6 +619,13 @@ mod tests {
                 ("shared", shared),
             ]),
         );
+        let kiro = ClientImport::new(
+            Client::Kiro,
+            config(vec![(
+                "theta",
+                server("theta-command", "--theta", "theta-value"),
+            )]),
+        );
         let unmanaged_entries = BTreeMap::from([
             (Client::Cursor, BTreeSet::from(["remote-only".to_owned()])),
             (
@@ -607,6 +640,10 @@ mod tests {
                 Client::Codex,
                 BTreeSet::from(["codex-mixed".to_owned(), "codex-remote".to_owned()]),
             ),
+            (
+                Client::Kiro,
+                BTreeSet::from(["kiro-reference".to_owned(), "kiro-remote".to_owned()]),
+            ),
         ]);
 
         let forward = normalize_imports(
@@ -616,12 +653,13 @@ mod tests {
                 windsurf.clone(),
                 vscode.clone(),
                 codex.clone(),
+                kiro.clone(),
             ],
             unmanaged_entries.clone(),
         )
         .expect("compatible imports should normalize");
         let reverse = normalize_imports(
-            vec![codex, vscode, windsurf, cursor, claude],
+            vec![kiro, codex, vscode, windsurf, cursor, claude],
             unmanaged_entries,
         )
         .expect("discovery order should not affect normalization");
@@ -656,6 +694,10 @@ mod tests {
                 SkippedClientEntries {
                     client: Client::Codex,
                     names: vec!["codex-mixed".to_owned(), "codex-remote".to_owned()],
+                },
+                SkippedClientEntries {
+                    client: Client::Kiro,
+                    names: vec!["kiro-reference".to_owned(), "kiro-remote".to_owned()],
                 },
             ]
         );

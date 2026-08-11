@@ -7,6 +7,7 @@ use crate::cursor::{CursorAdapter, CursorAdapterError, CursorDiscovery, CursorDo
 use crate::filesystem::{
     ExpectedFile, FileIoError, FileMutationError, FileSystem, TransactionalFileUpdater, backup_path,
 };
+use crate::kiro::{KiroAdapter, KiroAdapterError, KiroDiscovery, KiroDocument};
 use crate::paths::ConfigurationPaths;
 use crate::reconciliation::{ReconciliationOutcome, ReconciliationPlan, ServerChanges, reconcile};
 use crate::vscode::{VsCodeAdapter, VsCodeAdapterError, VsCodeDiscovery, VsCodeDocument};
@@ -58,8 +59,14 @@ pub fn plan_sync(
         .map_err(|source| SyncError::DiscoverCodex { source })?;
     let codex = plan_codex(codex_adapter, codex_discovery, &desired)?;
 
+    let kiro_adapter = KiroAdapter::from_paths(paths);
+    let kiro_discovery = kiro_adapter
+        .discover(filesystem)
+        .map_err(|source| SyncError::DiscoverKiro { source })?;
+    let kiro = plan_kiro(kiro_adapter, kiro_discovery, &desired)?;
+
     Ok(SyncPlan {
-        targets: vec![claude, cursor, windsurf, vscode, codex],
+        targets: vec![claude, cursor, windsurf, vscode, codex, kiro],
     })
 }
 
@@ -458,6 +465,62 @@ fn plan_codex(
     )
 }
 
+fn plan_kiro(
+    adapter: KiroAdapter,
+    discovery: KiroDiscovery,
+    desired: &CanonicalConfig,
+) -> Result<TargetPlan, SyncError> {
+    let (observed, document) = match discovery {
+        KiroDiscovery::Missing => (
+            ObservedFile::Missing,
+            KiroDiscovery::Missing.into_document(),
+        ),
+        KiroDiscovery::Found(document) => (
+            ObservedFile::Existing(document.original_bytes().to_vec()),
+            document,
+        ),
+    };
+    let unmanaged_entries = document
+        .unmanaged_server_names()
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    let reconciliation = reconcile(document.canonical_config(), desired);
+    let rendered = document
+        .render_plan(&reconciliation)
+        .map_err(|source| SyncError::RenderKiro { source })?;
+    let changed = rendered.changed();
+    let replacement = rendered.into_bytes();
+    let verified =
+        KiroDocument::parse(&replacement).map_err(|source| SyncError::RenderKiro { source })?;
+    let verified_unmanaged = verified
+        .unmanaged_server_names()
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    if !rendered_config_with_unmanaged_matches_plan(
+        document.canonical_config(),
+        desired,
+        verified.canonical_config(),
+        &unmanaged_entries,
+        &verified_unmanaged,
+    ) {
+        return Err(SyncError::InconsistentRenderedPlan {
+            target: Target::Kiro,
+        });
+    }
+
+    TargetPlan::new(
+        Target::Kiro,
+        adapter.configuration_path().to_owned(),
+        observed,
+        replacement,
+        reconciliation,
+        changed,
+        unmanaged_entries,
+    )
+}
+
 fn rendered_config_with_unmanaged_matches_plan(
     current: &CanonicalConfig,
     desired: &CanonicalConfig,
@@ -594,6 +657,7 @@ pub(crate) enum Target {
     Windsurf,
     VsCode,
     Codex,
+    Kiro,
 }
 
 impl fmt::Display for Target {
@@ -604,6 +668,7 @@ impl fmt::Display for Target {
             Self::Windsurf => formatter.write_str("Windsurf"),
             Self::VsCode => formatter.write_str("VS Code"),
             Self::Codex => formatter.write_str("Codex"),
+            Self::Kiro => formatter.write_str("Kiro"),
         }
     }
 }
@@ -900,6 +965,8 @@ pub enum SyncError {
     RenderVsCode { source: VsCodeAdapterError },
     DiscoverCodex { source: CodexAdapterError },
     RenderCodex { source: CodexAdapterError },
+    DiscoverKiro { source: KiroAdapterError },
+    RenderKiro { source: KiroAdapterError },
     InconsistentRenderedPlan { target: Target },
     ApplyTransaction { targets: Vec<TargetReport> },
 }
@@ -968,6 +1035,14 @@ impl fmt::Display for SyncError {
                 formatter,
                 "cannot render the validated Codex sync plan: {source}; no target files were changed"
             ),
+            Self::DiscoverKiro { source } => write!(
+                formatter,
+                "cannot plan Kiro sync: {source}; no target files were changed"
+            ),
+            Self::RenderKiro { source } => write!(
+                formatter,
+                "cannot render the validated Kiro sync plan: {source}; no target files were changed"
+            ),
             Self::InconsistentRenderedPlan { target } => write!(
                 formatter,
                 "{target} adapter produced bytes inconsistent with its validated reconciliation plan; no target files were changed"
@@ -1005,6 +1080,7 @@ impl Error for SyncError {
             Self::DiscoverWindsurf { source } | Self::RenderWindsurf { source } => Some(source),
             Self::DiscoverVsCode { source } | Self::RenderVsCode { source } => Some(source),
             Self::DiscoverCodex { source } | Self::RenderCodex { source } => Some(source),
+            Self::DiscoverKiro { source } | Self::RenderKiro { source } => Some(source),
             Self::ApplyTransaction { targets } => targets.iter().find_map(|target| {
                 if let TargetStatus::Failed { source, .. } = &target.status {
                     Some(source as &(dyn Error + 'static))
@@ -1164,7 +1240,7 @@ mod tests {
         let debug = format!("{plan:?}");
         let dry_run = dry_run(&plan).to_string();
 
-        assert_eq!(plan.target_count(), 5);
+        assert_eq!(plan.target_count(), 6);
         for private in [
             "private-command-value",
             "private-argument-value",
@@ -1173,12 +1249,13 @@ mod tests {
             assert!(!debug.contains(private));
             assert!(!dry_run.contains(private));
         }
-        assert!(dry_run.contains("Dry run validated 5 targets; no files changed."));
+        assert!(dry_run.contains("Dry run validated 6 targets; no files changed."));
         assert!(dry_run.contains("Claude Desktop: would create"));
         assert!(dry_run.contains("Cursor: would create"));
         assert!(dry_run.contains("Windsurf: would create"));
         assert!(dry_run.contains("VS Code: would create"));
         assert!(dry_run.contains("Codex: would create"));
+        assert!(dry_run.contains("Kiro: would create"));
         assert!(!paths.user_home().join(".cursor/mcp.json").exists());
         assert!(
             !paths
@@ -1188,10 +1265,11 @@ mod tests {
         );
         assert!(!paths.user_data_home().join("Code/User/mcp.json").exists());
         assert!(!paths.user_home().join(".codex/config.toml").exists());
+        assert!(!paths.user_home().join(".kiro/settings/mcp.json").exists());
 
         let report = apply_sync(&plan, &crate::filesystem::OsFileSystem)
             .expect("the exact planned bytes should apply");
-        assert!(report.to_string().contains("Sync completed for 5 targets."));
+        assert!(report.to_string().contains("Sync completed for 6 targets."));
         assert!(paths.user_home().join(".cursor/mcp.json").is_file());
         assert!(
             paths
@@ -1207,6 +1285,7 @@ mod tests {
         );
         assert!(paths.user_data_home().join("Code/User/mcp.json").is_file());
         assert!(paths.user_home().join(".codex/config.toml").is_file());
+        assert!(paths.user_home().join(".kiro/settings/mcp.json").is_file());
 
         let settled = plan_sync(&paths, &crate::filesystem::OsFileSystem)
             .expect("the applied targets should replan");
@@ -1238,6 +1317,9 @@ mod tests {
         let codex_path = CodexAdapter::from_paths(&paths)
             .configuration_path()
             .to_owned();
+        let kiro_path = KiroAdapter::from_paths(&paths)
+            .configuration_path()
+            .to_owned();
         for path in [
             paths.canonical_configuration(),
             &claude_path,
@@ -1245,6 +1327,7 @@ mod tests {
             &windsurf_path,
             &vscode_path,
             &codex_path,
+            &kiro_path,
         ] {
             fs::create_dir_all(path.parent().expect("a fixture path has a parent"))
                 .expect("fixture directories should be created");
@@ -1259,6 +1342,7 @@ mod tests {
         fs::write(&windsurf_path, b"{}\n").expect("Windsurf fixture should be written");
         fs::write(&vscode_path, b"{}\n").expect("VS Code fixture should be written");
         fs::write(&codex_path, b"").expect("Codex fixture should be written");
+        fs::write(&kiro_path, b"{}\n").expect("Kiro fixture should be written");
 
         let plan = plan_sync(&paths, &crate::filesystem::OsFileSystem)
             .expect("the original exact bytes should plan");
@@ -1274,6 +1358,7 @@ mod tests {
         assert!(diagnostic.contains("Windsurf: not attempted after an earlier failure"));
         assert!(diagnostic.contains("VS Code: not attempted after an earlier failure"));
         assert!(diagnostic.contains("Codex: not attempted after an earlier failure"));
+        assert!(diagnostic.contains("Kiro: not attempted after an earlier failure"));
         assert_eq!(
             fs::read(&claude_path).expect("the concurrent target should remain readable"),
             concurrent
@@ -1294,11 +1379,16 @@ mod tests {
             fs::read(&codex_path).expect("the fifth target should remain readable"),
             b""
         );
+        assert_eq!(
+            fs::read(&kiro_path).expect("the sixth target should remain readable"),
+            b"{}\n"
+        );
         assert!(!backup_path(&claude_path).exists());
         assert!(!backup_path(&cursor_path).exists());
         assert!(!backup_path(&windsurf_path).exists());
         assert!(!backup_path(&vscode_path).exists());
         assert!(!backup_path(&codex_path).exists());
+        assert!(!backup_path(&kiro_path).exists());
         for private in [
             "private-command-value",
             "private-argument-value",
@@ -1349,7 +1439,7 @@ mod tests {
         }
     }
 
-    fn five_create_plan() -> (tempfile::TempDir, SyncPlan) {
+    fn six_create_plan() -> (tempfile::TempDir, SyncPlan) {
         let fixture = tempfile::tempdir().expect("temporary sync fixture should be created");
         let paths = fixture_paths(fixture.path());
         fs::create_dir_all(
@@ -1369,7 +1459,7 @@ mod tests {
         (fixture, plan)
     }
 
-    fn five_update_plan() -> (tempfile::TempDir, SyncPlan) {
+    fn six_update_plan() -> (tempfile::TempDir, SyncPlan) {
         let fixture = tempfile::tempdir().expect("temporary sync fixture should be created");
         let paths = fixture_paths(fixture.path());
         let claude_path = ClaudeDesktopAdapter::from_paths(&paths)
@@ -1387,6 +1477,9 @@ mod tests {
         let codex_path = CodexAdapter::from_paths(&paths)
             .configuration_path()
             .to_owned();
+        let kiro_path = KiroAdapter::from_paths(&paths)
+            .configuration_path()
+            .to_owned();
         for path in [
             paths.canonical_configuration(),
             &claude_path,
@@ -1394,6 +1487,7 @@ mod tests {
             &windsurf_path,
             &vscode_path,
             &codex_path,
+            &kiro_path,
         ] {
             fs::create_dir_all(path.parent().expect("a fixture path has a parent"))
                 .expect("fixture directories should be created");
@@ -1408,14 +1502,15 @@ mod tests {
         fs::write(&windsurf_path, b"{}\n").expect("Windsurf fixture should be written");
         fs::write(&vscode_path, b"{}\n").expect("VS Code fixture should be written");
         fs::write(&codex_path, b"").expect("Codex fixture should be written");
+        fs::write(&kiro_path, b"{}\n").expect("Kiro fixture should be written");
         let plan = plan_sync(&paths, &crate::filesystem::OsFileSystem)
-            .expect("five existing targets should plan updates");
+            .expect("six existing targets should plan updates");
         (fixture, plan)
     }
 
     #[test]
     fn a_forced_second_target_failure_rolls_back_the_first_in_reverse_order() {
-        let (_fixture, plan) = five_create_plan();
+        let (_fixture, plan) = six_create_plan();
         let filesystem = ForcedFailureFileSystem {
             apply_count: std::cell::Cell::new(0),
             rollback_count: std::cell::Cell::new(0),
@@ -1436,6 +1531,7 @@ mod tests {
         assert!(diagnostic.contains("Windsurf: not attempted after an earlier failure"));
         assert!(diagnostic.contains("VS Code: not attempted after an earlier failure"));
         assert!(diagnostic.contains("Codex: not attempted after an earlier failure"));
+        assert!(diagnostic.contains("Kiro: not attempted after an earlier failure"));
         for private in [
             "private-command-value",
             "private-argument-value",
@@ -1447,7 +1543,7 @@ mod tests {
 
     #[test]
     fn a_forced_third_target_failure_rolls_back_both_prior_targets_in_reverse_order() {
-        let (_fixture, plan) = five_create_plan();
+        let (_fixture, plan) = six_create_plan();
         let filesystem = ForcedFailureFileSystem {
             apply_count: std::cell::Cell::new(0),
             rollback_count: std::cell::Cell::new(0),
@@ -1472,7 +1568,7 @@ mod tests {
 
     #[test]
     fn a_forced_fourth_target_failure_rolls_back_three_prior_targets_in_reverse_order() {
-        let (_fixture, plan) = five_create_plan();
+        let (_fixture, plan) = six_create_plan();
         let filesystem = ForcedFailureFileSystem {
             apply_count: std::cell::Cell::new(0),
             rollback_count: std::cell::Cell::new(0),
@@ -1493,11 +1589,12 @@ mod tests {
         assert!(diagnostic.contains("Windsurf: rolled back after creation"));
         assert!(diagnostic.contains("VS Code: create failed"));
         assert!(diagnostic.contains("Codex: not attempted after an earlier failure"));
+        assert!(diagnostic.contains("Kiro: not attempted after an earlier failure"));
     }
 
     #[test]
     fn a_forced_fifth_target_failure_rolls_back_all_prior_targets_in_reverse_order() {
-        let (_fixture, plan) = five_create_plan();
+        let (_fixture, plan) = six_create_plan();
         let filesystem = ForcedFailureFileSystem {
             apply_count: std::cell::Cell::new(0),
             rollback_count: std::cell::Cell::new(0),
@@ -1518,11 +1615,38 @@ mod tests {
         assert!(diagnostic.contains("Windsurf: rolled back after creation"));
         assert!(diagnostic.contains("VS Code: rolled back after creation"));
         assert!(diagnostic.contains("Codex: create failed"));
+        assert!(diagnostic.contains("Kiro: not attempted after an earlier failure"));
+    }
+
+    #[test]
+    fn a_forced_sixth_target_failure_rolls_back_all_five_prior_targets_in_reverse_order() {
+        let (_fixture, plan) = six_create_plan();
+        let filesystem = ForcedFailureFileSystem {
+            apply_count: std::cell::Cell::new(0),
+            rollback_count: std::cell::Cell::new(0),
+            rollback_receipts: std::cell::RefCell::new(Vec::new()),
+            fail_at: 5,
+            fail_rollback: false,
+        };
+
+        let error = apply_sync(&plan, &filesystem)
+            .expect_err("the injected sixth target failure should abort apply");
+        let diagnostic = error.to_string();
+
+        assert_eq!(filesystem.apply_count.get(), 6);
+        assert_eq!(filesystem.rollback_count.get(), 5);
+        assert_eq!(*filesystem.rollback_receipts.borrow(), [4, 3, 2, 1, 0]);
+        assert!(diagnostic.contains("Claude Desktop: rolled back after creation"));
+        assert!(diagnostic.contains("Cursor: rolled back after creation"));
+        assert!(diagnostic.contains("Windsurf: rolled back after creation"));
+        assert!(diagnostic.contains("VS Code: rolled back after creation"));
+        assert!(diagnostic.contains("Codex: rolled back after creation"));
+        assert!(diagnostic.contains("Kiro: create failed"));
     }
 
     #[test]
     fn rollback_failure_is_non_successful_and_explicit_per_target() {
-        let (_fixture, plan) = five_create_plan();
+        let (_fixture, plan) = six_create_plan();
         let filesystem = ForcedFailureFileSystem {
             apply_count: std::cell::Cell::new(0),
             rollback_count: std::cell::Cell::new(0),
@@ -1542,7 +1666,7 @@ mod tests {
 
     #[test]
     fn rollback_failure_after_update_reports_the_actionable_recovery_backup() {
-        let (_fixture, plan) = five_update_plan();
+        let (_fixture, plan) = six_update_plan();
         let expected_backup = backup_path(&plan.targets[0].path);
         let filesystem = ForcedFailureFileSystem {
             apply_count: std::cell::Cell::new(0),

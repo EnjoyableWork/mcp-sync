@@ -11,6 +11,7 @@ mod cursor;
 mod filesystem;
 mod health;
 mod init;
+mod kiro;
 mod operation_lock;
 mod paths;
 mod reconciliation;
@@ -99,6 +100,7 @@ enum RestoreTargetArgument {
     #[value(name = "vscode", alias = "vs-code")]
     VsCode,
     Codex,
+    Kiro,
 }
 
 impl From<RestoreTargetArgument> for restore::RestoreTarget {
@@ -110,6 +112,7 @@ impl From<RestoreTargetArgument> for restore::RestoreTarget {
             RestoreTargetArgument::Windsurf => Self::Windsurf,
             RestoreTargetArgument::VsCode => Self::VsCode,
             RestoreTargetArgument::Codex => Self::Codex,
+            RestoreTargetArgument::Kiro => Self::Kiro,
         }
     }
 }
