@@ -1,5 +1,6 @@
 name: Publish Cargo package with trusted publishing
 
+# MCP-039 keeps registry authority in this dedicated protected workflow.
 on:
   workflow_dispatch:
     inputs:
