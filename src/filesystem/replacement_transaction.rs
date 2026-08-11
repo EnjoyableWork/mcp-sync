@@ -905,6 +905,113 @@ pub(crate) fn transaction_path(path: &Path) -> PathBuf {
     PathBuf::from(transaction)
 }
 
+#[cfg(test)]
+pub(crate) fn test_recovery_shape(path: &Path) -> String {
+    let transaction = transaction_path(path);
+    let journal = match read_journal(path, &transaction) {
+        Ok(Some((journal, _))) => journal,
+        Ok(None) => return "journal=missing".to_owned(),
+        Err(FileMutationError::Io(_)) => return "journal=unreadable".to_owned(),
+        Err(FileMutationError::UnsupportedFileType { .. }) => {
+            return "journal=unsupported".to_owned();
+        }
+        Err(_) => return "journal=invalid".to_owned(),
+    };
+    let backup = backup_path(path);
+    let replacement_stage = journal.replacement_stage_path(path);
+    let backup_stage = journal.backup_stage_path(path);
+
+    format!(
+        "journal=valid,target={},backup={},replacement-stage={},backup-stage={}",
+        test_target_shape(path, &journal),
+        test_backup_shape(&backup, &journal),
+        replacement_stage
+            .as_deref()
+            .map_or("invalid-name", |stage| test_file_shape(
+                stage,
+                &journal.replacement_target
+            )),
+        backup_stage
+            .as_deref()
+            .map_or("invalid-name", |stage| test_file_shape(
+                stage,
+                &journal.original_target
+            )),
+    )
+}
+
+#[cfg(test)]
+fn test_target_shape(path: &Path, journal: &ReplacementTransaction) -> &'static str {
+    match test_read_regular(path) {
+        TestRegularFile::Missing => "missing",
+        TestRegularFile::Unreadable => "unreadable",
+        TestRegularFile::Unsupported => "unsupported",
+        TestRegularFile::Bytes(bytes) if journal.original_target.matches(&bytes) => "original",
+        TestRegularFile::Bytes(bytes) if journal.replacement_target.matches(&bytes) => {
+            "replacement"
+        }
+        TestRegularFile::Bytes(_) => "different",
+    }
+}
+
+#[cfg(test)]
+fn test_backup_shape(path: &Path, journal: &ReplacementTransaction) -> &'static str {
+    match test_read_regular(path) {
+        TestRegularFile::Missing
+            if matches!(journal.previous_backup, SnapshotFingerprint::Missing) =>
+        {
+            "previous"
+        }
+        TestRegularFile::Missing => "missing",
+        TestRegularFile::Unreadable => "unreadable",
+        TestRegularFile::Unsupported => "unsupported",
+        TestRegularFile::Bytes(bytes)
+            if matches!(
+                &journal.previous_backup,
+                SnapshotFingerprint::Existing { fingerprint } if fingerprint.matches(&bytes)
+            ) =>
+        {
+            "previous"
+        }
+        TestRegularFile::Bytes(bytes) if journal.original_target.matches(&bytes) => "original",
+        TestRegularFile::Bytes(_) => "different",
+    }
+}
+
+#[cfg(test)]
+fn test_file_shape(path: &Path, expected: &Fingerprint) -> &'static str {
+    match test_read_regular(path) {
+        TestRegularFile::Missing => "missing",
+        TestRegularFile::Unreadable => "unreadable",
+        TestRegularFile::Unsupported => "unsupported",
+        TestRegularFile::Bytes(bytes) if expected.matches(&bytes) => "matching",
+        TestRegularFile::Bytes(_) => "different",
+    }
+}
+
+#[cfg(test)]
+enum TestRegularFile {
+    Missing,
+    Unreadable,
+    Unsupported,
+    Bytes(Vec<u8>),
+}
+
+#[cfg(test)]
+fn test_read_regular(path: &Path) -> TestRegularFile {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(source) if source.kind() == io::ErrorKind::NotFound => {
+            return TestRegularFile::Missing;
+        }
+        Err(_) => return TestRegularFile::Unreadable,
+    };
+    if !metadata.file_type().is_file() {
+        return TestRegularFile::Unsupported;
+    }
+    fs::read(path).map_or(TestRegularFile::Unreadable, TestRegularFile::Bytes)
+}
+
 fn sync_parent_directory(path: &Path) -> Result<(), FileMutationError> {
     let parent = path.parent().ok_or_else(|| {
         FileIoError::new(

@@ -366,6 +366,11 @@ pub(crate) fn replacement_transaction_path(path: &Path) -> PathBuf {
     replacement_transaction::transaction_path(path)
 }
 
+#[cfg(test)]
+pub(crate) fn replacement_recovery_test_shape(path: &Path) -> String {
+    replacement_transaction::test_recovery_shape(path)
+}
+
 fn restore_missing_from_backup(
     path: &Path,
     expected_backup: &[u8],

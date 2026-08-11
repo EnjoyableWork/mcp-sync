@@ -825,37 +825,40 @@ mod tests {
                 configuration: RestoreTargetArgument::Canonical,
                 dry_run: true,
             })),
-            "recover" => match run(Command::Init) {
-                Err(super::ApplicationError::Init(
-                    super::init::InitError::AlreadyInitialized { .. },
-                )) => {}
-                Err(super::ApplicationError::ReplacementRecovery(error)) => panic!(
-                    "replacement recovery failed structurally: {}",
-                    mutation_error_shape(&error)
-                ),
-                Err(super::ApplicationError::ResolvePaths(_)) => {
-                    panic!("post-recovery init returned a path-resolution error")
+            "recover" => {
+                let recovery_shape = pending_recovery_shape();
+                match run(Command::Init) {
+                    Err(super::ApplicationError::Init(
+                        super::init::InitError::AlreadyInitialized { .. },
+                    )) => {}
+                    Err(super::ApplicationError::ReplacementRecovery(error)) => panic!(
+                        "replacement recovery failed structurally: {}; {recovery_shape}",
+                        mutation_error_shape(&error),
+                    ),
+                    Err(super::ApplicationError::ResolvePaths(_)) => {
+                        panic!("post-recovery init returned a path-resolution error")
+                    }
+                    Err(super::ApplicationError::OperationLock(_)) => {
+                        panic!("post-recovery init returned an operation-lock error")
+                    }
+                    Err(super::ApplicationError::Init(_)) => {
+                        panic!("post-recovery init returned an unexpected init error")
+                    }
+                    Err(super::ApplicationError::Catalog(_)) => {
+                        panic!("post-recovery init returned a catalog error")
+                    }
+                    Err(super::ApplicationError::Health(_)) => {
+                        panic!("post-recovery init returned a health error")
+                    }
+                    Err(super::ApplicationError::Restore(_)) => {
+                        panic!("post-recovery init returned a restore error")
+                    }
+                    Err(super::ApplicationError::Sync(_)) => {
+                        panic!("post-recovery init returned a sync error")
+                    }
+                    Ok(_) => panic!("init should remain create-only after transaction recovery"),
                 }
-                Err(super::ApplicationError::OperationLock(_)) => {
-                    panic!("post-recovery init returned an operation-lock error")
-                }
-                Err(super::ApplicationError::Init(_)) => {
-                    panic!("post-recovery init returned an unexpected init error")
-                }
-                Err(super::ApplicationError::Catalog(_)) => {
-                    panic!("post-recovery init returned a catalog error")
-                }
-                Err(super::ApplicationError::Health(_)) => {
-                    panic!("post-recovery init returned a health error")
-                }
-                Err(super::ApplicationError::Restore(_)) => {
-                    panic!("post-recovery init returned a restore error")
-                }
-                Err(super::ApplicationError::Sync(_)) => {
-                    panic!("post-recovery init returned a sync error")
-                }
-                Ok(_) => panic!("init should remain create-only after transaction recovery"),
-            },
+            }
             "recover-contended" => match run(Command::Init) {
                 Ok(_) => panic!("same-root recovery must not bypass the operation lock"),
                 Err(error) => {
@@ -911,5 +914,20 @@ mod tests {
                 mutation_error_shape(recovery)
             ),
         }
+    }
+
+    fn pending_recovery_shape() -> String {
+        let Ok(configuration_paths) =
+            paths::ConfigurationPaths::resolve(&paths::ProcessEnvironment)
+        else {
+            return "paths=unresolved".to_owned();
+        };
+        super::managed_configuration_paths(&configuration_paths)
+            .into_iter()
+            .find(|path| filesystem::replacement_transaction_path(path).exists())
+            .map_or_else(
+                || "journal=missing".to_owned(),
+                |path| filesystem::replacement_recovery_test_shape(&path),
+            )
     }
 }
