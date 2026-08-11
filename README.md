@@ -6,7 +6,7 @@
 
 <p align="center">
   A safety-first CLI for reconciling local MCP server configuration across
-  Claude Desktop, Cursor, Windsurf, VS Code, and Codex.
+  Claude Desktop, Cursor, Windsurf, VS Code, Codex, and Kiro.
 </p>
 
 <p align="center">
@@ -34,6 +34,7 @@ Cursor: would update with recoverable backup at "<path>"
 Windsurf: would update with recoverable backup at "<path>"
 VS Code: would update with recoverable backup at "<path>"
 Codex: would update with recoverable backup at "<path>"
+Kiro: would update with recoverable backup at "<path>"
 ```
 
 Plan first. Preserve client-owned settings. Apply one deterministic change
@@ -51,7 +52,7 @@ translates only the fields it owns into each client's native format.
 
 | Define once | See the change first | Recover deliberately |
 | --- | --- | --- |
-| Import compatible definitions or add one complete local STDIO server. | Validate and inspect a structurally redacted five-client plan before writing. | Keep adjacent backups, roll back partial multi-target writes, and restore one file explicitly. |
+| Import compatible definitions or add one complete local STDIO server. | Validate and inspect a structurally redacted six-client plan before writing. | Keep adjacent backups, roll back partial multi-target writes, and restore one file explicitly. |
 
 No daemon sits between a client and its server. `mcp-sync` updates local
 configuration, gets out of the way, and starts a configured process only when
@@ -137,7 +138,7 @@ mcp-sync restore cursor
 ```
 
 Restore accepts only `canonical`, `claude-desktop`, `cursor`, `windsurf`,
-`vscode`, or `codex`. It validates the retained adjacent backup with the
+`vscode`, `codex`, or `kiro`. It validates the retained adjacent backup with the
 selected JSON or TOML parser before changing anything.
 
 ## How it works
@@ -150,10 +151,10 @@ selected JSON or TOML parser before changing anything.
                                │
                preserve unowned native settings
                                │
-        ┌──────────────┬───────┼───────┬────────────┐
-        ▼              ▼       ▼       ▼            ▼
-  Claude Desktop    Cursor  Windsurf  VS Code      Codex
-       JSON          JSON     JSON      JSON         TOML
+       ┌─────────────┬──────┬───────┼───────┬───────┐
+       ▼             ▼      ▼       ▼       ▼       ▼
+ Claude Desktop   Cursor Windsurf VS Code  Codex   Kiro
+      JSON         JSON    JSON    JSON     TOML   JSONC
 ```
 
 ### Canonical configuration
@@ -187,7 +188,7 @@ or `%LOCALAPPDATA%\mcp-sync\config.json` on Windows.
 
 ## Client coverage
 
-All five targets support macOS, Linux, and Windows:
+All six targets support macOS, Linux, and Windows:
 
 | Target | Managed global configuration | Native format |
 | --- | --- | --- |
@@ -196,6 +197,7 @@ All five targets support macOS, Linux, and Windows:
 | Windsurf | Legacy Cascade `.codeium/windsurf/mcp_config.json` | JSON `mcpServers` |
 | VS Code | Default user-profile `mcp.json` | JSON `servers` |
 | Codex | Shared `.codex/config.toml` host configuration | TOML `mcp_servers` |
+| Kiro | Global-user `.kiro/settings/mcp.json` | Comment-preserving JSON `mcpServers` |
 
 <details>
 <summary><strong>Managed paths by platform</strong></summary>
@@ -207,8 +209,16 @@ All five targets support macOS, Linux, and Windows:
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | `~/.codeium/windsurf/mcp_config.json` | `%USERPROFILE%\.codeium\windsurf\mcp_config.json` |
 | VS Code | `~/Library/Application Support/Code/User/mcp.json` | `${XDG_CONFIG_HOME:-$HOME/.config}/Code/User/mcp.json` | `%APPDATA%\Code\User\mcp.json` |
 | Codex | `~/.codex/config.toml` | `~/.codex/config.toml` | `%USERPROFILE%\.codex\config.toml` |
+| Kiro | `~/.kiro/settings/mcp.json` | `~/.kiro/settings/mcp.json` | `%USERPROFILE%\.kiro\settings\mcp.json` |
 
 </details>
+
+An absolute, traversal-free `KIRO_HOME` selects
+`<KIRO_HOME>/settings/mcp.json`; an empty value uses the platform home default.
+The Kiro adapter preserves comments, trailing commas, and every unowned field.
+Entries containing Kiro `${VARIABLE}` references, remote or mixed transports,
+non-string environment values, or another shape canonical v1 cannot reproduce
+remain unmanaged and are never expanded.
 
 The ChatGPT desktop app, Codex CLI, and Codex IDE extension share the same
 global host configuration, so one Codex target keeps their local STDIO
@@ -220,6 +230,13 @@ named-profile files, remote and Insiders profiles, portable installations,
 Cline, Roo Code, and Agent Host/Copilot CLI configuration remain outside its
 boundary. The Windsurf target manages the documented legacy Cascade file, not
 Devin Local agent configuration.
+
+The Kiro target manages only the selected global-user file. Workspace
+`.kiro/settings/mcp.json` and agent configuration, organization-managed policy,
+remote-service and credential stores, Kiro Crew's `~/.kiro/crew/mcp.json`, and
+Crew's generated `~/.kiro/agents/kirocrew.json` remain outside its boundary.
+Kiro IDE consumes the global file directly; Kiro Crew inherits it without
+requiring a duplicate target.
 
 ## Safety by construction
 
@@ -238,7 +255,7 @@ Devin Local agent configuration.
   diagnostics.
 - **Replace recoverably.** Changed regular files receive one adjacent `.bak`
   generation and are replaced through a same-directory temporary file.
-- **Treat five targets as one transaction.** If a later write fails, earlier
+- **Treat six targets as one transaction.** If a later write fails, earlier
   target changes are rolled back in reverse order; overall success is never
   reported for an unrecovered partial apply.
 - **Fail closed.** Malformed, unreadable, symbolic-link, non-regular, stale, or

@@ -6,14 +6,17 @@ and global Codex adapters added by `MCP-014` through `MCP-016`, and the bounded
 STDIO initialize health boundary added by `MCP-017`, the Linux path and
 behavior support added by `MCP-018`, and the Windows source-checkout support
 completed by `MCP-019`, plus the explicit restore and retention behavior added
-by `MCP-020` and the cross-process mutation serialization added by `MCP-036`.
+by `MCP-020`, the cross-process mutation serialization added by `MCP-036`, and
+the bounded global-user Kiro adapter with inherited Kiro Crew coverage added by
+`MCP-037`.
 It is the operational companion to the
 [north-star README](../README.md), not a replacement for that product
 specification. Use it when building from source on macOS, GNU/Linux, or Windows
-and reconciling the five implemented global targets: Claude Desktop, Cursor,
+and reconciling the six implemented global targets: Claude Desktop, Cursor,
 Windsurf's legacy Cascade configuration, VS Code's native default user profile,
-and the global Codex host configuration shared by the ChatGPT desktop app,
-Codex CLI, and Codex IDE extension.
+the global Codex host configuration shared by the ChatGPT desktop app, Codex
+CLI, and Codex IDE extension, and Kiro's global-user configuration inherited by
+Kiro Crew.
 
 ## Current supported journey
 
@@ -21,7 +24,7 @@ Codex CLI, and Codex IDE extension.
 | --- | --- |
 | Platform | macOS plus native x64/ARM64 GNU/Linux and Windows MSVC source-checkout behavior |
 | Canonical format | Strict JSON schema version `1` for local STDIO servers |
-| Client targets | Global Claude Desktop, global Cursor, global Windsurf legacy Cascade configuration, native VS Code default user profile, and global Codex host configuration |
+| Client targets | Global Claude Desktop, global Cursor, global Windsurf legacy Cascade configuration, native VS Code default user profile, global Codex host configuration, and global-user Kiro configuration inherited by Kiro Crew |
 | Commands | `init`, `add`, `list`, `test`, `sync --dry-run`, `sync`, `restore <configuration> --dry-run`, and `restore <configuration>` |
 | Safety | Structural redaction, bounded health-process execution, fail-fast cross-process mutation serialization, plan-first validation, atomic replacement, one-generation recoverable backups, guarded restore, no-op detection, and reverse-order transaction rollback |
 | Installation | Build and run from a source checkout |
@@ -68,13 +71,19 @@ Canonical configuration uses a platform-local configuration root:
 | Canonical configuration | `$XDG_CONFIG_HOME/mcp-sync/config.json` when `XDG_CONFIG_HOME` is a non-empty absolute path; otherwise `$HOME/.config/mcp-sync/config.json` | `%LOCALAPPDATA%\mcp-sync\config.json` |
 | Persistent empty operation lock | Beside canonical state at `$XDG_CONFIG_HOME/mcp-sync/operation.lock`, or `$HOME/.config/mcp-sync/operation.lock` under the fallback | Beside canonical state at `%LOCALAPPDATA%\mcp-sync\operation.lock` |
 
-Three clients retain their documented home-relative paths:
+Four clients retain home-relative default paths:
 
 | Purpose | macOS and GNU/Linux | Windows |
 | --- | --- | --- |
 | Cursor global target | `$HOME/.cursor/mcp.json` | `%USERPROFILE%\.cursor\mcp.json` |
 | Windsurf global legacy Cascade target | `$HOME/.codeium/windsurf/mcp_config.json` | `%USERPROFILE%\.codeium\windsurf\mcp_config.json` |
 | Codex global host target | `$HOME/.codex/config.toml` | `%USERPROFILE%\.codex\config.toml` |
+| Kiro global-user target | `$HOME/.kiro/settings/mcp.json` | `%USERPROFILE%\.kiro\settings\mcp.json` |
+
+For Kiro only, a non-empty absolute `KIRO_HOME` without parent traversal
+selects `<KIRO_HOME>/settings/mcp.json` on every platform. An unset or empty
+value uses the home-relative default above. Relative values and values
+containing `..` fail closed before discovery.
 
 Claude Desktop and VS Code use the platform user-data root:
 
@@ -108,6 +117,40 @@ and [Codex MCP configuration](https://developers.openai.com/codex/mcp/)
 contracts; fixture and built-binary evidence is not a current-client smoke
 claim.
 
+The Kiro boundary follows the current
+[Kiro MCP configuration contract](https://kiro.dev/docs/mcp/configuration/)
+and is exactly the selected global-user file above. Kiro accepts quoted-property
+JSON with comments and trailing commas under root
+`mcpServers`; duplicate object properties and malformed root or `mcpServers`
+shapes fail closed. Compatible local STDIO entries contribute only a non-empty
+literal string `command`, string-array `args`, and string-valued `env` to
+canonical state. Comments, formatting, `disabled`, `autoApprove`,
+`disabledTools`, `cwd`, `timeout`, unknown local fields, target-only entries,
+and every root field remain unowned by `mcp-sync` and structurally preserved.
+
+Entries with `url`, `headers`, `oauth`, `oauthScopes`, `type`, mixed or opaque
+transports, non-string environment values, malformed owned fields, or comments
+inside an owned `args` or `env` collection remain unmanaged. So does any entry
+whose owned strings contain a valid `${VARIABLE}` reference. Kiro expands those
+references recursively at launch time, while canonical v1 stores literal
+strings; `mcp-sync` therefore never imports, rewrites, expands, or reports them
+as ordinary local values. A colliding canonical local name is refused before
+mutation.
+
+Kiro agent definitions and workspace `.kiro/settings/mcp.json` files take
+precedence over the global-user file and are never discovered or mutated.
+Organization-managed policy, remote-service state, credentials, and alternate
+stores are also excluded. Current
+[Kiro CLI 2.3 behavior](https://kiro.dev/changelog/cli/2-3/) documents
+`KIRO_HOME`; the current
+Kiro IDE smoke uses the default `~/.kiro` location because the installed IDE
+resolves that default directly. Current Kiro Crew reads the default global file
+as an inherited source, lets `~/.kiro/crew/mcp.json` override it, and renders
+its own `~/.kiro/agents/kirocrew.json` with `includeMcpJson: false`. Neither
+Crew-specific file is a target, and `KIROCREW_HOME` does not relocate the
+global Kiro source for this adapter. The Crew behavior is pinned to its current
+[MCP architecture at `24a6f8e`](https://github.com/kirodotdev/KiroCrew/blob/24a6f8ee586350879f10a3629782c5cd0b31a8e9/docs/architecture/mcp.md).
+
 The VS Code boundary is exactly the native default user-profile file above. It
 does not discover or mutate workspace `.vscode/mcp.json` or `.mcp.json`, named
 profiles under `Code/User/profiles`, remote profiles, VS Code Insiders,
@@ -135,10 +178,10 @@ the empty file intentionally remains for the next invocation.
 
 ## Safe first import
 
-Quit Claude Desktop, Cursor, Windsurf, VS Code, and active Codex hosts before a
-first import so their native files stay stable while they are read. `init`
-reads all five global targets and creates the canonical file only when it does
-not already exist:
+Quit Claude Desktop, Cursor, Windsurf, VS Code, active Codex hosts, Kiro IDE,
+and Kiro Crew before a first import so their native files stay stable while
+they are read. `init` reads all six global targets and creates the canonical
+file only when it does not already exist:
 
 ```bash
 ./target/debug/mcp-sync init
@@ -151,16 +194,16 @@ The operation has these outcomes:
 - Conflicting definitions stop the operation without creating canonical state.
   The diagnostic names the server, clients, and differing field categories,
   but not commands, arguments, or environment values.
-- Named unmanaged Cursor, Windsurf, VS Code, and Codex entries are preserved
+- Named unmanaged Cursor, Windsurf, VS Code, Codex, and Kiro entries are preserved
   in their native files and reported as skipped because canonical schema v1
   cannot represent them.
 - A local definition that collides with an unmanaged entry is an error.
 - An existing canonical path is never overwritten. Move it aside only after
   deciding which copy is authoritative; do not delete it merely to make
   `init` succeed.
-- All five native client files are read-only during `init`; excluded project,
-  profile, credential, extension-owned, and alternate-product files are never
-  accessed.
+- All six native client files are read-only during `init`; excluded project,
+  profile, workspace, agent, Crew-only, generated-agent, credential,
+  extension-owned, and alternate-product files are never accessed.
 
 The first mutating invocation may create the canonical directory and empty
 `operation.lock` even when later import validation refuses to create
@@ -256,7 +299,7 @@ Always review the complete plan before applying it:
 ./target/debug/mcp-sync sync --dry-run
 ```
 
-Dry-run validates the canonical file and all five native documents, renders
+Dry-run validates the canonical file and all six native documents, renders
 and reparses every proposed output, and reports every target without changing
 a file, creating a backup, or acquiring the mutation lock. The plan can
 contain:
@@ -265,14 +308,14 @@ contain:
 - `update` for a compatible local entry whose owned fields differ;
 - `no-op` for an exact normalized match;
 - `drift` for a target-only entry that will be preserved; and
-- unmanaged Cursor, Windsurf, VS Code, and Codex names that remain
+- unmanaged Cursor, Windsurf, VS Code, Codex, and Kiro names that remain
   structurally untouched.
 
 The report exposes names, counts, environment key names, and changed-field
 categories only. It never prints process values.
 
 After the plan is understood, quit Claude Desktop, Cursor, Windsurf, VS Code,
-and active Codex hosts and apply it:
+active Codex hosts, Kiro IDE, and Kiro Crew and apply it:
 
 ```bash
 ./target/debug/mcp-sync sync
@@ -284,8 +327,9 @@ already validated plan; it does not recalculate a different desired state.
 Existing changed targets receive exact `.bak` files before same-directory
 atomic replacement. Missing changed targets are created without a prior-file
 backup. Target-only entries, unowned native fields, unmanaged Cursor,
-Windsurf, VS Code, and Codex entries, and excluded
-project/profile/credential/extension files remain untouched.
+Windsurf, VS Code, Codex, and Kiro entries, and excluded
+project/profile/workspace/agent/Crew/credential/extension files remain
+untouched.
 
 Reopen the clients only after `sync` finishes. Then repeat both checks:
 
@@ -294,7 +338,7 @@ Reopen the clients only after `sync` finishes. Then repeat both checks:
 ./target/debug/mcp-sync sync
 ```
 
-A settled configuration reports all five targets unchanged. Neither command
+A settled configuration reports all six targets unchanged. Neither command
 rewrites native bytes or replaces existing backups for a no-op.
 
 ## Concurrent mutating operations
@@ -345,9 +389,9 @@ transaction leaves the pre-operation retention state intact. If longer history
 is important, copy the current file and its backup to a separate,
 access-controlled location before making another change.
 
-`sync` is one five-target transaction. Claude Desktop is applied first, Cursor
-second, Windsurf third, VS Code fourth, and Codex fifth. If a later target
-fails, earlier changes are rolled back in reverse order:
+`sync` is one six-target transaction. Claude Desktop is applied first, Cursor
+second, Windsurf third, VS Code fourth, Codex fifth, and Kiro sixth. If a later
+target fails, earlier changes are rolled back in reverse order:
 
 - an updated file and any backup that existed before the transaction are
   restored exactly;
@@ -439,11 +483,13 @@ The accepted selections are:
 | `windsurf` | Global Windsurf legacy Cascade JSON |
 | `vscode` | Native VS Code default user-profile JSON |
 | `codex` | Global Codex TOML |
+| `kiro` | Global-user Kiro comment-preserving JSON |
 
 Arbitrary paths, project files, named profiles, alternate products, and OAuth
 credential stores cannot be selected. Dry-run requires the adjacent `.bak` to
 be a regular file and validates its exact bytes with the same strict canonical,
-native JSON, or Codex TOML parser used elsewhere. It reports only the selected
+native JSON, comment-preserving Kiro JSON, or Codex TOML parser used elsewhere.
+It reports only the selected
 path and structural outcome; configuration and backup values remain redacted.
 
 Apply only after the preview is understood:
@@ -473,7 +519,10 @@ temporarily unavailable, the following `bash` fallback performs a guarded,
 same-directory replacement for an existing JSON target on macOS or Linux. It
 requires Python 3 for syntax and duplicate-key validation and does not rotate
 the current target into `.bak`; preserve both files separately first. Use it
-for the canonical file or one of the four JSON clients, not for Codex TOML.
+for the canonical file or one of the five JSON clients only when the retained
+document is strict JSON, not for Codex TOML. Kiro permits comments and trailing
+commas, so use the built-in `restore kiro` path for those documents rather than
+flattening or stripping their syntax.
 Set `target` to exactly one applicable path from the tables above.
 
 ```bash
@@ -562,6 +611,18 @@ For the default canonical path, replace the `target=` line with:
 target="$HOME/.config/mcp-sync/config.json"
 ```
 
+For a strict-JSON Kiro file with no comments or trailing commas, replace the
+`target=` line with:
+
+```bash
+target="${KIRO_HOME:-$HOME/.kiro}/settings/mcp.json"
+```
+
+Use that fallback only after confirming `KIRO_HOME`, when set, is the exact
+absolute user directory intended for this invocation. The built-in
+`./target/debug/mcp-sync restore kiro` command remains the supported path for
+all valid Kiro documents.
+
 If a non-empty absolute `XDG_CONFIG_HOME` selected the canonical root or a
 Linux user-data root, replace `$HOME/.config` with that exact value. Validate
 canonical state afterward with
@@ -622,24 +683,59 @@ was newly created, was never changed, or its backup was moved. Restore from a
 known external copy or repair the exact native document; do not infer ownership
 and prune entries from backup absence.
 
+## Current-client verification
+
+On 2026-08-11, controlled macOS smokes exercised the installed, signed and
+notarized Kiro IDE `1.0.288` and Kiro Crew `0.1.3` against one synthetic local
+STDIO definition rendered by the built `mcp-sync` binary.
+
+For Kiro IDE, the real global-user file and its `settings` directory were
+absent before the smoke. A synthetic canonical root plus an explicit
+`KIRO_HOME` pointing at the default real Kiro directory let `sync --dry-run`
+prove the six-target plan and `sync` create only that real Kiro target while
+the other five targets remained under the synthetic home. The IDE opened an
+empty synthetic workspace in restricted mode and started the rendered server;
+the marker recorded `initialize`, `notifications/initialized`, and
+`tools/list`. After the app closed, the child was reaped, the exact rendered
+file hash and type were rechecked, and only that created file and its now-empty
+directory were removed. The prior absence was restored, while the excluded
+real `agents` and `crew` directories retained their exact baseline inode,
+mode, and modification time and the Crew override remained absent.
+
+For Kiro Crew, both `HOME` and `KIROCREW_HOME` were isolated. The current Crew
+gateway listed the mcp-sync-rendered global definition, its MCP probe completed
+the same initialize and tools-list exchange, and its generated
+`kirocrew.json` contained an exact inherited server entry with
+`includeMcpJson: false`. The Crew override stayed absent, the global source
+hash remained unchanged, and every gateway and server process was reaped. This
+is evidence for the current Crew global-inheritance and MCP-probe path; it is
+not a claim about a complete chat session or a standalone `kiro-cli`, which was
+not installed on the smoke host.
+
 ## Current operational limitations
 
 The following are delivery facts, not changes to the README's intended product
 promise:
 
-- The current implementation is verified on macOS and through complete native
-  x64/ARM64 pull-request CI gates for
+- The six-target source state is verified through complete native ARM64 and
+  Rosetta x64 macOS suites plus native x64/ARM64 GNU/Linux and Windows MSVC
+  pull-request CI on [MCP-037 PR #58](https://github.com/EnjoyableWork/mcp-sync/pull/58).
+  The earlier platform introductions remain recorded by the
   [GNU/Linux](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31240608728)
-  and [Windows MSVC](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31244565101),
-  recorded for `MCP-018` and `MCP-019`, respectively. The Windows gate includes
-  path, replacement, rollback, copied-binary, and PowerShell health behavior.
-  Usage remains from a Rust source checkout.
+  and [Windows MSVC](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31244565101)
+  gates for `MCP-018` and `MCP-019`. The current Windows gate includes path,
+  replacement, rollback, copied-binary, and PowerShell health behavior. Usage
+  remains from a Rust source checkout.
 - Only global Claude Desktop, global Cursor, Windsurf's global legacy Cascade
-  JSON, VS Code's native default user-profile JSON, and global Codex TOML are
-  managed. Linux has deterministic path, fixture, and built-binary behavior
-  evidence, but no Linux current-client smoke claim. Windows has no
-  current-client smoke claim. Windsurf, VS Code, and Codex have no
-  current-client smoke claim on any implemented platform.
+  JSON, VS Code's native default user-profile JSON, global Codex TOML, and the
+  selected global-user Kiro JSON document are managed. Linux has deterministic
+  path, fixture, and built-binary behavior evidence, but no Linux
+  current-client smoke claim. Windows has no current-client smoke claim.
+  Windsurf, VS Code, and Codex have no current-client smoke claim on any
+  implemented platform. Kiro's current-client evidence is the bounded macOS
+  IDE and inherited Crew smoke above; workspace, agent, Crew-only,
+  generated-agent, organization-managed, remote-service, and credential stores
+  remain unsupported.
 - Canonical schema v1 represents local STDIO definitions with `command`,
   ordered `args`, and literal `env` only. Remote transports, OAuth, working
   directories, and secret references are not canonical capabilities yet.

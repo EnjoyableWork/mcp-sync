@@ -27,7 +27,13 @@ fn product_page_frontloads_the_cli_journey_and_progressively_discloses_detail() 
         "<a href=\"#security-and-trust\">Trust</a>",
         "$ mcp-sync init",
         "$ mcp-sync sync --dry-run",
+        "Kiro: would update with recoverable backup at \"<path>\"",
+        "structurally redacted six-client plan",
+        "`vscode`, `codex`, or `kiro`",
+        "| Kiro | Global-user `.kiro/settings/mcp.json` | Comment-preserving JSON `mcpServers` |",
+        "An absolute, traversal-free `KIRO_HOME`",
         "**Serialize writers.**",
+        "**Treat six targets as one transaction.**",
         "<details>\n<summary><strong>Managed paths by platform</strong></summary>",
         "<details>\n<summary><strong>Build and verify from source</strong></summary>",
     ] {
@@ -80,6 +86,41 @@ fn product_page_frontloads_the_cli_journey_and_progressively_discloses_detail() 
         0,
         "README code fences should remain balanced"
     );
+}
+
+#[test]
+fn public_and_operational_docs_pin_the_kiro_ownership_boundary() {
+    let readme = readme();
+    let guide = fs::read_to_string(repository_root().join("docs/m1-usage-and-recovery.md"))
+        .expect("the operational guide should be readable");
+
+    for required_contract in [
+        "`.kiro/settings/mcp.json` and agent configuration",
+        "Kiro Crew's `~/.kiro/crew/mcp.json`",
+        "`~/.kiro/agents/kirocrew.json`",
+        "remain unmanaged and are never expanded",
+    ] {
+        assert!(
+            readme.contains(required_contract),
+            "README should retain the Kiro boundary: {required_contract}"
+        );
+    }
+
+    for required_contract in [
+        "the six implemented global targets",
+        "<KIRO_HOME>/settings/mcp.json",
+        "valid `${VARIABLE}` reference",
+        "Kiro IDE `1.0.288`",
+        "Kiro Crew `0.1.3`",
+        "`includeMcpJson: false`",
+        "`sync` is one six-target transaction",
+        "| `kiro` | Global-user Kiro comment-preserving JSON |",
+    ] {
+        assert!(
+            guide.contains(required_contract),
+            "the operational guide should retain the Kiro contract: {required_contract}"
+        );
+    }
 }
 
 #[test]
