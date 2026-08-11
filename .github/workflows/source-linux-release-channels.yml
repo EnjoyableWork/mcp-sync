@@ -34,8 +34,9 @@ jobs:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          if [[ "$RELEASE_VERSION" != 0.1.0 ]]; then
-            echo "the source and GNU/Linux channel verifier accepts only version 0.1.0" >&2
+          stable_version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          if [[ ! "$RELEASE_VERSION" =~ $stable_version_pattern ]]; then
+            echo "the source and GNU/Linux channel verifier requires a canonical stable version" >&2
             exit 1
           fi
           printf 'value=%s\n' "$RELEASE_VERSION" >>"$GITHUB_OUTPUT"
@@ -47,6 +48,13 @@ jobs:
           persist-credentials: false
           ref: v${{ steps.version.outputs.value }}
 
+      - name: Check out the verifier from the workflow revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.workflow_sha }}
+          path: release-policy
+
       - name: Verify the tag, release, attestations, registry, and formula
         env:
           GH_TOKEN: ${{ github.token }}
@@ -54,6 +62,19 @@ jobs:
         run: |
           set -euo pipefail
           release_tag="v$RELEASE_VERSION"
+          current_main="$(
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" \
+              -H 'X-GitHub-Api-Version: 2026-03-10' \
+              --jq '.object.sha'
+          )"
+          if [[ "$GITHUB_EVENT_NAME" != workflow_dispatch ]] ||
+            [[ "$GITHUB_REF" != refs/heads/main ]] ||
+            [[ "$GITHUB_REF_PROTECTED" != true ]] ||
+            [[ "$GITHUB_WORKFLOW_SHA" != "$GITHUB_SHA" ]] ||
+            [[ "$current_main" != "$GITHUB_SHA" ]]; then
+            echo "published-channel verification must use exact protected main" >&2
+            exit 1
+          fi
           if [[ "$(git cat-file -t "$release_tag")" != tag ]]; then
             echo "published source and GNU/Linux release must use an annotated tag" >&2
             exit 1
@@ -62,6 +83,10 @@ jobs:
             cargo metadata --locked --no-deps --format-version 1 \
               | jq -r '.packages[] | select(.name == "enjoyable-mcp-sync") | .version'
           )"
+          release-policy/scripts/validate-release-version.sh \
+            published \
+            "$release_tag" \
+            "$package_version" >/dev/null
           test "$package_version" = "$RELEASE_VERSION"
 
           release_json="$RUNNER_TEMP/mcp-sync-source-linux-release.json"
@@ -93,6 +118,7 @@ jobs:
           registry_response="$RUNNER_TEMP/enjoyable-mcp-sync-crates.json"
           registry_status="$(
             curl --silent --show-error --location --retry 5 \
+              --proto '=https' --proto-redir '=https' --tlsv1.2 \
               --output "$registry_response" \
               --write-out '%{http_code}' \
               --header 'User-Agent: mcp-sync-source-linux-channel-verifier/0.1 (+https://github.com/EnjoyableWork/mcp-sync)' \
@@ -102,11 +128,16 @@ jobs:
           jq -e \
             --arg version "$RELEASE_VERSION" \
             '.crate.repository == "https://github.com/EnjoyableWork/mcp-sync" and
-             any(.versions[]; .num == $version and .yanked == false)' \
+             .crate.trustpub_only == true and
+             any(.versions[]; .num == "0.1.0" and .yanked == false) and
+             any(.versions[]; .num == $version and .yanked == false) and
+             all(.versions[];
+               .num | test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"))' \
             "$registry_response" >/dev/null
 
           registry_package="$RUNNER_TEMP/enjoyable-mcp-sync-$RELEASE_VERSION.crate"
           curl --fail --silent --show-error --location --retry 5 \
+            --proto '=https' --proto-redir '=https' --tlsv1.2 \
             --output "$registry_package" \
             --header 'User-Agent: mcp-sync-source-linux-channel-verifier/0.1 (+https://github.com/EnjoyableWork/mcp-sync)' \
             "https://crates.io/api/v1/crates/enjoyable-mcp-sync/$RELEASE_VERSION/download"
@@ -116,6 +147,7 @@ jobs:
 
           published_formula="$RUNNER_TEMP/mcp-sync.rb"
           curl --fail --silent --show-error --location --retry 5 \
+            --proto '=https' --proto-redir '=https' --tlsv1.2 \
             --output "$published_formula" \
             'https://raw.githubusercontent.com/EnjoyableWork/homebrew-tap/main/Formula/mcp-sync.rb'
           cmp --silent "$release_assets/mcp-sync.rb" "$published_formula"

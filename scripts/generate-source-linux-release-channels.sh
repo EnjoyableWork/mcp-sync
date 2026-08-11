@@ -11,8 +11,8 @@ release_cargo_package=$1
 release_version=$2
 release_output_directory=$3
 
-if [[ ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "release version must be a stable semantic version" >&2
+if [[ ! "$release_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+  echo "release version must be a canonical stable semantic version" >&2
   exit 1
 fi
 if [[ ! -f "$release_cargo_package" || -L "$release_cargo_package" ]]; then

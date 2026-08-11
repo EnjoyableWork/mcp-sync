@@ -63,7 +63,9 @@ bypass actor creates the annotated tag manually only after preflight, then
 dispatches `.github/workflows/release.yml` on that tag with both
 `confirm_funded_signing=true` and `confirm_repository_controls=true`; the
 workflow token does not receive repository-administration or tag-bypass
-authority, and an ordinary tag push cannot invoke signing.
+authority, and an ordinary tag push cannot invoke signing or any other release
+producer. After tag creation, the operator dispatches exactly one producer:
+this funded workflow or the source/GNU/Linux workflow, never both for one tag.
 
 ## Protected signing inputs
 
@@ -116,9 +118,11 @@ signing certificate plus a timestamp certificate before ZIP creation.
 3. Merge through the normal repository flow. Require green CI and six native
    package/installed-restore jobs from `.github/workflows/release-preflight.yml`
    on the exact `main` commit.
-4. Recheck that `enjoyable-mcp-sync` is either unclaimed on crates.io or already
-   belongs to this repository at the same version. Do not rely on an earlier
-   search result.
+4. Recheck that crates.io identifies `enjoyable-mcp-sync` with this repository,
+   exposes the unyanked `0.1.0` baseline, has
+   `trustpub_only: true`, and does not yet contain the candidate. Require the
+   candidate to be canonical, later than `0.1.0`, and newer than every
+   published stable version. Do not rely on an earlier search result.
 5. Verify all protected signing input names exist without displaying their
    values. Confirm Apple and Microsoft identity validation is active rather
    than merely requested.
@@ -127,12 +131,14 @@ signing certificate plus a timestamp certificate before ZIP creation.
    commit with `confirm_repository_controls=true`, and approve its
    `release-control` deployment only while that check remains current.
 7. As the named ruleset bypass actor, create one annotated `v{version}` tag at
-   the authorized commit and push only that tag. Never move or reuse it.
+   the authorized commit and push only that tag. Never move or reuse it. The
+   tag push publishes nothing by itself.
 8. Rerun the repository-control verifier for the tagged commit. Explicitly
    dispatch `.github/workflows/release.yml` on ref `v{version}` with
    `confirm_funded_signing=true` and `confirm_repository_controls=true`, then
    approve the `release` environment after confirming the displayed tag and
-   commit. The workflow builds natively,
+   commit. Do not also dispatch the source/GNU/Linux producer for this tag.
+   The workflow builds natively,
    signs, notarizes, packages, exercises installed restore, generates and
    verifies SBOMs and attestations, assembles the exact draft, verifies
    downloaded bytes, and only then publishes it.
@@ -165,7 +171,7 @@ existing-`v0.1.0` protected-`main` bootstrap rehearsal, restore the `release`
 environment to its sole `v*` tag rule, enable
 **Require trusted publishing for all new versions**, and run
 `scripts/verify-cargo-publishing-controls.sh` exactly as described in the
-[source/GNU/Linux runbook](source-linux-release.md#cargo-publication-after-010).
+[source/GNU/Linux runbook](source-linux-release.md#cargo-trusted-publishing-and-retry-behavior).
 
 The funded release workflow now packages and attests
 `enjoyable-mcp-sync-{version}.crate` without receiving crates.io authority. Its
@@ -174,11 +180,21 @@ package consumed by the separate Cargo publisher. After release verification,
 dispatch `cargo-publish.yml` on the exact tag with explicit `version`, `tag`,
 `release_kind=funded`, and `mode=publish`. It validates the request before
 environment access, reproduces the locked package twice, requires local/release
-byte equality and provenance, performs the dry run, publishes through the
-short-lived OIDC credential, downloads and compares the registry package, and
-then requires native Cargo installation and recovery on all six supported
-OS/CPU hosts. Authentication, identity, release, attestation, byte, registry,
-or native-smoke failure stops the publication path.
+byte equality and provenance, treats crates.io as the published stable-version
+inventory, and requires the candidate not to be older than any published
+version. When the candidate is absent it performs the dry run, publishes
+through the short-lived OIDC credential, and downloads and compares the
+registry package. When a partial run already published the candidate, it
+requires the registry `.crate` to be unyanked and byte-identical to the
+immutable GitHub asset, skips both OIDC and the publish call, and resumes final
+registry plus native-install verification. It then requires native Cargo
+installation and recovery on all six supported OS/CPU hosts. Authentication,
+identity, release, attestation, byte, registry, ordering, or native-smoke
+failure stops the publication path.
+
+The source/GNU/Linux release, funded release, Cargo publisher, and source-built
+Homebrew publisher share the non-cancelling `mcp-sync-release` concurrency
+group. Do not bypass that serialization with a manual registry or tap change.
 
 ## Homebrew and WinGet
 

@@ -281,7 +281,10 @@ fn homebrew_input_is_validated_before_protected_access() {
         "permissions: {}",
         "REQUESTED_VERSION: ${{ inputs.version }}",
         "DISPATCH_REF: ${{ github.ref }}",
-        "REQUESTED_VERSION\" != 0.1.0",
+        "DISPATCH_REF_PROTECTED: ${{ github.ref_protected }}",
+        "DISPATCH_REF_TYPE: ${{ github.ref_type }}",
+        "stable_version_pattern=",
+        "later Homebrew publication requires the exact canonical release tag",
         "release_version=%s",
     ] {
         assert!(

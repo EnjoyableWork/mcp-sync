@@ -15,8 +15,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $mcpSyncRepositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 
-if ($Version -notmatch '^\d+\.\d+\.\d+$') {
-    throw 'Release version must be a stable semantic version.'
+if ($Version -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
+    throw 'Release version must be a canonical stable semantic version.'
 }
 if ($Target -notin @('aarch64-pc-windows-msvc', 'x86_64-pc-windows-msvc')) {
     throw 'Unsupported Windows release target.'

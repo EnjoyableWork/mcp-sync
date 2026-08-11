@@ -42,8 +42,8 @@ fn cargo_publisher_confines_oidc_and_the_temporary_token_to_one_protected_job() 
     let validate = job_block(&workflow, "  validate:\n", "  publish:\n");
     let publish = job_block(&workflow, "  publish:\n", "  cargo-unix:\n");
 
-    assert!(workflow.contains("group: cargo-publish\n  cancel-in-progress: false"));
-    assert!(!workflow.contains("group: cargo-publish-${{ github.ref }}"));
+    assert!(workflow.contains("group: mcp-sync-release\n  cancel-in-progress: false"));
+    assert!(!workflow.contains("group: cargo-publish"));
 
     for required in [
         "workflow_dispatch:",
@@ -55,6 +55,8 @@ fn cargo_publisher_confines_oidc_and_the_temporary_token_to_one_protected_job() 
         "REQUEST_WORKFLOW_SHA: ${{ github.workflow_sha }}",
         "REQUEST_REF_PROTECTED: ${{ github.ref_protected }}",
         "scripts/validate-cargo-publish-request.sh",
+        "needs.validate.outputs.mode == 'authorization-only' ||",
+        "steps.package.outputs.publish == 'true'",
     ] {
         assert!(
             workflow.contains(required),
@@ -120,11 +122,15 @@ fn cargo_publisher_verifies_all_three_package_copies_before_and_after_publicatio
         "cmp --silent \"$first_package\" \"$local_package\"",
         "cmp --silent \"$release_package\" \"$local_package\"",
         ".crate.trustpub_only == true",
+        "scripts/validate-release-version.sh",
+        "enjoyable-mcp-sync-versions-before.json",
+        "enjoyable-mcp-sync-versions-after.json",
         "cargo publish --dry-run --locked --registry crates-io",
         "cargo publish --locked --registry crates-io",
         "Require the MCP-039 rehearsal to create no Cargo version",
-        "([.versions[].num] | sort) == [\"0.1.0\"]",
-        "requested Cargo version already exists and cannot be republished",
+        "existing Cargo version differs from the immutable GitHub Release bytes",
+        "printf 'publish=false\\n'",
+        "No OIDC credential was requested and no publish call was made.",
         "cmp --silent \"$release_package\" \"$registry_package\"",
         "published Cargo package did not converge to the verified release bytes",
     ] {
@@ -199,6 +205,8 @@ fn cargo_request_and_workflow_policy_have_acceptance_and_rejection_exercises() {
         "authorization-wrong-workflow-sha",
         "authorization-wrong-version",
         "publication-unprotected-tag",
+        "leading-zero-publication",
+        "prerelease-publication",
     ] {
         assert!(request_test.contains(rejected));
     }
@@ -213,12 +221,15 @@ fn cargo_request_and_workflow_policy_have_acceptance_and_rejection_exercises() {
         "untrusted-trigger",
         "historical-deployment-trigger",
         "missing-oidc",
+        "recovery-requests-oidc",
+        "missing-global-release-serialization",
     ] {
         assert!(workflow_test.contains(rejected));
     }
     for gate in [
         "./scripts/test-cargo-publish-policy.sh",
         "./scripts/test-cargo-publish-workflow-policy.sh",
+        "./scripts/test-release-version-policy.sh",
     ] {
         assert!(ci.contains(gate));
     }

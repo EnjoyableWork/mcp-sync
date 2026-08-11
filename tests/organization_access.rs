@@ -176,7 +176,7 @@ fn private_evidence_preparation_outputs_only_aggregate_false_by_default_fields()
 }
 
 #[test]
-fn completed_release_kiro_and_mcp_040_state_is_preserved() {
+fn completed_release_kiro_and_mcp_040_state_is_preserved_while_mcp_041_is_active() {
     let project = repository_file("PROJECT.md");
     let readme = repository_file("README.md");
 
@@ -186,8 +186,8 @@ fn completed_release_kiro_and_mcp_040_state_is_preserved() {
     assert!(project.contains("| Done — `MCP-030` through `MCP-035` Done |"));
     assert!(project.contains("M0 through M3, `MCP-001` through `MCP-020`, `MCP-028` through `MCP-037`, `MCP-039`, and `MCP-040` are `Done`"));
     assert!(project.contains("`MCP-037` and D-18 are `Done`"));
-    assert!(project.contains("`MCP-040` and D-19 are `Done`"));
-    assert!(project.contains("no main-story ticket or side quest is active"));
+    assert!(project.contains("`MCP-041` is in progress as the required repeat-release correction"));
+    assert!(project.contains("no side quest is active"));
     assert!(project.contains("| MCP-036 | Serialize every mutating operation per canonical configuration root | Post-M3 corrective maintenance | P0 | Codex | Done |"));
     assert!(project.contains("| MCP-039 | Replace Cargo publication tokens with crates.io Trusted Publishing | Post-M3 release maintenance | P1 | Codex | Done | `MCP-036` |"));
     assert!(project.contains("| MCP-039 | Complete MCP-039: replace reusable crates.io credentials for every Cargo version after 0.1.0"));
@@ -224,6 +224,7 @@ fn completed_release_kiro_and_mcp_040_state_is_preserved() {
     assert!(project.contains("`MCP-037` must never discover or"));
     assert!(project.contains("mutate either Crew-specific file."));
     assert!(project.contains("| MCP-040 | Make existing-file target and backup replacement crash-consistent | Post-M4 corrective maintenance | P0 | Codex | Done | `MCP-037` |"));
+    assert!(project.contains("| MCP-041 | Make post-`0.1.0` source and GNU/Linux releases repeatable | Post-M4 release maintenance | P1 | Codex | In progress | `MCP-040` |"));
     assert!(project.contains("| MCP-040 | Complete MCP-040: fix GitHub issue #47 by making every existing-file mcp-sync target"));
     assert!(project.contains("| DEC-048 | Make target publication the commit point for recoverable existing-file replacement | Accepted |"));
     assert!(!project.contains("| MCP-036 | Serialize every mutating operation per canonical configuration root | Post-M3 corrective maintenance | P0 | Codex | In progress |"));

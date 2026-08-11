@@ -137,7 +137,10 @@ fn funded_signed_workflow_is_explicit_and_preserves_the_full_trust_contract() {
         "funded signing must be explicitly confirmed on manual dispatch",
         "operator-side release repository controls must be explicitly confirmed",
         "funded release dispatch must select an existing stable tag",
-        "v0.1.0 is reserved for the source and GNU/Linux release",
+        "scripts/validate-release-version.sh",
+        "future",
+        "group: mcp-sync-release",
+        "an existing Cargo version is recoverable only from its immutable GitHub Release",
         "environment: release",
         "name: release",
         "refs/tags/v*",
@@ -246,7 +249,19 @@ fn source_linux_tag_workflow_publishes_only_attested_linux_and_source_outputs() 
         );
     }
     for required_contract in [
-        "tags:\n      - v0.1.0",
+        "workflow_dispatch:",
+        "default: rehearse",
+        "- rehearse",
+        "- publish",
+        "group: mcp-sync-release",
+        "Validate the source release request before protected access",
+        "needs: request",
+        "canonical later version on its exact protected tag",
+        "source and GNU/Linux publication requires an exact protected tag dispatch",
+        "scripts/validate-release-version.sh",
+        "future",
+        "registry_version_exists",
+        "an existing Cargo version is recoverable only from its immutable GitHub Release",
         "environment: release",
         "actions: read",
         "release-authorize.yml",
@@ -265,13 +280,30 @@ fn source_linux_tag_workflow_publishes_only_attested_linux_and_source_outputs() 
         "contents: write",
         "id-token: write",
         "attestations: write",
+        "Rehearse immutable source and downstream byte handoffs",
+        "the live repeat-release rehearsal must use exact protected main",
+        "Synthetic Cargo and Homebrew mismatches: rejected",
+        "No tag, release, crate, formula, or credential was created or changed.",
     ] {
         assert!(
             workflow.contains(required_contract),
             "source and GNU/Linux workflow should enforce {required_contract}"
         );
     }
+    let request_start = workflow
+        .find("  request:\n")
+        .expect("source release should validate the request first");
+    let validate_start = workflow
+        .find("  validate:\n")
+        .expect("source release should retain protected validation");
+    assert!(request_start < validate_start);
+    let request = &workflow[request_start..validate_start];
+    assert!(request.contains("permissions: {}"));
+    assert!(!request.contains("environment:"));
+    assert!(!request.contains("secrets."));
+    assert!(!request.contains("uses: actions/checkout"));
     assert!(!workflow.contains("repos/$GITHUB_REPOSITORY/immutable-releases"));
+    assert!(!workflow.contains("  push:"));
     assert_actions_are_commit_pinned(&workflow);
 }
 
@@ -337,6 +369,10 @@ fn source_linux_channel_verifier_is_read_only_and_covers_every_represented_insta
         "scripts/smoke-installed.sh",
         "scripts/smoke-installed.ps1",
         "EnjoyableWork/homebrew-tap/main/Formula/mcp-sync.rb",
+        "release-policy/scripts/validate-release-version.sh",
+        "published-channel verification must use exact protected main",
+        "canonical stable version",
+        ".crate.trustpub_only == true",
     ] {
         assert!(workflow.contains(required_contract));
     }
@@ -360,6 +396,9 @@ fn source_linux_channel_verifier_is_read_only_and_covers_every_represented_insta
 #[test]
 fn source_linux_homebrew_publisher_uses_only_the_tap_scoped_release_secret() {
     let workflow = repository_file(".github/workflows/source-linux-release-publish-homebrew.yml");
+    let formula_policy = repository_file("scripts/validate-homebrew-formula-update.sh");
+    let formula_policy_test = repository_file("scripts/test-homebrew-formula-update-policy.sh");
+    let ci = repository_file(".github/workflows/ci.yml");
 
     for required_contract in [
         "workflow_dispatch:",
@@ -380,7 +419,12 @@ fn source_linux_homebrew_publisher_uses_only_the_tap_scoped_release_secret() {
         "StrictHostKeyChecking=yes",
         "SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU",
         "git -C \"$tap_checkout\" push origin HEAD:refs/heads/main",
-        "refusing to replace a different published mcp-sync formula",
+        "group: mcp-sync-release",
+        "later Homebrew publication requires the exact canonical release tag",
+        "scripts/validate-release-version.sh",
+        "scripts/validate-homebrew-formula-update.sh",
+        "prior-homebrew-release.json",
+        "ls-remote origin refs/heads/main",
         "require_successful_run ci.yml CI",
         "source-linux-release-preflight.yml",
         "release-preflight.yml",
@@ -412,6 +456,28 @@ fn source_linux_homebrew_publisher_uses_only_the_tap_scoped_release_secret() {
         &workflow,
         "User-Agent: mcp-sync-homebrew-publisher/0.1",
     );
+    for required_contract in [
+        "canonical immutable release URL",
+        "published formula must be a regular, non-symbolic-link file",
+        "refusing to replace different formula bytes for the same immutable version",
+        "future",
+        "printf 'create\\n'",
+        "printf 'noop\\n'",
+        "printf 'update %s\\n'",
+    ] {
+        assert!(formula_policy.contains(required_contract));
+    }
+    for policy_case in [
+        "monotonic-update",
+        "downgrade",
+        "same-version-mismatch",
+        "mismatched-url",
+        "malformed-formula",
+        "symbolic-link",
+    ] {
+        assert!(formula_policy_test.contains(policy_case));
+    }
+    assert!(ci.contains("./scripts/test-homebrew-formula-update-policy.sh"));
     assert_actions_are_commit_pinned(&workflow);
 }
 
@@ -429,6 +495,7 @@ fn source_linux_generator_and_verifiers_enforce_source_builds_and_linux_only_ass
         "std_cargo_args(path: \".\")",
         "Cargo package contains a path outside its versioned root",
         "cargo metadata",
+        "canonical stable semantic version",
     ] {
         assert!(generator.contains(required_contract));
     }
@@ -468,9 +535,11 @@ fn authorization_workflow_proves_main_without_receiving_tag_write_authority() {
         "ci.yml",
         "operator-side release repository controls must be explicitly confirmed",
         "scripts/verify-public-stable-tag-ruleset.sh",
-        "The v0.1.0 tag invokes only the source and GNU/Linux release workflow.",
-        "The tag push invokes no publishing workflow by itself.",
-        "funded signed",
+        "scripts/validate-release-version.sh",
+        "new tag authorization refuses an already-published Cargo version",
+        "The tag push publishes nothing by itself.",
+        "Dispatch exactly one release producer on the selected tag:",
+        "separately funded signed workflow",
         "Actions deliberately has no tag-creation or bypass credential.",
     ] {
         assert!(workflow.contains(required_contract));
@@ -480,6 +549,50 @@ fn authorization_workflow_proves_main_without_receiving_tag_write_authority() {
     assert!(!workflow.contains("git push"));
     assert!(!workflow.contains("repos/$GITHUB_REPOSITORY/immutable-releases"));
     assert_actions_are_commit_pinned(&workflow);
+}
+
+#[test]
+fn release_version_policy_is_canonical_monotonic_and_recovery_safe() {
+    let validator = repository_file("scripts/validate-release-version.sh");
+    let focused_test = repository_file("scripts/test-release-version-policy.sh");
+    let ci = repository_file(".github/workflows/ci.yml");
+
+    for required_contract in [
+        "future|published|rehearsal",
+        "canonical stable v-prefixed semantic version",
+        "release tag and Cargo package version do not match",
+        "repeat-release automation refuses v0.1.0 and earlier versions",
+        "release version is older than an already published stable version",
+        "continue",
+        "the nonpublishing live rehearsal reuses only immutable v0.1.0",
+    ] {
+        assert!(
+            validator.contains(required_contract),
+            "version validator should enforce {required_contract}"
+        );
+    }
+    for accepted_case in [
+        "patch-release",
+        "partial-publication-recovery",
+        "minor-release",
+        "major-release",
+        "unbounded-numeric-components",
+        "fixed-live-rehearsal",
+    ] {
+        assert!(focused_test.contains(accepted_case));
+    }
+    for rejected_case in [
+        "missing-inventory",
+        "immutable-initial-version",
+        "manifest-mismatch",
+        "older-than-published",
+        "leading-zero",
+        "prerelease",
+        "malformed-inventory",
+    ] {
+        assert!(focused_test.contains(rejected_case));
+    }
+    assert!(ci.contains("./scripts/test-release-version-policy.sh"));
 }
 
 #[test]
@@ -574,10 +687,24 @@ fn package_and_public_docs_keep_the_accepted_release_identities() {
     }
     assert!(runbook.contains("v0.1.0"));
     assert!(runbook.contains("verify-release-repository-controls.sh"));
-    assert!(runbook.contains("no project-issued macOS or Windows binary"));
-    assert!(runbook.contains("only the `publish-new` endpoint"));
-    assert!(runbook.contains("exact crate-name pattern `enjoyable-mcp-sync`"));
-    assert!(runbook.contains("Revoke every first-publication token"));
+    assert!(runbook.contains("project-issued macOS or Windows binary"));
+    assert!(runbook.contains("one first-publication exception"));
+    assert!(runbook.contains("revoked server-side and removed locally"));
+    assert!(runbook.contains("never create a replacement token"));
+    for repeat_release_contract in [
+        "The tag push publishes nothing by itself.",
+        "Choose exactly one GitHub Release producer.",
+        "-f mode=publish",
+        "Rerunning after crates.io accepted the candidate is safe.",
+        "requests no OIDC credential",
+        "strictly newer",
+        "-f mode=rehearse",
+    ] {
+        assert!(
+            runbook.contains(repeat_release_contract),
+            "source/Linux runbook should document {repeat_release_contract}"
+        );
+    }
     for trusted_publication_contract in [
         "`.github/workflows/cargo-publish.yml`",
         "`rust-lang/crates-io-auth-action`",
