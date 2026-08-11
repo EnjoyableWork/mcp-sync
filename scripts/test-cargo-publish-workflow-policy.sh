@@ -96,10 +96,10 @@ cargo_workflow_expect_rejection missing-local-release-comparison \
   "cmp --silent \"\$release_package\" \"\$local_package\"" \
   'true'
 cargo_workflow_expect_rejection missing-registry-comparison \
-  "cmp --silent \"\$release_package\" \"\$registry_package\"" \
+  "cmp --silent \"\$release_package\" \"\$existing_registry_package\"" \
   'true'
 cargo_workflow_expect_rejection missing-rehearsal-nonpublication-proof \
-  '([.versions[].num] | sort) == ["0.1.0"]' \
+  "if ! cmp --silent \"\$RUNNER_TEMP/enjoyable-mcp-sync-versions-before.json\" \"\$RUNNER_TEMP/enjoyable-mcp-sync-versions-after.json\"; then" \
   'true'
 cargo_workflow_expect_rejection missing-trusted-only-publication-gate \
   '.crate.trustpub_only == true' \
@@ -116,5 +116,11 @@ cargo_workflow_expect_rejection historical-deployment-trigger \
 cargo_workflow_expect_rejection missing-oidc \
   'id-token: write' \
   'contents: read'
+cargo_workflow_expect_rejection recovery-requests-oidc \
+  "needs.validate.outputs.mode == 'authorization-only' ||" \
+  'always() ||'
+cargo_workflow_expect_rejection missing-global-release-serialization \
+  'group: mcp-sync-release' \
+  'group: cargo-publish'
 
 printf 'Verified Cargo publisher workflow acceptance and fail-closed policy mutations.\n'

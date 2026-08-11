@@ -185,4 +185,20 @@ cargo_publish_expect_rejection publication-unprotected-tag \
   REQUEST_RELEASE_KIND=funded \
   REQUEST_MODE=publish
 
+cargo_publish_expect_rejection leading-zero-publication \
+  REQUEST_EVENT=workflow_dispatch \
+  REQUEST_REF=refs/tags/v01.2.3 \
+  REQUEST_VERSION=01.2.3 \
+  REQUEST_TAG=v01.2.3 \
+  REQUEST_RELEASE_KIND=source-linux \
+  REQUEST_MODE=publish
+
+cargo_publish_expect_rejection prerelease-publication \
+  REQUEST_EVENT=workflow_dispatch \
+  REQUEST_REF=refs/tags/v1.2.3-rc.1 \
+  REQUEST_VERSION=1.2.3-rc.1 \
+  REQUEST_TAG=v1.2.3-rc.1 \
+  REQUEST_RELEASE_KIND=source-linux \
+  REQUEST_MODE=publish
+
 printf 'Verified Cargo publisher request acceptance and fail-closed rejection policy.\n'

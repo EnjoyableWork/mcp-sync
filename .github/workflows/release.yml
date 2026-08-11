@@ -19,7 +19,7 @@ run-name: Funded signed release ${{ github.ref_name }}
 permissions: {}
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: mcp-sync-release
   cancel-in-progress: false
 
 jobs:
@@ -34,6 +34,7 @@ jobs:
       contents: read
     outputs:
       version: ${{ steps.contract.outputs.version }}
+      registry_version_exists: ${{ steps.contract.outputs.registry_version_exists }}
 
     steps:
       - name: Check out the protected tag
@@ -64,24 +65,10 @@ jobs:
             echo "funded release dispatch must select an existing stable tag" >&2
             exit 1
           fi
-          if [[ ! "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            echo "release tag must be a stable v-prefixed semantic version" >&2
-            exit 1
-          fi
-          if [[ "$GITHUB_REF_NAME" == v0.1.0 ]]; then
-            echo "v0.1.0 is reserved for the source and GNU/Linux release" >&2
-            exit 1
-          fi
-          release_version=${BASH_REMATCH[1]}
-
           package_version="$(
             cargo metadata --locked --no-deps --format-version 1 \
               | jq -r '.packages[] | select(.name == "enjoyable-mcp-sync") | .version'
           )"
-          if [[ "$release_version" != "$package_version" ]]; then
-            echo "release tag does not match the Cargo package version" >&2
-            exit 1
-          fi
 
           if [[ "$(git cat-file -t "$GITHUB_REF_NAME")" != tag ]]; then
             echo "stable releases require an intentional annotated tag" >&2
@@ -117,28 +104,54 @@ jobs:
 
           registry_response="$RUNNER_TEMP/enjoyable-mcp-sync-crates.json"
           registry_status="$(
-            curl --silent --show-error \
+            curl --silent --show-error --location --retry 5 \
+              --proto '=https' --proto-redir '=https' --tlsv1.2 \
               --output "$registry_response" \
               --write-out '%{http_code}' \
               --header 'User-Agent: mcp-sync-release/0.1 (+https://github.com/EnjoyableWork/mcp-sync)' \
               'https://crates.io/api/v1/crates/enjoyable-mcp-sync'
           )"
-          case "$registry_status" in
-            404) ;;
-            200)
-              jq -e \
-                --arg version "$release_version" \
-                '.crate.repository == "https://github.com/EnjoyableWork/mcp-sync" and
-                 any(.versions[]; .num == $version)' \
-                "$registry_response" >/dev/null
-              ;;
-            *)
-              echo "crates.io package identity could not be verified" >&2
-              exit 1
-              ;;
-          esac
+          if [[ "$registry_status" != 200 ]]; then
+            echo "funded repeat-release automation requires the existing enjoyable-mcp-sync crate" >&2
+            exit 1
+          fi
+          jq -e '
+            .crate.repository == "https://github.com/EnjoyableWork/mcp-sync" and
+            .crate.trustpub_only == true and
+            any(.versions[]; .num == "0.1.0" and .yanked == false) and
+            all(.versions[];
+              .num | test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"))
+          ' "$registry_response" >/dev/null
+          mapfile -t published_stable_versions < <(
+            jq -r '.versions[].num' "$registry_response"
+          )
+          release_version="$(
+            scripts/validate-release-version.sh \
+              future \
+              "$GITHUB_REF_NAME" \
+              "$package_version" \
+              "${published_stable_versions[@]}"
+          )"
+          release_notes="docs/releases/v$release_version.md"
+          if [[ ! -f "$release_notes" || -L "$release_notes" ]]; then
+            echo "release notes must exist as a regular file for the exact version" >&2
+            exit 1
+          fi
+
+          registry_version_exists=false
+          if jq -e \
+            --arg version "$release_version" \
+            'any(.versions[]; .num == $version)' \
+            "$registry_response" >/dev/null; then
+            jq -e \
+              --arg version "$release_version" \
+              'any(.versions[]; .num == $version and .yanked == false)' \
+              "$registry_response" >/dev/null
+            registry_version_exists=true
+          fi
 
           existing_release="$RUNNER_TEMP/existing-release.json"
+          existing_release_immutable=false
           if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" \
             -H 'X-GitHub-Api-Version: 2026-03-10' \
             >"$existing_release" 2>/dev/null; then
@@ -146,9 +159,16 @@ jobs:
               --arg tag "$GITHUB_REF_NAME" \
               '.tag_name == $tag and (.draft == true or .immutable == true)' \
               "$existing_release" >/dev/null
+            existing_release_immutable="$(jq -r '.immutable' "$existing_release")"
+          fi
+          if [[ "$registry_version_exists" == true &&
+            "$existing_release_immutable" != true ]]; then
+            echo "an existing Cargo version is recoverable only from its immutable GitHub Release" >&2
+            exit 1
           fi
 
           printf 'version=%s\n' "$release_version" >> "$GITHUB_OUTPUT"
+          printf 'registry_version_exists=%s\n' "$registry_version_exists" >> "$GITHUB_OUTPUT"
 
       - name: Require every protected signing input
         env:
@@ -780,3 +800,17 @@ jobs:
           for release_asset in release-assets/*; do
             cmp --silent "$release_asset" "immutable-download/$(basename "$release_asset")"
           done
+
+      - name: Require exact registry recovery bytes when the Cargo version already exists
+        if: needs.validate.outputs.registry_version_exists == 'true'
+        run: |
+          set -euo pipefail
+          registry_package="$RUNNER_TEMP/enjoyable-mcp-sync-$RELEASE_VERSION.crate"
+          curl --fail --silent --show-error --location --retry 5 \
+            --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            --output "$registry_package" \
+            --header 'User-Agent: mcp-sync-release/0.1 (+https://github.com/EnjoyableWork/mcp-sync)' \
+            "https://crates.io/api/v1/crates/enjoyable-mcp-sync/$RELEASE_VERSION/download"
+          cmp --silent \
+            "immutable-download/enjoyable-mcp-sync-$RELEASE_VERSION.crate" \
+            "$registry_package"

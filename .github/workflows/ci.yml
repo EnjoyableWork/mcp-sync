@@ -32,6 +32,8 @@ jobs:
           ./scripts/test-repository-artifact-policy.sh
           ./scripts/test-cargo-publish-policy.sh
           ./scripts/test-cargo-publish-workflow-policy.sh
+          ./scripts/test-release-version-policy.sh
+          ./scripts/test-homebrew-formula-update-policy.sh
           ./scripts/test-organization-access-policy.sh
 
       - name: Check advisories, licenses, bans, and sources

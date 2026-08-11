@@ -15,8 +15,8 @@ fi
 release_asset_directory=$1
 release_asset_version=$2
 
-if [[ ! "$release_asset_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "release asset version must be a stable semantic version" >&2
+if [[ ! "$release_asset_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+  echo "release asset version must be a canonical stable semantic version" >&2
   exit 1
 fi
 if [[ ! -d "$release_asset_directory" || -L "$release_asset_directory" ]]; then

@@ -27,12 +27,6 @@ cargo_publish_request_fail() {
 if [[ "$cargo_publish_request_repository" != EnjoyableWork/mcp-sync ]]; then
   cargo_publish_request_fail "Cargo publication is restricted to EnjoyableWork/mcp-sync"
 fi
-if [[ ! "$cargo_publish_request_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  cargo_publish_request_fail "Cargo publication requires a stable semantic version"
-fi
-if [[ "$cargo_publish_request_tag" != "v$cargo_publish_request_version" ]]; then
-  cargo_publish_request_fail "Cargo publication tag must exactly match the requested version"
-fi
 case "$cargo_publish_request_kind" in
   source-linux | funded) ;;
   *) cargo_publish_request_fail "Cargo publication release kind is not supported" ;;
@@ -41,6 +35,22 @@ case "$cargo_publish_request_mode" in
   authorization-only | publish) ;;
   *) cargo_publish_request_fail "Cargo publication mode is not supported" ;;
 esac
+
+cargo_publish_request_script_root="$(
+  cd "$(dirname "${BASH_SOURCE[0]}")"
+  pwd
+)"
+if [[ "$cargo_publish_request_mode" == authorization-only ]]; then
+  "$cargo_publish_request_script_root/validate-release-version.sh" \
+    rehearsal \
+    "$cargo_publish_request_tag" \
+    "$cargo_publish_request_version" >/dev/null
+else
+  "$cargo_publish_request_script_root/validate-release-version.sh" \
+    published \
+    "$cargo_publish_request_tag" \
+    "$cargo_publish_request_version" >/dev/null
+fi
 
 if [[ "$cargo_publish_request_event" != workflow_dispatch ]]; then
   cargo_publish_request_fail "Cargo publication event is not authorized"

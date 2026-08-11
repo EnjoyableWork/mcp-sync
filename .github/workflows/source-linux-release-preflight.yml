@@ -38,7 +38,7 @@ jobs:
             cargo metadata --locked --no-deps --format-version 1 \
               | jq -r '.packages[] | select(.name == "enjoyable-mcp-sync") | .version'
           )"
-          [[ "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$release_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           printf 'version=%s\n' "$release_version" >>"$GITHUB_OUTPUT"
 
       - name: Prove deterministic Cargo and Homebrew generation
@@ -129,7 +129,7 @@ jobs:
             cargo metadata --locked --no-deps --format-version 1 \
               | jq -r '.packages[] | select(.name == "enjoyable-mcp-sync") | .version'
           )"
-          [[ "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$release_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           printf 'version=%s\n' "$release_version" >>"$GITHUB_OUTPUT"
 
       - name: Install the exact Cargo package and exercise restore

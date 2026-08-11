@@ -16,8 +16,8 @@ channel_asset_directory=$1
 channel_version=$2
 channel_output_directory=$3
 
-if [[ ! "$channel_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "channel version must be a stable semantic version" >&2
+if [[ ! "$channel_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+  echo "channel version must be a canonical stable semantic version" >&2
   exit 1
 fi
 if [[ ! -d "$channel_asset_directory" ]]; then

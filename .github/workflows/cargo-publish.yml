@@ -31,7 +31,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: cargo-publish
+  group: mcp-sync-release
   cancel-in-progress: false
 
 jobs:
@@ -103,6 +103,7 @@ jobs:
           ref: ${{ needs.validate.outputs.tag }}
 
       - name: Verify immutable release, attested package, and deterministic local bytes
+        id: package
         run: |
           set -euo pipefail
 
@@ -209,25 +210,69 @@ jobs:
             echo "crates.io package identity could not be verified" >&2
             exit 1
           fi
-          jq -e \
-            '.crate.repository == "https://github.com/EnjoyableWork/mcp-sync"' \
-            "$registry_state" >/dev/null
+          jq -e '
+            .crate.repository == "https://github.com/EnjoyableWork/mcp-sync" and
+            .crate.trustpub_only == true and
+            any(.versions[]; .num == "0.1.0" and .yanked == false) and
+            all(.versions[];
+              .num | test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"))
+          ' "$registry_state" >/dev/null
+          mapfile -t published_stable_versions < <(
+            jq -r '.versions[].num' "$registry_state"
+          )
+          jq -c '[.versions[] | {num, yanked}] | sort_by(.num)' \
+            "$registry_state" \
+            >"$RUNNER_TEMP/enjoyable-mcp-sync-versions-before.json"
+
           if [[ "$PUBLICATION_MODE" == publish ]]; then
-            jq -e '.crate.trustpub_only == true' "$registry_state" >/dev/null
+            scripts/validate-release-version.sh \
+              future \
+              "$RELEASE_TAG" \
+              "$RELEASE_VERSION" \
+              "${published_stable_versions[@]}" >/dev/null
             if jq -e --arg version "$RELEASE_VERSION" \
               'any(.versions[]; .num == $version)' \
               "$registry_state" >/dev/null; then
-              echo "requested Cargo version already exists and cannot be republished" >&2
+              jq -e --arg version "$RELEASE_VERSION" \
+                'any(.versions[]; .num == $version and .yanked == false)' \
+                "$registry_state" >/dev/null
+              existing_registry_package="$RUNNER_TEMP/enjoyable-mcp-sync-existing.crate"
+              curl --fail --silent --show-error --location --retry 5 \
+                --proto '=https' --proto-redir '=https' --tlsv1.2 \
+                --output "$existing_registry_package" \
+                --header 'User-Agent: mcp-sync-cargo-publisher/0.1 (+https://github.com/EnjoyableWork/mcp-sync)' \
+                "https://crates.io/api/v1/crates/enjoyable-mcp-sync/$RELEASE_VERSION/download"
+              if ! cmp --silent "$release_package" "$existing_registry_package"; then
+                echo "existing Cargo version differs from the immutable GitHub Release bytes" >&2
+                exit 1
+              fi
+              printf 'publish=false\n' >>"$GITHUB_OUTPUT"
+            else
+              cargo publish --dry-run --locked --registry crates-io
+              printf 'publish=true\n' >>"$GITHUB_OUTPUT"
+            fi
+          else
+            scripts/validate-release-version.sh \
+              rehearsal \
+              "$RELEASE_TAG" \
+              "$RELEASE_VERSION" >/dev/null
+            registry_package="$RUNNER_TEMP/enjoyable-mcp-sync-rehearsal.crate"
+            curl --fail --silent --show-error --location --retry 5 \
+              --proto '=https' --proto-redir '=https' --tlsv1.2 \
+              --output "$registry_package" \
+              --header 'User-Agent: mcp-sync-cargo-publisher/0.1 (+https://github.com/EnjoyableWork/mcp-sync)' \
+              "https://crates.io/api/v1/crates/enjoyable-mcp-sync/$RELEASE_VERSION/download"
+            if ! cmp --silent "$release_package" "$registry_package"; then
+              echo "Cargo rehearsal registry bytes differ from immutable v0.1.0" >&2
               exit 1
             fi
-            cargo publish --dry-run --locked --registry crates-io
-          else
-            jq -e --arg version "$RELEASE_VERSION" \
-              'any(.versions[]; .num == $version and .yanked == false)' \
-              "$registry_state" >/dev/null
+            printf 'publish=false\n' >>"$GITHUB_OUTPUT"
           fi
 
       - name: Obtain short-lived crates.io authorization through OIDC
+        if: >-
+          needs.validate.outputs.mode == 'authorization-only' ||
+          steps.package.outputs.publish == 'true'
         id: crates_io
         uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
 
@@ -243,9 +288,16 @@ jobs:
             'https://crates.io/api/v1/crates/enjoyable-mcp-sync'
           jq -e '
             .crate.repository == "https://github.com/EnjoyableWork/mcp-sync" and
-            ([.versions[].num] | sort) == ["0.1.0"] and
+            .crate["trustpub_only"] == true and
             any(.versions[]; .num == "0.1.0" and .yanked == false)
           ' "$rehearsal_state" >/dev/null
+          jq -c '[.versions[] | {num, yanked}] | sort_by(.num)' \
+            "$rehearsal_state" \
+            >"$RUNNER_TEMP/enjoyable-mcp-sync-versions-after.json"
+          if ! cmp --silent "$RUNNER_TEMP/enjoyable-mcp-sync-versions-before.json" "$RUNNER_TEMP/enjoyable-mcp-sync-versions-after.json"; then
+            echo "Cargo authorization rehearsal changed the published version inventory" >&2
+            exit 1
+          fi
 
       - name: Record successful authorization-only rehearsal
         if: needs.validate.outputs.mode == 'authorization-only'
@@ -261,10 +313,25 @@ jobs:
           } >>"$GITHUB_STEP_SUMMARY"
 
       - name: Publish the exact verified package
-        if: needs.validate.outputs.mode == 'publish'
+        if: >-
+          needs.validate.outputs.mode == 'publish' &&
+          steps.package.outputs.publish == 'true'
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.crates_io.outputs.token }}
         run: cargo publish --locked --registry crates-io
+
+      - name: Record byte-identical partial-publication recovery
+        if: >-
+          needs.validate.outputs.mode == 'publish' &&
+          steps.package.outputs.publish == 'false'
+        run: |
+          {
+            echo '### Cargo publication recovery'
+            echo
+            echo "- Version: \`$RELEASE_VERSION\`"
+            echo '- crates.io already exposed the exact immutable GitHub Release bytes.'
+            echo '- No OIDC credential was requested and no publish call was made.'
+          } >>"$GITHUB_STEP_SUMMARY"
 
       - name: Require byte-identical registry publication
         if: needs.validate.outputs.mode == 'publish'

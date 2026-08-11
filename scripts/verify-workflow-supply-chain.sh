@@ -152,11 +152,17 @@ workflow_supply_chain_homebrew="$workflow_supply_chain_files/source-linux-releas
 workflow_supply_chain_validate_block="$(
   sed -n '/^  validate:/,/^  publish:/p' "$workflow_supply_chain_homebrew"
 )"
+workflow_supply_chain_homebrew_publish="$(
+  sed -n '/^  publish:/,$p' "$workflow_supply_chain_homebrew"
+)"
 for workflow_supply_chain_required in \
   'permissions: {}' \
   "REQUESTED_VERSION: \${{ inputs.version }}" \
   "DISPATCH_REF: \${{ github.ref }}" \
-  'REQUESTED_VERSION" != 0.1.0' \
+  "DISPATCH_REF_PROTECTED: \${{ github.ref_protected }}" \
+  "DISPATCH_REF_TYPE: \${{ github.ref_type }}" \
+  'stable_version_pattern=' \
+  'later Homebrew publication requires the exact canonical release tag' \
   'release_version=%s'; do
   if ! grep -F "$workflow_supply_chain_required" \
     <<<"$workflow_supply_chain_validate_block" >/dev/null; then
@@ -164,10 +170,60 @@ for workflow_supply_chain_required in \
     exit 1
   fi
 done
+
+for workflow_supply_chain_release_writer in \
+  source-linux-release.yml \
+  release.yml \
+  cargo-publish.yml \
+  source-linux-release-publish-homebrew.yml; do
+  if ! grep -F 'group: mcp-sync-release' \
+    "$workflow_supply_chain_files/$workflow_supply_chain_release_writer" >/dev/null; then
+    echo "release writer is outside the global serialization boundary: $workflow_supply_chain_release_writer" >&2
+    exit 1
+  fi
+done
+
+workflow_supply_chain_source_release="$workflow_supply_chain_files/source-linux-release.yml"
+workflow_supply_chain_source_request="$(
+  sed -n '/^  request:/,/^  validate:/p' "$workflow_supply_chain_source_release"
+)"
+for workflow_supply_chain_required in \
+  'permissions: {}' \
+  "REQUEST_REF: \${{ github.ref }}" \
+  "REQUEST_REF_PROTECTED: \${{ github.ref_protected }}" \
+  "REQUEST_REF_TYPE: \${{ github.ref_type }}" \
+  "REQUESTED_VERSION: \${{ inputs.version }}" \
+  'canonical later version on its exact protected tag' \
+  'version=%s'; do
+  if ! grep -F "$workflow_supply_chain_required" \
+    <<<"$workflow_supply_chain_source_request" >/dev/null; then
+    echo "source release lacks pre-environment request validation: $workflow_supply_chain_required" >&2
+    exit 1
+  fi
+done
+for workflow_supply_chain_forbidden in 'environment:' 'secrets.' 'uses: actions/checkout'; do
+  if grep -F "$workflow_supply_chain_forbidden" \
+    <<<"$workflow_supply_chain_source_request" >/dev/null; then
+    echo "source release request validation must remain unprivileged: $workflow_supply_chain_forbidden" >&2
+    exit 1
+  fi
+done
 for workflow_supply_chain_forbidden in 'environment:' 'secrets.' 'uses: actions/checkout'; do
   if grep -F "$workflow_supply_chain_forbidden" \
     <<<"$workflow_supply_chain_validate_block" >/dev/null; then
     echo "Homebrew validation job must remain unprivileged: $workflow_supply_chain_forbidden" >&2
+    exit 1
+  fi
+done
+for workflow_supply_chain_required in \
+  'scripts/validate-homebrew-formula-update.sh' \
+  'prior-homebrew-release.json' \
+  "cmp --silent \"\$tap_formula\" \"\$prior_formula_directory/mcp-sync.rb\"" \
+  'ls-remote origin refs/heads/main' \
+  'secrets.HOMEBREW_TAP_DEPLOY_KEY'; do
+  if ! grep -F "$workflow_supply_chain_required" \
+    <<<"$workflow_supply_chain_homebrew_publish" >/dev/null; then
+    echo "Homebrew publisher lacks monotonic exact-byte handoff behavior: $workflow_supply_chain_required" >&2
     exit 1
   fi
 done
@@ -224,11 +280,22 @@ for workflow_supply_chain_required in \
   "cmp --silent \"\$first_package\" \"\$local_package\"" \
   "cmp --silent \"\$release_package\" \"\$local_package\"" \
   '.crate.trustpub_only == true' \
+  '.crate["trustpub_only"] == true' \
+  'scripts/validate-release-version.sh' \
+  'future' \
+  'enjoyable-mcp-sync-existing.crate' \
+  "if ! cmp --silent \"\$release_package\" \"\$existing_registry_package\"; then" \
+  'existing Cargo version differs from the immutable GitHub Release bytes' \
+  "printf 'publish=false\\n'" \
+  "needs.validate.outputs.mode == 'authorization-only' ||" \
+  "steps.package.outputs.publish == 'true'" \
   'rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5' \
   "CARGO_REGISTRY_TOKEN: \${{ steps.crates_io.outputs.token }}" \
   'cargo publish --locked --registry crates-io' \
   'Require the MCP-039 rehearsal to create no Cargo version' \
-  '([.versions[].num] | sort) == ["0.1.0"]' \
+  'enjoyable-mcp-sync-versions-before.json' \
+  'enjoyable-mcp-sync-versions-after.json' \
+  "if ! cmp --silent \"\$RUNNER_TEMP/enjoyable-mcp-sync-versions-before.json\" \"\$RUNNER_TEMP/enjoyable-mcp-sync-versions-after.json\"; then" \
   "cmp --silent \"\$release_package\" \"\$registry_package\""; do
   if ! grep -F -- "$workflow_supply_chain_required" \
     <<<"$workflow_supply_chain_cargo_publish" >/dev/null; then

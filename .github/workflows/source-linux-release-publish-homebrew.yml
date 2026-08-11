@@ -12,7 +12,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: source-linux-release-publish-homebrew
+  group: mcp-sync-release
   cancel-in-progress: false
 
 jobs:
@@ -26,19 +26,32 @@ jobs:
       release_version: ${{ steps.contract.outputs.release_version }}
 
     steps:
-      - name: Accept only the immutable release or exact recovery ref
+      - name: Accept only a canonical immutable release or the exact historical recovery ref
         id: contract
         env:
           DISPATCH_REF: ${{ github.ref }}
+          DISPATCH_REF_PROTECTED: ${{ github.ref_protected }}
+          DISPATCH_REF_TYPE: ${{ github.ref_type }}
           RECOVERY_REF: refs/tags/v-mcp-029-homebrew-recovery-1
-          RELEASE_REF: refs/tags/v0.1.0
           REQUESTED_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
 
-          if [[ "$REQUESTED_VERSION" != 0.1.0 ]] ||
-            [[ "$DISPATCH_REF" != "$RELEASE_REF" && "$DISPATCH_REF" != "$RECOVERY_REF" ]]; then
-            echo "Homebrew publication accepts only the v0.1.0 tag or its exact protected recovery tag" >&2
+          stable_version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          release_ref="refs/tags/v$REQUESTED_VERSION"
+          if [[ ! "$REQUESTED_VERSION" =~ $stable_version_pattern ]] ||
+            [[ "$DISPATCH_REF_TYPE" != tag ]] ||
+            [[ "$DISPATCH_REF_PROTECTED" != true ]]; then
+            echo "Homebrew publication requires a canonical stable version on a protected tag" >&2
+            exit 1
+          fi
+          if [[ "$REQUESTED_VERSION" == 0.1.0 ]]; then
+            if [[ "$DISPATCH_REF" != "$release_ref" && "$DISPATCH_REF" != "$RECOVERY_REF" ]]; then
+              echo "Homebrew v0.1.0 publication accepts only its release or historical recovery tag" >&2
+              exit 1
+            fi
+          elif [[ "$DISPATCH_REF" != "$release_ref" ]]; then
+            echo "later Homebrew publication requires the exact canonical release tag" >&2
             exit 1
           fi
           printf 'release_version=%s\n' "$REQUESTED_VERSION" >>"$GITHUB_OUTPUT"
@@ -77,9 +90,13 @@ jobs:
           release_tag="v$RELEASE_VERSION"
           release_ref="refs/tags/$release_tag"
           recovery_ref="refs/tags/$HOMEBREW_RECOVERY_TAG"
-          if [[ "$RELEASE_VERSION" != 0.1.0 ]] ||
-            [[ "$GITHUB_REF" != "$release_ref" && "$GITHUB_REF" != "$recovery_ref" ]]; then
-            echo "Homebrew publication accepts only the v0.1.0 tag or its exact protected recovery tag" >&2
+          if [[ "$RELEASE_VERSION" == 0.1.0 ]]; then
+            if [[ "$GITHUB_REF" != "$release_ref" && "$GITHUB_REF" != "$recovery_ref" ]]; then
+              echo "Homebrew v0.1.0 publication accepts only its release or historical recovery tag" >&2
+              exit 1
+            fi
+          elif [[ "$GITHUB_REF" != "$release_ref" ]]; then
+            echo "later Homebrew publication requires the exact canonical release tag" >&2
             exit 1
           fi
           if [[ "$(git cat-file -t "$release_tag")" != tag ]]; then
@@ -140,6 +157,10 @@ jobs:
             cargo metadata --locked --no-deps --format-version 1 \
               | jq -r '.packages[] | select(.name == "enjoyable-mcp-sync") | .version'
           )"
+          scripts/validate-release-version.sh \
+            published \
+            "$release_tag" \
+            "$package_version" >/dev/null
           test "$package_version" = "$RELEASE_VERSION"
 
           release_json="$RUNNER_TEMP/mcp-sync-source-linux-release.json"
@@ -171,17 +192,38 @@ jobs:
 
           registry_response="$RUNNER_TEMP/enjoyable-mcp-sync-crates.json"
           curl --fail --silent --show-error --location --retry 5 \
+            --proto '=https' --proto-redir '=https' --tlsv1.2 \
             --output "$registry_response" \
             --header 'User-Agent: mcp-sync-homebrew-publisher/0.1 (+https://github.com/EnjoyableWork/mcp-sync)' \
             'https://crates.io/api/v1/crates/enjoyable-mcp-sync'
           jq -e \
             --arg version "$RELEASE_VERSION" \
             '.crate.repository == "https://github.com/EnjoyableWork/mcp-sync" and
-             any(.versions[]; .num == $version and .yanked == false)' \
+             .crate.trustpub_only == true and
+             any(.versions[]; .num == "0.1.0" and .yanked == false) and
+             any(.versions[]; .num == $version and .yanked == false) and
+             all(.versions[];
+               .num | test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"))' \
             "$registry_response" >/dev/null
+          mapfile -t published_stable_versions < <(
+            jq -r '.versions[].num' "$registry_response"
+          )
+          if [[ "$RELEASE_VERSION" == 0.1.0 ]]; then
+            scripts/validate-release-version.sh \
+              rehearsal \
+              "$release_tag" \
+              "$package_version" >/dev/null
+          else
+            scripts/validate-release-version.sh \
+              future \
+              "$release_tag" \
+              "$package_version" \
+              "${published_stable_versions[@]}" >/dev/null
+          fi
 
           registry_package="$RUNNER_TEMP/enjoyable-mcp-sync-$RELEASE_VERSION.crate"
           curl --fail --silent --show-error --location --retry 5 \
+            --proto '=https' --proto-redir '=https' --tlsv1.2 \
             --output "$registry_package" \
             --header 'User-Agent: mcp-sync-homebrew-publisher/0.1 (+https://github.com/EnjoyableWork/mcp-sync)' \
             "https://crates.io/api/v1/crates/enjoyable-mcp-sync/$RELEASE_VERSION/download"
@@ -191,6 +233,7 @@ jobs:
 
       - name: Publish the release formula with the tap-scoped deploy key
         env:
+          GH_TOKEN: ${{ github.token }}
           HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
         run: |
           set -euo pipefail
@@ -228,16 +271,52 @@ jobs:
           test "$(git -C "$tap_checkout" symbolic-ref --short HEAD)" = main
           test "$(git -C "$tap_checkout" remote get-url origin)" = \
             git@github.com:EnjoyableWork/homebrew-tap.git
+          tap_base_commit="$(git -C "$tap_checkout" rev-parse HEAD)"
 
           release_formula="$RUNNER_TEMP/mcp-sync-source-linux-assets/mcp-sync.rb"
           tap_formula="$tap_checkout/Formula/mcp-sync.rb"
-          if [[ -e "$tap_formula" ]]; then
-            if cmp --silent "$release_formula" "$tap_formula"; then
+          formula_decision="$(
+            scripts/validate-homebrew-formula-update.sh \
+              "$RELEASE_VERSION" \
+              "$release_formula" \
+              "$tap_formula"
+          )"
+          read -r formula_action published_formula_version <<<"$formula_decision"
+          case "$formula_action" in
+            noop)
               echo "the exact release formula is already public" >>"$GITHUB_STEP_SUMMARY"
               exit 0
-            fi
-            echo "refusing to replace a different published mcp-sync formula" >&2
-            exit 1
+              ;;
+            create)
+              test -z "${published_formula_version:-}"
+              ;;
+            update)
+              test -n "${published_formula_version:-}"
+              ;;
+            *)
+              echo "Homebrew formula policy returned an unknown decision" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ "$formula_action" == update ]]; then
+            prior_release="$RUNNER_TEMP/prior-homebrew-release.json"
+            gh api \
+              "repos/$GITHUB_REPOSITORY/releases/tags/v$published_formula_version" \
+              -H 'X-GitHub-Api-Version: 2026-03-10' \
+              >"$prior_release"
+            jq -e \
+              --arg tag "v$published_formula_version" \
+              '.tag_name == $tag and .draft == false and
+               .prerelease == false and .immutable == true' \
+              "$prior_release" >/dev/null
+            prior_formula_directory="$RUNNER_TEMP/prior-homebrew-formula"
+            mkdir -p "$prior_formula_directory"
+            gh release download "v$published_formula_version" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern mcp-sync.rb \
+              --dir "$prior_formula_directory"
+            cmp --silent "$tap_formula" "$prior_formula_directory/mcp-sync.rb"
           fi
 
           mkdir -p "$tap_checkout/Formula"
@@ -249,6 +328,9 @@ jobs:
             '41898282+github-actions[bot]@users.noreply.github.com'
           git -C "$tap_checkout" commit \
             -m "chore(homebrew): publish mcp-sync $RELEASE_VERSION"
+          test "$(git -C "$tap_checkout" rev-parse origin/main)" = "$tap_base_commit"
+          test "$(git -C "$tap_checkout" ls-remote origin refs/heads/main | awk '{ print $1 }')" = \
+            "$tap_base_commit"
           git -C "$tap_checkout" push origin HEAD:refs/heads/main
 
           tap_commit="$(git -C "$tap_checkout" rev-parse HEAD)"
@@ -268,6 +350,7 @@ jobs:
           published_formula="$RUNNER_TEMP/mcp-sync-published-formula.rb"
           for _ in {1..12}; do
             if curl --fail --silent --show-error --location \
+              --proto '=https' --proto-redir '=https' --tlsv1.2 \
               --output "$published_formula" \
               'https://raw.githubusercontent.com/EnjoyableWork/homebrew-tap/main/Formula/mcp-sync.rb' &&
               cmp --silent \

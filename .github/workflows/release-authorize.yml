@@ -58,12 +58,47 @@ jobs:
             cargo metadata --locked --no-deps --format-version 1 \
               | jq -r '.packages[] | select(.name == "enjoyable-mcp-sync") | .version'
           )"
-          if [[ ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Cargo package version is not a stable semantic version" >&2
+          registry_response="$RUNNER_TEMP/enjoyable-mcp-sync-crates.json"
+          registry_status="$(
+            curl --silent --show-error --location --retry 5 \
+              --proto '=https' --proto-redir '=https' --tlsv1.2 \
+              --output "$registry_response" \
+              --write-out '%{http_code}' \
+              --header 'User-Agent: mcp-sync-release-authorizer/0.1 (+https://github.com/EnjoyableWork/mcp-sync)' \
+              'https://crates.io/api/v1/crates/enjoyable-mcp-sync'
+          )"
+          if [[ "$registry_status" != 200 ]]; then
+            echo "release authorization requires the existing enjoyable-mcp-sync crate" >&2
             exit 1
           fi
-          if [[ ! -f "docs/releases/v$release_version.md" ]]; then
-            echo "stable release notes are missing" >&2
+          jq -e '
+            .crate.repository == "https://github.com/EnjoyableWork/mcp-sync" and
+            .crate.trustpub_only == true and
+            any(.versions[]; .num == "0.1.0" and .yanked == false) and
+            all(.versions[];
+              .num | test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"))
+          ' "$registry_response" >/dev/null
+          mapfile -t published_stable_versions < <(
+            jq -r '.versions[].num' "$registry_response"
+          )
+          release_version="$(
+            scripts/validate-release-version.sh \
+              future \
+              "v$release_version" \
+              "$release_version" \
+              "${published_stable_versions[@]}"
+          )"
+          if [[ ! -f "docs/releases/v$release_version.md" ||
+            -L "docs/releases/v$release_version.md" ]]; then
+            echo "stable release notes must be a regular file" >&2
+            exit 1
+          fi
+
+          if jq -e \
+            --arg version "$release_version" \
+            'any(.versions[]; .num == $version)' \
+            "$registry_response" >/dev/null; then
+            echo "new tag authorization refuses an already-published Cargo version" >&2
             exit 1
           fi
 
@@ -128,12 +163,8 @@ jobs:
             echo
             echo 'The recorded named bypass actor may now create one annotated tag'
             echo "\`v$RELEASE_VERSION\` at \`$GITHUB_SHA\` and push only that tag."
-            if [[ "$RELEASE_VERSION" == 0.1.0 ]]; then
-              echo 'The v0.1.0 tag invokes only the source and GNU/Linux release workflow.'
-            else
-              echo 'The tag push invokes no publishing workflow by itself.'
-            fi
-            echo 'The funded signed workflow always requires a separate manual dispatch'
-            echo 'on the selected tag.'
+            echo 'The tag push publishes nothing by itself.'
+            echo 'Dispatch exactly one release producer on the selected tag:'
+            echo 'the source and GNU/Linux workflow, or the separately funded signed workflow.'
             echo 'Actions deliberately has no tag-creation or bypass credential.'
           } >> "$GITHUB_STEP_SUMMARY"

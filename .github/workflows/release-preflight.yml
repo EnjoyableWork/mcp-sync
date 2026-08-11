@@ -35,7 +35,7 @@ jobs:
             cargo metadata --locked --no-deps --format-version 1 \
               | jq -r '.packages[] | select(.name == "enjoyable-mcp-sync") | .version'
           )"
-          [[ "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$release_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           cargo package --locked
           package="target/package/enjoyable-mcp-sync-$release_version.crate"
           first_package="$RUNNER_TEMP/enjoyable-mcp-sync-first.crate"
@@ -102,7 +102,7 @@ jobs:
             cargo metadata --locked --no-deps --format-version 1 \
               | jq -r '.packages[] | select(.name == "enjoyable-mcp-sync") | .version'
           )"
-          [[ "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$release_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           printf 'version=%s\n' "$release_version" >> "$GITHUB_OUTPUT"
 
       - name: Build the native release executable
@@ -238,8 +238,8 @@ jobs:
             throw 'Could not read Cargo metadata.'
           }
           $releaseVersion = ($metadata.packages | Where-Object name -eq 'enjoyable-mcp-sync').version
-          if ($releaseVersion -notmatch '^\d+\.\d+\.\d+$') {
-            throw 'Cargo package version is not a stable semantic version.'
+          if ($releaseVersion -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
+            throw 'Cargo package version is not a canonical stable semantic version.'
           }
           "version=$releaseVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
