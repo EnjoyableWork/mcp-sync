@@ -257,7 +257,7 @@ pub(super) fn replace_existing_with_backup_snapshot_after(
         );
     }
 
-    backup_stage = match make_stage_process_durable(path, backup_stage) {
+    backup_stage = match make_stage_process_durable(path, backup_stage, expected_current) {
         Ok(stage) => stage,
         Err((failure, stage)) => {
             return fail_before_commit(
@@ -667,6 +667,7 @@ fn preserve_named_stage(stage: tempfile::NamedTempFile) {
 fn make_stage_process_durable(
     transaction_target: &Path,
     stage: tempfile::NamedTempFile,
+    expected: &[u8],
 ) -> Result<tempfile::NamedTempFile, (FileMutationError, tempfile::NamedTempFile)> {
     if !stage.path().is_absolute() {
         return Err((
@@ -676,7 +677,7 @@ fn make_stage_process_durable(
             stage,
         ));
     }
-    let (file, stage_path) = match stage.keep() {
+    let (temporary_file, stage_path) = match stage.keep() {
         Ok(parts) => parts,
         Err(error) => {
             return Err((
@@ -690,9 +691,29 @@ fn make_stage_process_durable(
             ));
         }
     };
+    let reopened_file = OpenOptions::new().read(true).write(true).open(&stage_path);
     let temporary_path = tempfile::TempPath::try_from_path(stage_path)
         .expect("a non-empty absolute transaction stage path should remain absolute");
-    Ok(tempfile::NamedTempFile::from_parts(file, temporary_path))
+    let reopened_file = match reopened_file {
+        Ok(file) => file,
+        Err(source) => {
+            return Err((
+                FileIoError::new(
+                    FileOperation::OpenTransactionStage,
+                    transaction_target,
+                    source,
+                )
+                .into(),
+                tempfile::NamedTempFile::from_parts(temporary_file, temporary_path),
+            ));
+        }
+    };
+    drop(temporary_file);
+    let durable_stage = tempfile::NamedTempFile::from_parts(reopened_file, temporary_path);
+    match ensure_regular_bytes(durable_stage.path(), expected) {
+        Ok(()) => Ok(durable_stage),
+        Err(failure) => Err((failure, durable_stage)),
+    }
 }
 
 fn read_journal(
@@ -1232,7 +1253,7 @@ mod tests {
         write_and_sync_stage(&target, &mut stage, b"original generation\n").unwrap();
         let stage_path = stage.path().to_owned();
 
-        let stage = make_stage_process_durable(&target, stage)
+        let stage = make_stage_process_durable(&target, stage, b"original generation\n")
             .unwrap_or_else(|_| panic!("an absolute owned stage should become process-durable"));
 
         assert_eq!(
