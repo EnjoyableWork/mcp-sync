@@ -192,12 +192,15 @@ dependencies = [
  "assert_cmd",
  "clap",
  "jsonc-parser",
+ "libc",
  "proptest",
+ "rustix",
  "serde",
  "serde_json",
  "sha2",
  "tempfile",
  "toml_edit",
+ "windows-sys",
 ]
 
 [[package]]
