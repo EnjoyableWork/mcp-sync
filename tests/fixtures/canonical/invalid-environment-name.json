@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "servers": {
+    "collision": {
+      "command": "synthetic-command",
+      "args": [
+        "synthetic-argument"
+      ],
+      "env": {
+        "SYNTHETIC=NAME": "synthetic-value"
+      }
+    }
+  }
+}

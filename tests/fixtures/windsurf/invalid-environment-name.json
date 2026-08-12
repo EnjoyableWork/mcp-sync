@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "collision": {
+      "command": "synthetic-command",
+      "args": [
+        "synthetic-argument"
+      ],
+      "env": {
+        "SYNTHETIC=NAME": "synthetic-value"
+      },
+      "disabledTools": [
+        "preserve"
+      ]
+    }
+  },
+  "nativeRoot": "preserve"
+}

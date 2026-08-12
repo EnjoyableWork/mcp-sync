@@ -1,0 +1,6 @@
+# preserve root comment
+[mcp_servers.collision]
+command = "synthetic-command"
+args = ["synthetic-argument"]
+env = { "SYNTHETIC=NAME" = "synthetic-value" }
+future = "preserve"

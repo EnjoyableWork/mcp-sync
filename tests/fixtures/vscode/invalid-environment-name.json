@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "collision": {
+      "type": "stdio",
+      "command": "synthetic-command",
+      "args": [
+        "synthetic-argument"
+      ],
+      "env": {
+        "SYNTHETIC=NAME": "synthetic-value"
+      },
+      "cwd": "/synthetic/preserved"
+    }
+  },
+  "inputs": []
+}

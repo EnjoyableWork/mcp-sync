@@ -1,4 +1,6 @@
-use crate::config::{CanonicalConfig, CanonicalServer, ConfigError};
+use crate::config::{
+    CanonicalConfig, CanonicalServer, ConfigError, ValidationError, validate_environment_name,
+};
 use crate::filesystem::{FileIoError, FileMutationError, FileReplacer, FileSystem};
 use crate::paths::ConfigurationPaths;
 use std::collections::BTreeMap;
@@ -37,7 +39,7 @@ impl AddRequest {
     /// reached. The CLI acquires its cross-process mutation lock only after
     /// this step succeeds.
     pub fn validate(self) -> Result<ValidatedAddRequest, CatalogError> {
-        let environment = parse_environment(self.environment_assignments)?;
+        let environment = parse_environment(&self.name, self.environment_assignments)?;
         let server = CanonicalServer::new(self.command, self.arguments, environment);
         CanonicalConfig::new(BTreeMap::from([(self.name.clone(), server.clone())]))
             .map_err(|source| CatalogError::InvalidRequestedDefinition { source })?;
@@ -169,13 +171,25 @@ fn load_canonical(
     Ok(LoadedCanonical { bytes, config })
 }
 
-fn parse_environment(assignments: Vec<String>) -> Result<BTreeMap<String, String>, CatalogError> {
+fn parse_environment(
+    server: &str,
+    assignments: Vec<String>,
+) -> Result<BTreeMap<String, String>, CatalogError> {
     let mut environment = BTreeMap::new();
     for (index, assignment) in assignments.into_iter().enumerate() {
         let position = index + 1;
         let Some((key, value)) = assignment.split_once('=') else {
             return Err(EnvironmentAssignmentError::MissingSeparator { position }.into());
         };
+        if let Err(violation) = validate_environment_name(key) {
+            return Err(CatalogError::InvalidRequestedDefinition {
+                source: ConfigError::InvalidModel(ValidationError::InvalidEnvironmentName {
+                    server: server.to_owned(),
+                    position: index,
+                    violation,
+                }),
+            });
+        }
         if environment.contains_key(key) {
             return Err(EnvironmentAssignmentError::DuplicateKey {
                 key: key.to_owned(),
@@ -378,6 +392,7 @@ impl From<EnvironmentAssignmentError> for CatalogError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::EnvironmentNameViolation;
     use crate::filesystem::FileMutationError;
     use crate::paths::Environment;
     use std::cell::{Cell, RefCell};
@@ -469,10 +484,13 @@ mod tests {
 
     #[test]
     fn environment_assignments_preserve_embedded_equals_and_empty_values() {
-        let environment = parse_environment(vec![
-            "EMPTY=".to_owned(),
-            "URL=scheme://host/path?left=right".to_owned(),
-        ])
+        let environment = parse_environment(
+            "alpha",
+            vec![
+                "EMPTY=".to_owned(),
+                "URL=scheme://host/path?left=right".to_owned(),
+            ],
+        )
         .expect("literal assignments should parse");
 
         assert_eq!(environment.get("EMPTY").map(String::as_str), Some(""));
@@ -485,13 +503,16 @@ mod tests {
     #[test]
     fn invalid_environment_diagnostics_never_echo_values() {
         let private_value = "must-not-appear";
-        let missing = parse_environment(vec![private_value.to_owned()])
+        let missing = parse_environment("alpha", vec![private_value.to_owned()])
             .expect_err("an assignment without equals should fail")
             .to_string();
-        let duplicate = parse_environment(vec![
-            format!("TOKEN={private_value}"),
-            "TOKEN=second-must-not-appear".to_owned(),
-        ])
+        let duplicate = parse_environment(
+            "alpha",
+            vec![
+                format!("TOKEN={private_value}"),
+                "TOKEN=second-must-not-appear".to_owned(),
+            ],
+        )
         .expect_err("a duplicate key should fail")
         .to_string();
 
@@ -733,5 +754,36 @@ mod tests {
         assert_eq!(filesystem.reads.get(), 0);
         assert!(filesystem.replacements.borrow().is_empty());
         assert!(!error.to_string().contains("private-command"));
+    }
+
+    #[test]
+    fn empty_cli_environment_name_fails_before_managed_state_access() {
+        let (_root, _paths) = paths();
+        let filesystem = RecordingFileSystem::new(canonical(Vec::new()));
+
+        let error = AddRequest::new(
+            "alpha".to_owned(),
+            "private-command".to_owned(),
+            vec!["private-argument".to_owned()],
+            vec!["=private-value".to_owned()],
+        )
+        .validate()
+        .expect_err("an empty environment name should be rejected");
+
+        assert!(matches!(
+            error,
+            CatalogError::InvalidRequestedDefinition {
+                source: ConfigError::InvalidModel(ValidationError::InvalidEnvironmentName {
+                    violation: EnvironmentNameViolation::Empty,
+                    ..
+                })
+            }
+        ));
+        assert_eq!(filesystem.reads.get(), 0);
+        assert!(filesystem.replacements.borrow().is_empty());
+        let diagnostic = error.to_string();
+        for private in ["private-command", "private-argument", "private-value"] {
+            assert!(!diagnostic.contains(private));
+        }
     }
 }

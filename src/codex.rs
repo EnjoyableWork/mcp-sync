@@ -1,4 +1,4 @@
-use crate::config::{CanonicalConfig, CanonicalServer, ConfigError};
+use crate::config::{CanonicalConfig, CanonicalServer, ConfigError, validate_environment_name};
 use crate::filesystem::{FileIoError, FileSystem};
 use crate::paths::ConfigurationPaths;
 use crate::reconciliation::{ReconciliationOutcomeKind, ReconciliationPlan};
@@ -348,7 +348,14 @@ fn decode_servers(document: &DocumentMut) -> Result<DecodedServers, CodexAdapter
             })?;
 
         if fields.contains_key(COMMAND_FIELD) && !fields.contains_key(URL_FIELD) {
-            local_servers.insert(name.to_owned(), decode_local_server(name, fields)?);
+            match decode_local_server(name, fields)? {
+                Some(server) => {
+                    local_servers.insert(name.to_owned(), server);
+                }
+                None => {
+                    unmanaged_server_names.insert(name.to_owned());
+                }
+            }
         } else {
             unmanaged_server_names.insert(name.to_owned());
         }
@@ -363,7 +370,7 @@ fn decode_servers(document: &DocumentMut) -> Result<DecodedServers, CodexAdapter
 fn decode_local_server(
     name: &str,
     fields: &dyn TableLike,
-) -> Result<CanonicalServer, CodexAdapterError> {
+) -> Result<Option<CanonicalServer>, CodexAdapterError> {
     let command = fields
         .get(COMMAND_FIELD)
         .and_then(Item::as_str)
@@ -372,9 +379,11 @@ fn decode_local_server(
         })?
         .to_owned();
     let arguments = decode_arguments(name, fields.get(ARGUMENTS_FIELD))?;
-    let environment = decode_environment(name, fields.get(ENVIRONMENT_FIELD))?;
+    let Some(environment) = decode_environment(name, fields.get(ENVIRONMENT_FIELD))? else {
+        return Ok(None);
+    };
 
-    Ok(CanonicalServer::new(command, arguments, environment))
+    Ok(Some(CanonicalServer::new(command, arguments, environment)))
 }
 
 fn decode_arguments(server: &str, item: Option<&Item>) -> Result<Vec<String>, CodexAdapterError> {
@@ -405,17 +414,23 @@ fn decode_arguments(server: &str, item: Option<&Item>) -> Result<Vec<String>, Co
 fn decode_environment(
     server: &str,
     item: Option<&Item>,
-) -> Result<BTreeMap<String, String>, CodexAdapterError> {
+) -> Result<Option<BTreeMap<String, String>>, CodexAdapterError> {
     let Some(item) = item else {
-        return Ok(BTreeMap::new());
+        return Ok(Some(BTreeMap::new()));
     };
     let environment =
         item.as_table_like()
             .ok_or_else(|| CodexDocumentError::EnvironmentMustBeTable {
                 server: server.to_owned(),
             })?;
+    if environment
+        .iter()
+        .any(|(name, _)| validate_environment_name(name).is_err())
+    {
+        return Ok(None);
+    }
 
-    environment
+    let environment = environment
         .iter()
         .enumerate()
         .map(|(position, (key, item))| {
@@ -429,7 +444,9 @@ fn decode_environment(
                     .into()
                 })
         })
-        .collect()
+        .collect::<Result<BTreeMap<_, _>, CodexAdapterError>>()?;
+
+    Ok(Some(environment))
 }
 
 fn ensure_servers_table(
@@ -635,6 +652,8 @@ mod tests {
 
     const CURRENT_FIXTURE: &[u8] = include_bytes!("../tests/fixtures/codex/current.toml");
     const DESIRED_FIXTURE: &str = include_str!("../tests/fixtures/codex/desired.json");
+    const INVALID_ENVIRONMENT_NAME_FIXTURE: &[u8] =
+        include_bytes!("../tests/fixtures/codex/invalid-environment-name.toml");
     const MERGED_FIXTURE: &[u8] = include_bytes!("../tests/fixtures/codex/merged.toml");
 
     struct FixtureEnvironment {
@@ -1058,6 +1077,44 @@ private = "fixture-codex-future-diagnostic-secret"
         );
         assert!(!rendered.changed());
         assert_eq!(rendered.bytes(), bytes);
+    }
+
+    #[test]
+    fn invalid_environment_name_is_preserved_as_unmanaged_and_refuses_collision() {
+        let bytes = INVALID_ENVIRONMENT_NAME_FIXTURE;
+        let document = CodexDocument::parse(bytes)
+            .expect("an unrepresentable local entry should remain unmanaged");
+        let empty = CanonicalConfig::new(BTreeMap::new()).expect("empty canonical is valid");
+        let rendered = document
+            .render_plan(&reconcile(document.canonical_config(), &empty))
+            .expect("an unmanaged-only plan should preserve the document");
+
+        assert!(document.canonical_config().servers().is_empty());
+        assert_eq!(document.unmanaged_server_names(), ["collision"]);
+        assert!(!rendered.changed());
+        assert_eq!(rendered.bytes(), bytes);
+
+        let desired = CanonicalConfig::new(BTreeMap::from([(
+            "collision".to_owned(),
+            CanonicalServer::new("desired-command", Vec::new(), BTreeMap::new()),
+        )]))
+        .expect("the desired collision should be canonical");
+        let error = document
+            .render_plan(&reconcile(document.canonical_config(), &desired))
+            .expect_err("a desired local entry must not replace unmanaged data");
+        let diagnostic = error.to_string();
+        assert!(matches!(
+            error,
+            CodexAdapterError::UnmanagedServerCollision { ref server } if server == "collision"
+        ));
+        for private in [
+            "synthetic-command",
+            "SYNTHETIC=NAME",
+            "synthetic-value",
+            "desired-command",
+        ] {
+            assert!(!diagnostic.contains(private));
+        }
     }
 
     #[test]

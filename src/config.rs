@@ -322,10 +322,11 @@ fn validate_server(name: &str, server: &CanonicalServer) -> Result<(), Validatio
     }
 
     for (position, (key, value)) in server.env.iter().enumerate() {
-        if key.contains('\0') {
-            return Err(ValidationError::EnvironmentKeyContainsNul {
+        if let Err(violation) = validate_environment_name(key) {
+            return Err(ValidationError::InvalidEnvironmentName {
                 server: name.to_owned(),
                 position,
+                violation,
             });
         }
         if value.contains('\0') {
@@ -337,6 +338,24 @@ fn validate_server(name: &str, server: &CanonicalServer) -> Result<(), Validatio
     }
 
     Ok(())
+}
+
+/// Validate the portable identity intersection for canonical environment names.
+///
+/// Supported process boundaries can retain every name except an empty name,
+/// NUL-bearing text, or text containing the `key=value` delimiter. Callers
+/// decide whether an invalid native entry is structurally rejected or retained
+/// as unmanaged according to that adapter's ownership contract.
+pub(crate) fn validate_environment_name(name: &str) -> Result<(), EnvironmentNameViolation> {
+    if name.is_empty() {
+        Err(EnvironmentNameViolation::Empty)
+    } else if name.contains('\0') {
+        Err(EnvironmentNameViolation::ContainsNul)
+    } else if name.contains('=') {
+        Err(EnvironmentNameViolation::ContainsEquals)
+    } else {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -486,9 +505,10 @@ pub enum ValidationError {
         server: String,
         index: usize,
     },
-    EnvironmentKeyContainsNul {
+    InvalidEnvironmentName {
         server: String,
         position: usize,
+        violation: EnvironmentNameViolation,
     },
     EnvironmentValueContainsNul {
         server: String,
@@ -516,9 +536,14 @@ impl fmt::Display for ValidationError {
                 formatter,
                 "argument {index} for server {server:?} must not contain NUL"
             ),
-            Self::EnvironmentKeyContainsNul { server, position } => write!(
+            Self::InvalidEnvironmentName {
+                server,
+                position,
+                violation,
+            } => write!(
                 formatter,
-                "environment key {position} for server {server:?} must not contain NUL"
+                "environment name {position} for server {server:?} {}",
+                violation.requirement()
             ),
             Self::EnvironmentValueContainsNul { server, position } => write!(
                 formatter,
@@ -529,6 +554,23 @@ impl fmt::Display for ValidationError {
 }
 
 impl Error for ValidationError {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnvironmentNameViolation {
+    Empty,
+    ContainsNul,
+    ContainsEquals,
+}
+
+impl EnvironmentNameViolation {
+    fn requirement(self) -> &'static str {
+        match self {
+            Self::Empty => "must not be empty",
+            Self::ContainsNul => "must not contain NUL",
+            Self::ContainsEquals => "must not contain `=`",
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextViolation {
@@ -651,6 +693,8 @@ mod tests {
     use super::*;
 
     const DOCUMENTED_EXAMPLE: &str = include_str!("../examples/config.v1.json");
+    const INVALID_ENVIRONMENT_NAME_FIXTURE: &str =
+        include_str!("../tests/fixtures/canonical/invalid-environment-name.json");
 
     #[test]
     fn documented_example_is_valid_and_canonical() {
@@ -949,6 +993,89 @@ mod tests {
             assert!(!error.to_string().contains("secret-value"));
             assert!(!format!("{error:?}").contains("secret-value"));
         }
+    }
+
+    #[test]
+    fn environment_names_reject_the_portable_identity_gaps_without_disclosure() {
+        let cases = [
+            ("", EnvironmentNameViolation::Empty),
+            ("private\0name", EnvironmentNameViolation::ContainsNul),
+            ("private=name", EnvironmentNameViolation::ContainsEquals),
+        ];
+
+        for (name, expected_violation) in cases {
+            let config = CanonicalConfig::new(BTreeMap::from([(
+                "one".to_owned(),
+                CanonicalServer::new(
+                    "server",
+                    Vec::new(),
+                    BTreeMap::from([(name.to_owned(), "private-value".to_owned())]),
+                ),
+            )]));
+            let error = config.expect_err("an unrepresentable environment name should fail");
+
+            assert!(matches!(
+                error,
+                ConfigError::InvalidModel(ValidationError::InvalidEnvironmentName {
+                    ref server,
+                    position: 0,
+                    violation,
+                }) if server == "one" && violation == expected_violation
+            ));
+            let display = error.to_string();
+            let debug = format!("{error:?}");
+            if !name.is_empty() {
+                assert!(!display.contains(name));
+            }
+            assert!(!display.contains("private-value"));
+            if !name.is_empty() {
+                assert!(!debug.contains(name));
+            }
+            assert!(!debug.contains("private-value"));
+        }
+    }
+
+    #[test]
+    fn invalid_environment_name_fixture_fails_canonical_parsing_without_disclosure() {
+        let error = CanonicalConfig::parse_json(INVALID_ENVIRONMENT_NAME_FIXTURE)
+            .expect_err("the invalid canonical fixture should fail parsing");
+        let display = error.to_string();
+        let debug = format!("{error:?}");
+
+        assert!(matches!(
+            error,
+            ConfigError::InvalidModel(ValidationError::InvalidEnvironmentName {
+                ref server,
+                position: 0,
+                violation: EnvironmentNameViolation::ContainsEquals,
+            }) if server == "collision"
+        ));
+        for private in ["SYNTHETIC=NAME", "synthetic-value"] {
+            assert!(!display.contains(private));
+            assert!(!debug.contains(private));
+        }
+    }
+
+    #[test]
+    fn portable_environment_validation_retains_every_other_literal_name() {
+        let names = [" SPACE ", "LINE\nBREAK", "A-B.C:D", "UNICODE_é"];
+        let environment = names
+            .into_iter()
+            .map(|name| (name.to_owned(), "private-value".to_owned()))
+            .collect();
+        let config = CanonicalConfig::new(BTreeMap::from([(
+            "one".to_owned(),
+            CanonicalServer::new("server", Vec::new(), environment),
+        )]))
+        .expect("every name outside the three forbidden shapes should remain valid");
+        let reparsed = CanonicalConfig::parse_json(
+            &config
+                .to_canonical_json()
+                .expect("valid edge names should serialize"),
+        )
+        .expect("valid edge names should parse again");
+
+        assert_eq!(reparsed, config);
     }
 
     #[test]

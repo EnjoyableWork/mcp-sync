@@ -194,9 +194,12 @@ The operation has these outcomes:
 - Conflicting definitions stop the operation without creating canonical state.
   The diagnostic names the server, clients, and differing field categories,
   but not commands, arguments, or environment values.
-- Named unmanaged Cursor, Windsurf, VS Code, Codex, and Kiro entries are preserved
-  in their native files and reported as skipped because canonical schema v1
-  cannot represent them.
+- Named unmanaged Cursor, Windsurf, VS Code, Codex, and Kiro entries are
+  preserved in their native files and reported as skipped because canonical
+  schema v1 cannot represent them. This includes otherwise-local entries with
+  an empty environment name or one containing NUL or `=`. Claude Desktop has
+  no unmanaged-local classification, so `init` fails structurally on that
+  shape instead of importing it.
 - A local definition that collides with an unmanaged entry is an error.
 - An existing canonical path is never overwritten. Move it aside only after
   deciding which copy is authoritative; do not delete it merely to make
@@ -218,6 +221,9 @@ After a successful import, inspect the redacted catalog:
 
 `list` shows escaped server names, argument counts, and escaped environment key
 names. It does not show commands, argument contents, or environment values.
+Canonical environment names must be non-empty and contain neither NUL nor `=`;
+`add` rejects an empty `--env` name before acquiring the mutation lock or
+reading managed state.
 
 ## Test one canonical STDIO server
 

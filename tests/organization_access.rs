@@ -176,7 +176,7 @@ fn private_evidence_preparation_outputs_only_aggregate_false_by_default_fields()
 }
 
 #[test]
-fn completed_release_state_and_mcp_042_closure_are_preserved() {
+fn completed_release_state_and_mcp_043_closure_are_preserved() {
     let project = repository_file("PROJECT.md");
     let readme = repository_file("README.md");
 
@@ -184,11 +184,11 @@ fn completed_release_state_and_mcp_042_closure_are_preserved() {
     assert!(project.contains("| MCP-034 | Establish organization access, credential, and ownership recovery policy | M3 | P1 | Codex | Done |"));
     assert!(project.contains("| MCP-035 | Self-assess, publish, and showcase the zero-cost enterprise assurance baseline | M3 | P1 | Codex | Done |"));
     assert!(project.contains("| Done — `MCP-030` through `MCP-035` Done |"));
-    assert!(project.contains("M0 through M3, `MCP-001` through `MCP-020`, `MCP-028` through `MCP-037`, and `MCP-039` through `MCP-042` are `Done`"));
+    assert!(project.contains("M0 through M3, `MCP-001` through `MCP-020`, `MCP-028` through `MCP-037`, and `MCP-039` through `MCP-043` are `Done`"));
     assert!(project.contains("`MCP-037` and D-18 are `Done`"));
     assert!(project.contains("`MCP-037`, `MCP-040`, and `MCP-041` are\ncompleted"));
-    assert!(project.contains("`MCP-042` is complete; `MCP-043` is ready but not"));
-    assert!(project.contains("`MCP-044` and `MCP-045` remain proposed"));
+    assert!(project.contains("`MCP-042` and `MCP-043` are complete; `MCP-044` is"));
+    assert!(project.contains("ready but not active, while `MCP-045` remains proposed"));
     assert!(project.contains("| MCP-036 | Serialize every mutating operation per canonical configuration root | Post-M3 corrective maintenance | P0 | Codex | Done |"));
     assert!(project.contains("| MCP-039 | Replace Cargo publication tokens with crates.io Trusted Publishing | Post-M3 release maintenance | P1 | Codex | Done | `MCP-036` |"));
     assert!(project.contains("| MCP-039 | Complete MCP-039: replace reusable crates.io credentials for every Cargo version after 0.1.0"));
@@ -207,7 +207,7 @@ fn completed_release_state_and_mcp_042_closure_are_preserved() {
     assert!(project.contains("| D-19 | Crash-consistent existing-file target and backup replacement | Post-M4 corrective maintenance | Codex | 2026-08-11 | Done |"));
     assert!(project.contains("| D-20 | Repeatable protected source/GNU/Linux release lifecycle after `0.1.0` | Post-M4 release maintenance | Codex | 2026-08-11 | Done |"));
     assert!(project.contains("| D-21 | Bounded cross-platform health-process containment | Post-M4 release readiness | Codex | Before `v0.1.1` | Done |"));
-    assert!(project.contains("| D-22 | Portable canonical environment-name validation | Post-M4 release readiness | Unassigned | Before `v0.1.1` | Proposed |"));
+    assert!(project.contains("| D-22 | Portable canonical environment-name validation | Post-M4 release readiness | Codex | Before `v0.1.1` | Done |"));
     assert!(project.contains("| D-23 | Deterministic Windows ARM64 health-fixture evidence | Post-M4 release readiness | Unassigned | Before `v0.1.1` | Proposed |"));
     assert!(project.contains("| D-24 | First verified repeat release | Post-M4 release readiness | Unassigned | After `MCP-044` | Proposed |"));
     assert!(project.contains("Complete SIDE-008: make pull-request CI deterministic"));
@@ -232,13 +232,14 @@ fn completed_release_state_and_mcp_042_closure_are_preserved() {
     assert!(project.contains("| MCP-040 | Make existing-file target and backup replacement crash-consistent | Post-M4 corrective maintenance | P0 | Codex | Done | `MCP-037` |"));
     assert!(project.contains("| MCP-041 | Make post-`0.1.0` source and GNU/Linux releases repeatable | Post-M4 release maintenance | P1 | Codex | Done | `MCP-040` |"));
     assert!(project.contains("| MCP-042 | Contain and clean up the complete health-check process tree | Post-M4 release readiness | P0 | Codex | Done | `MCP-041` |"));
-    assert!(project.contains("| MCP-043 | Reject environment names that cannot retain identity across supported boundaries | Post-M4 release readiness | P0 | Unassigned | Ready | `MCP-042` |"));
-    assert!(project.contains("| MCP-044 | Make Windows ARM64 health-fixture readiness deterministic | Post-M4 release readiness | P1 | Unassigned | Proposed | `MCP-043` |"));
+    assert!(project.contains("| MCP-043 | Reject environment names that cannot retain identity across supported boundaries | Post-M4 release readiness | P0 | Codex | Done | `MCP-042` |"));
+    assert!(project.contains("| MCP-044 | Make Windows ARM64 health-fixture readiness deterministic | Post-M4 release readiness | P1 | Unassigned | Ready | `MCP-043` |"));
     assert!(project.contains("| MCP-045 | Publish and verify `v0.1.1` as the first repeat release | Post-M4 release readiness | P1 | Unassigned | Proposed | `MCP-044` |"));
     assert!(project.contains("| MCP-042 | Complete MCP-042: fix GitHub issue #44 by containing every process started by `mcp-sync test`"));
     assert!(project.contains("| DEC-050 | Resolve known correctness and evidence defects before the first repeat release | Accepted |"));
     assert!(project.contains("| DEC-051 | Use platform-native health containment plus exact Unix descendant tracking | Accepted |"));
     assert!(project.contains("| DEC-052 | Treat timing-dependent CI variance as a defect and require deterministic evidence | Accepted |"));
+    assert!(project.contains("| DEC-053 | Reject environment names outside the portable canonical identity intersection | Accepted |"));
     assert!(project.contains("| RISK-23 | A canonical environment name changes identity or becomes invalid at a supported process boundary |"));
     assert!(project.contains(
         "| RISK-24 | Scheduler-dependent tests hide regressions behind retries or generous timing |"
@@ -248,6 +249,22 @@ fn completed_release_state_and_mcp_042_closure_are_preserved() {
         assert!(
             project.contains(exact_head_run),
             "MCP-042 closure must retain exact-head run {exact_head_run}"
+        );
+    }
+    assert!(project.contains("991e6b2114267fb26c3beb3a319e96de0452c7e2"));
+    for exact_main_run in ["31612019267", "31612019238", "31612019237", "31612019507"] {
+        assert!(
+            project.contains(exact_main_run),
+            "MCP-042 closure must retain exact-main run {exact_main_run}"
+        );
+    }
+    assert!(project.contains("Issue [#46](https://github.com/EnjoyableWork/mcp-sync/issues/46) is fixed and ready for closure on merge"));
+    assert!(project.contains("https://github.com/EnjoyableWork/mcp-sync/pull/66"));
+    assert!(project.contains("9472a7ab946f424df8c157ab35fe5eab9f1a6bb5"));
+    for exact_head_run in ["31625719526", "31625718066", "31625719556", "31625719525"] {
+        assert!(
+            project.contains(exact_head_run),
+            "MCP-043 closure must retain exact-head run {exact_head_run}"
         );
     }
     assert!(project.contains("https://github.com/EnjoyableWork/mcp-sync/pull/63"));
@@ -270,6 +287,9 @@ fn completed_release_state_and_mcp_042_closure_are_preserved() {
     assert!(!project.contains("| MCP-041 | Make post-`0.1.0` source and GNU/Linux releases repeatable | Post-M4 release maintenance | P1 | Codex | In progress |"));
     assert!(!project.contains("| MCP-042 | Contain and clean up the complete health-check process tree | Post-M4 release readiness | P0 | Codex | In progress |"));
     assert!(!project.contains("| MCP-043 | Reject environment names that cannot retain identity across supported boundaries | Post-M4 release readiness | P0 | Codex | In progress |"));
+    assert!(!project.contains("| MCP-043 | Reject environment names that cannot retain identity across supported boundaries | Post-M4 release readiness | P0 | Unassigned | Ready |"));
+    assert!(!project.contains("| MCP-043 | Reject environment names that cannot retain identity across supported boundaries | Post-M4 release readiness | P0 | Codex | Ready |"));
+    assert!(!project.contains("| MCP-044 | Make Windows ARM64 health-fixture readiness deterministic | Post-M4 release readiness | P1 | Unassigned | Proposed |"));
     assert!(!project.contains("| MCP-044 | Make Windows ARM64 health-fixture readiness deterministic | Post-M4 release readiness | P1 | Codex | In progress |"));
     assert!(!project.contains("| MCP-045 | Publish and verify `v0.1.1` as the first repeat release | Post-M4 release readiness | P1 | Codex | In progress |"));
     assert!(!project.contains("| SIDE-006 | Activate the funded six-target signed-native distribution pipeline | P2 | Codex | In progress |"));
