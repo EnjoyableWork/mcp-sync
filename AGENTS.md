@@ -356,11 +356,22 @@ integrity and redaction as product requirements.
 
 ## Dependencies and configuration format
 
+- Prefer a few essential dependencies with explicit trust and failure
+  boundaries. Dependency count alone is not a safety metric: choose maintained,
+  narrowly scoped implementations when reimplementing the capability would be
+  riskier, and remove convenience wrappers that add hidden mutable downloads or
+  unnecessary transitive behavior.
 - Prefer the standard library and small, actively maintained crates with a
   narrow purpose.
-- Before adding a crate, check existing capabilities, transitive dependencies,
-  maintenance, license compatibility, security advisories, supported platforms,
-  and effect on binary size or startup time.
+- Before adding a crate, CI action, build tool, or release tool, check existing
+  capabilities, direct and transitive dependencies, maintenance and ownership,
+  license compatibility, security advisories, supported platforms, runtime
+  network access, upgrade and abandonment paths, and the effect on binary size,
+  startup time, or pipeline reliability.
+- Pin CI and release dependencies at every executable boundary: immutable
+  action revision, exact tool version, immutable artifact URL, and verified
+  digest where the tool is downloaded at runtime. Fail closed when acquisition,
+  integrity verification, extraction, or execution fails.
 - Commit `Cargo.lock` because `mcp-sync` is an application. Keep direct
   dependency requirements intentional and use stable releases unless an
   accepted ticket requires otherwise.
@@ -438,6 +449,12 @@ rollback requires a regression test.
 - Treat pass/fail variance on identical source as an unresolved defect. A green
   rerun is evidence of nondeterminism, not acceptance evidence; do not add
   automatic retries or cite a retry as resolution.
+- A narrowly bounded retry is permitted only for an idempotent external
+  artifact download, only for classified transient transport failures, and only
+  when the exact downloaded bytes are verified against a repository-pinned
+  digest before use. Never retry a test, build, integrity check, publication,
+  complete job, or workflow as correctness evidence; permanent responses and
+  exhausted acquisition attempts fail closed.
 - Classify every unexplained race, timeout, or runner-only failure before merge
   and record it in the owning ticket or risk. Preserve the failing attempt and
   relevant diagnostics, then correct the lowest layer whose contract depended

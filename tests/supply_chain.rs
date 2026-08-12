@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const EXPECTED_DIRECT_ACTIONS: [&str; 10] = [
+const EXPECTED_DIRECT_ACTIONS: [&str; 9] = [
     "Azure/artifact-signing-action",
     "Azure/login",
     "EmbarkStudios/cargo-deny-action",
@@ -11,11 +11,10 @@ const EXPECTED_DIRECT_ACTIONS: [&str; 10] = [
     "actions/checkout",
     "actions/download-artifact",
     "actions/upload-artifact",
-    "anchore/sbom-action",
     "rust-lang/crates-io-auth-action",
 ];
 
-const EXPECTED_ALLOWED_PATTERNS: [&str; 11] = [
+const EXPECTED_ALLOWED_PATTERNS: [&str; 10] = [
     "Azure/artifact-signing-action@*",
     "Azure/login@*",
     "EmbarkStudios/cargo-deny-action@*",
@@ -25,7 +24,6 @@ const EXPECTED_ALLOWED_PATTERNS: [&str; 11] = [
     "actions/checkout@*",
     "actions/download-artifact@*",
     "actions/upload-artifact@*",
-    "anchore/sbom-action@*",
     "rust-lang/crates-io-auth-action@*",
 ];
 
@@ -463,6 +461,17 @@ fn operator_verifiers_encode_live_policy_and_authenticated_distribution() {
         assert!(
             workflow.contains(required),
             "workflow verifier should reject {required} in pull-request workflows"
+        );
+    }
+
+    for required in [
+        "scripts/syft-assets.txt",
+        "https://api.github.com/repos/anchore/syft/releases/tags/v1.50.0",
+        ".digest == $digest",
+    ] {
+        assert!(
+            workflow.contains(required),
+            "workflow verifier should enforce pinned Syft contract {required}"
         );
     }
 

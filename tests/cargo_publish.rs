@@ -226,6 +226,7 @@ fn cargo_request_and_workflow_policy_have_acceptance_and_rejection_exercises() {
     ] {
         assert!(workflow_test.contains(rejected));
     }
+    assert!(workflow_test.contains("scripts/syft-assets.txt"));
     for gate in [
         "./scripts/test-cargo-publish-policy.sh",
         "./scripts/test-cargo-publish-workflow-policy.sh",

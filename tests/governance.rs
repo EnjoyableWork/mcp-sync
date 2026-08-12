@@ -22,6 +22,8 @@ fn deterministic_ci_policy_rejects_timing_and_retry_as_acceptance_evidence() {
         "Use timeouts only as product contracts or outer watchdogs",
         "Never use elapsed time, a fixed sleep, or a fast polling",
         "rerun is evidence of nondeterminism, not acceptance evidence",
+        "A narrowly bounded retry is permitted only for an idempotent external",
+        "repository-pinned\n  digest before use",
         "one deterministic regression that forces the relevant",
         "CI job\n  `timeout-minutes` remains an outer infrastructure watchdog",
     ] {
@@ -42,6 +44,23 @@ fn deterministic_ci_policy_rejects_timing_and_retry_as_acceptance_evidence() {
         assert!(
             project.contains(required_contract),
             "project tracking should preserve deterministic CI contract {required_contract}"
+        );
+    }
+}
+
+#[test]
+fn dependency_policy_prefers_essential_explicit_boundaries() {
+    let agent_guidance = repository_file("AGENTS.md");
+    for required_contract in [
+        "few essential dependencies with explicit trust and failure",
+        "Dependency count alone is not a safety metric",
+        "runtime\n  network access, upgrade and abandonment paths",
+        "immutable\n  action revision, exact tool version, immutable artifact URL, and verified",
+        "Fail closed when acquisition",
+    ] {
+        assert!(
+            agent_guidance.contains(required_contract),
+            "repository guidance should preserve dependency contract {required_contract}"
         );
     }
 }

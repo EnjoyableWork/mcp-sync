@@ -73,6 +73,32 @@ fn assert_crates_io_requests_identify_the_client(workflow: &str, user_agent: &st
     );
 }
 
+fn assert_unix_sbom_generation(workflow: &str, expected_calls: usize) {
+    assert_eq!(
+        workflow.matches("scripts/generate-sbom.sh").count(),
+        expected_calls,
+        "workflow should use the repository-owned Unix SBOM generator"
+    );
+    assert!(workflow.contains("ARCHIVE_PATH:"));
+    assert!(workflow.contains("SBOM_PATH:"));
+    assert!(!workflow.contains("anchore/sbom-action"));
+    assert!(!workflow.contains("syft-version:"));
+}
+
+fn assert_windows_sbom_generation(workflow: &str, expected_calls: usize) {
+    assert_eq!(
+        workflow.matches("scripts/generate-sbom.ps1").count(),
+        expected_calls,
+        "workflow should use the repository-owned Windows SBOM generator"
+    );
+    if expected_calls > 0 {
+        assert!(workflow.contains(
+            "./scripts/generate-sbom.ps1 -Archive $env:ARCHIVE_PATH -Output $env:SBOM_PATH"
+        ));
+        assert!(workflow.contains("MCP_SYNC_SYFT_HOST_ARCHITECTURE: ${{ matrix.architecture }}"));
+    }
+}
+
 #[test]
 fn release_preflight_covers_every_native_artifact_without_credentials() {
     let workflow = repository_file(".github/workflows/release-preflight.yml");
@@ -110,7 +136,8 @@ fn release_preflight_covers_every_native_artifact_without_credentials() {
     assert!(workflow.contains("cargo package --locked"));
     assert!(workflow.contains("scripts/verify-release-assets.sh"));
     assert!(workflow.contains("scripts/verify-published-release.sh"));
-    assert!(workflow.contains("syft-version: v1.50.0"));
+    assert_unix_sbom_generation(&workflow, 1);
+    assert_windows_sbom_generation(&workflow, 1);
     assert!(workflow.contains("retention-days: 1"));
     assert!(
         !workflow.contains("secrets."),
@@ -223,6 +250,8 @@ fn funded_signed_workflow_is_explicit_and_preserves_the_full_trust_contract() {
             && !workflow.contains("winget install"),
         "downstream publication must wait for the immutable GitHub Release"
     );
+    assert_unix_sbom_generation(&workflow, 2);
+    assert_windows_sbom_generation(&workflow, 1);
     assert_actions_are_commit_pinned(&workflow);
 }
 
@@ -318,6 +347,8 @@ fn source_linux_tag_workflow_publishes_only_attested_linux_and_source_outputs() 
     assert!(!request.contains("uses: actions/checkout"));
     assert!(!workflow.contains("repos/$GITHUB_REPOSITORY/immutable-releases"));
     assert!(!workflow.contains("  push:"));
+    assert_unix_sbom_generation(&workflow, 1);
+    assert_windows_sbom_generation(&workflow, 0);
     assert_actions_are_commit_pinned(&workflow);
 }
 
@@ -346,7 +377,6 @@ fn source_linux_preflight_proves_native_source_installs_and_exact_payload_withou
         "scripts/smoke-archive.sh",
         "scripts/verify-source-linux-release-assets.sh",
         "scripts/verify-published-source-linux-release.sh",
-        "syft-version: v1.50.0",
         "retention-days: 1",
     ] {
         assert!(workflow.contains(required_contract));
@@ -355,7 +385,85 @@ fn source_linux_preflight_proves_native_source_installs_and_exact_payload_withou
     assert!(!workflow.contains("contents: write"));
     assert!(!workflow.contains("id-token: write"));
     assert!(!workflow.contains("attest-build-provenance"));
+    assert_unix_sbom_generation(&workflow, 1);
+    assert_windows_sbom_generation(&workflow, 0);
     assert_actions_are_commit_pinned(&workflow);
+}
+
+#[test]
+fn syft_acquisition_is_exact_native_bounded_and_fail_closed() {
+    let manifest = repository_file("scripts/syft-assets.txt");
+    let unix = repository_file("scripts/generate-sbom.sh");
+    let windows = repository_file("scripts/generate-sbom.ps1");
+    let unix_test = repository_file("scripts/test-generate-sbom.sh");
+    let windows_test = repository_file("scripts/test-generate-sbom.ps1");
+
+    for expected_record in [
+        "darwin arm64 syft_1.50.0_darwin_arm64.tar.gz e32fdb9d47823fa633748a1efca2528fd77c37469ea93c9e40ab835da44e4cce",
+        "darwin x86_64 syft_1.50.0_darwin_amd64.tar.gz d11a8c7bc27114853bd7c1e1b2f3be3ddda3a1de17aee585329f04c369341c75",
+        "linux arm64 syft_1.50.0_linux_arm64.tar.gz 887c57cbcc2d0e8c5c110a4571a3fc7150058b24d74f993ee4663516e5c8ce86",
+        "linux x86_64 syft_1.50.0_linux_amd64.tar.gz bf7b29ff57f06da30918266a0e1c2885a8f99784798d1bdb1628886aa015d788",
+        "windows arm64 syft_1.50.0_windows_arm64.zip 5eb435eb8750737d12e66f5a145975b4027adf20076b518079af38b2148d55a5",
+        "windows amd64 syft_1.50.0_windows_amd64.zip 815ee6973ec5dff6a671d7f41b0e78835a8c45b91d5a39f4743ea1cee833d3be",
+    ] {
+        assert!(
+            manifest.contains(expected_record),
+            "Syft manifest should retain {expected_record}"
+        );
+    }
+
+    for required_contract in [
+        "https://github.com/anchore/syft/releases/download/v${sbom_syft_version}",
+        "sbom_maximum_attempts=5",
+        "--proto '=https'",
+        "--proto-redir '=https'",
+        "408 | 429 | 500 | 502 | 503 | 504",
+        "5 | 6 | 7 | 16 | 18 | 28 | 35 | 52 | 55 | 56 | 92",
+        "sbom_delay=$((1 << (sbom_attempt - 1)))",
+        "downloaded Syft asset failed SHA-256 verification",
+        "SYFT_CHECK_FOR_APP_UPDATE=false",
+        "spdx-json=$sbom_output_temp",
+    ] {
+        assert!(
+            unix.contains(required_contract),
+            "Unix Syft generator should retain {required_contract}"
+        );
+    }
+    for required_contract in [
+        "$mcpSyncMaximumAttempts = 5",
+        "408, 429, 500, 502, 503, 504",
+        "System.Net.Http.HttpRequestException",
+        "System.TimeoutException",
+        "System.OperationCanceledException",
+        "System.Net.Sockets.SocketException",
+        "Syft download URI must use HTTPS.",
+        "Get-FileHash -LiteralPath $mcpSyncDownload -Algorithm SHA256",
+        "$env:SYFT_CHECK_FOR_APP_UPDATE = 'false'",
+        "spdx-json=$mcpSyncOutputTemp",
+    ] {
+        assert!(
+            windows.contains(required_contract),
+            "Windows Syft generator should retain {required_contract}"
+        );
+    }
+    for forbidden_installer in [
+        "raw.githubusercontent.com/anchore/syft/main/install.sh",
+        "anchore/sbom-action",
+    ] {
+        assert!(!unix.contains(forbidden_installer));
+        assert!(!windows.contains(forbidden_installer));
+    }
+    for focused_evidence in [
+        "SBOM generator accepted a checksum mismatch",
+        "SBOM generator accepted a permanent HTTP failure",
+        "SBOM generator accepted exhausted transient failures",
+        "SBOM generator accepted an unsupported host",
+        "Syft SBOM generation policy tests passed",
+    ] {
+        assert!(unix_test.contains(focused_evidence));
+    }
+    assert!(windows_test.contains("Unsupported Syft host architecture."));
+    assert!(windows_test.contains("Windows Syft SBOM generation policy tests passed."));
 }
 
 #[test]
