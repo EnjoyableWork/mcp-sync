@@ -12,6 +12,7 @@ fi
 workflow_supply_chain_root="$(git rev-parse --show-toplevel)"
 workflow_supply_chain_policy="$workflow_supply_chain_root/.github/actions-policy.json"
 workflow_supply_chain_files="$workflow_supply_chain_root/.github/workflows"
+workflow_supply_chain_syft_manifest="$workflow_supply_chain_root/scripts/syft-assets.txt"
 
 for workflow_supply_chain_command in awk curl cut find git grep jq sed sort; do
   if ! command -v "$workflow_supply_chain_command" >/dev/null 2>&1; then
@@ -23,7 +24,7 @@ done
 jq -e '
     .github_owned_allowed == false and
     .verified_allowed == false and
-    (.patterns_allowed | type == "array" and length == 11 and
+    (.patterns_allowed | type == "array" and length == 10 and
       length == (unique | length) and . == sort and
       all(.[]; test("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?@\\*$"))) and
     (.reviewed_transitive_actions == [{
@@ -34,6 +35,41 @@ jq -e '
       update_hint: "v4.2.1"
     }])
   ' "$workflow_supply_chain_policy" >/dev/null
+
+if ! awk '
+  BEGIN {
+    expected["darwin arm64"] = "syft_1.50.0_darwin_arm64.tar.gz"
+    expected["darwin x86_64"] = "syft_1.50.0_darwin_amd64.tar.gz"
+    expected["linux arm64"] = "syft_1.50.0_linux_arm64.tar.gz"
+    expected["linux x86_64"] = "syft_1.50.0_linux_amd64.tar.gz"
+    expected["windows arm64"] = "syft_1.50.0_windows_arm64.zip"
+    expected["windows amd64"] = "syft_1.50.0_windows_amd64.zip"
+  }
+  /^[[:space:]]*(#|$)/ { next }
+  {
+    key = $1 " " $2
+    if (NF != 4 || !(key in expected) || $3 != expected[key] ||
+        length($4) != 64 || $4 !~ /^[0-9a-f]+$/ || seen[key] == 1) {
+      invalid = 1
+    }
+    seen[key] = 1
+    records += 1
+  }
+  END {
+    if (records != 6) {
+      invalid = 1
+    }
+    for (key in expected) {
+      if (seen[key] != 1) {
+        invalid = 1
+      }
+    }
+    exit invalid
+  }
+' "$workflow_supply_chain_syft_manifest"; then
+  echo "Syft asset manifest must contain the exact six native v1.50.0 host mappings and SHA-256 digests" >&2
+  exit 1
+fi
 
 workflow_supply_chain_action_regex='^uses:[[:space:]]+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?)@([0-9a-f]{40})[[:space:]]+#[[:space:]]+([A-Za-z0-9][A-Za-z0-9._-]*)'
 workflow_supply_chain_expression_marker="\${{"
@@ -407,6 +443,32 @@ if [[ "$workflow_supply_chain_mode" == --verify-upstreams ]]; then
     echo "transitive action update hint does not resolve to the reviewed SHA" >&2
     exit 1
   fi
+
+  workflow_supply_chain_syft_release="$({
+    curl --fail --silent --show-error --location \
+      --proto '=https' --proto-redir '=https' --tlsv1.2 \
+      --header 'Accept: application/vnd.github+json' \
+      --header 'X-GitHub-Api-Version: 2022-11-28' \
+      https://api.github.com/repos/anchore/syft/releases/tags/v1.50.0
+  })"
+  if ! jq -e '
+    .tag_name == "v1.50.0" and
+    .draft == false and
+    .prerelease == false
+  ' <<<"$workflow_supply_chain_syft_release" >/dev/null; then
+    echo "pinned Syft release is missing, draft, or prerelease" >&2
+    exit 1
+  fi
+  while read -r _ _ workflow_supply_chain_syft_asset workflow_supply_chain_syft_digest; do
+    if ! jq -e \
+      --arg asset "$workflow_supply_chain_syft_asset" \
+      --arg digest "sha256:$workflow_supply_chain_syft_digest" \
+      '[.assets[] | select(.name == $asset and .digest == $digest)] | length == 1' \
+      <<<"$workflow_supply_chain_syft_release" >/dev/null; then
+      echo "pinned Syft asset digest does not match GitHub release metadata: $workflow_supply_chain_syft_asset" >&2
+      exit 1
+    fi
+  done < <(grep -vE '^[[:space:]]*(#|$)' "$workflow_supply_chain_syft_manifest")
 fi
 
 printf 'Verified %d immutable workflow action references, untrusted boundaries, and the selected-action policy.\n' \
