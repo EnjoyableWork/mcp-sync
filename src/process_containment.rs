@@ -92,6 +92,13 @@ impl ContainedChild {
     pub(crate) fn fail_next_cleanup_for_test(&mut self) {
         self.fail_next_cleanup = true;
     }
+
+    #[cfg(all(test, target_os = "macos"))]
+    #[allow(dead_code)] // Used by the harness-free integration fixture's path-included copy.
+    pub(crate) fn forget_descendants_for_pipe_discovery_test(&mut self) {
+        self.containment
+            .forget_descendants_for_pipe_discovery_test();
+    }
 }
 
 impl Drop for ContainedChild {
@@ -174,6 +181,8 @@ mod unix {
     use rustix::process::{Pid, Signal, kill_process_group};
     use std::collections::{HashMap, HashSet};
     use std::io;
+    #[cfg(target_os = "macos")]
+    use std::os::fd::AsRawFd;
     use std::os::unix::process::CommandExt;
     use std::process::{Child, Command};
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -204,6 +213,23 @@ mod unix {
         process_group: u32,
     }
 
+    #[cfg(target_os = "macos")]
+    #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+    struct PipeEndpoint {
+        handle: u64,
+        peer_handle: u64,
+    }
+
+    #[cfg(target_os = "macos")]
+    impl PipeEndpoint {
+        fn peer(self) -> Self {
+            Self {
+                handle: self.peer_handle,
+                peer_handle: self.handle,
+            }
+        }
+    }
+
     struct TrackedProcess {
         identity: ProcessIdentity,
         target: SignalTarget,
@@ -222,6 +248,10 @@ mod unix {
         monitor: Option<JoinHandle<()>>,
         #[cfg(target_os = "linux")]
         baseline_children: HashSet<ProcessIdentity>,
+        #[cfg(target_os = "macos")]
+        baseline_processes: HashSet<ProcessIdentity>,
+        #[cfg(target_os = "macos")]
+        stdout_writer: Option<PipeEndpoint>,
         #[cfg(target_os = "linux")]
         subreaper: SubreaperGuard,
         cleanup_timeout: Duration,
@@ -237,6 +267,11 @@ mod unix {
 
             #[cfg(target_os = "linux")]
             let baseline_children = direct_children(std::process::id())?;
+            #[cfg(target_os = "macos")]
+            let baseline_processes = process_snapshot()?
+                .into_iter()
+                .map(|process| process.identity)
+                .collect();
             #[cfg(target_os = "linux")]
             let mut subreaper = SubreaperGuard::enable()?;
 
@@ -301,6 +336,33 @@ mod unix {
                 }
             };
 
+            #[cfg(target_os = "macos")]
+            let stdout_writer = match child.stdout.as_ref() {
+                Some(stdout) => match pipe_endpoint(std::process::id(), stdout.as_raw_fd()) {
+                    Ok(Some(endpoint)) => Some(endpoint.peer()),
+                    Ok(None) => {
+                        let source = io::Error::other(
+                            "process containment could not identify the stdout pipe",
+                        );
+                        return Err(cleanup_identified_group_setup(
+                            &mut child,
+                            root,
+                            cleanup_timeout,
+                            source,
+                        ));
+                    }
+                    Err(source) => {
+                        return Err(cleanup_identified_group_setup(
+                            &mut child,
+                            root,
+                            cleanup_timeout,
+                            source,
+                        ));
+                    }
+                },
+                None => None,
+            };
+
             let state = Arc::new(Mutex::new(MonitorState {
                 tracked: HashMap::from([(
                     root,
@@ -324,6 +386,10 @@ mod unix {
                 monitor: None,
                 #[cfg(target_os = "linux")]
                 baseline_children,
+                #[cfg(target_os = "macos")]
+                baseline_processes,
+                #[cfg(target_os = "macos")]
+                stdout_writer,
                 #[cfg(target_os = "linux")]
                 subreaper,
                 cleanup_timeout,
@@ -361,25 +427,13 @@ mod unix {
         pub(super) fn terminate(&mut self) -> io::Result<()> {
             let mut failure = None;
 
-            #[cfg(target_os = "linux")]
-            record_first(
-                &mut failure,
-                capture_descendants(self.root, &self.baseline_children, &self.state).map(drop),
-            );
-            #[cfg(not(target_os = "linux"))]
-            record_first(
-                &mut failure,
-                capture_descendants(self.root, &self.state).map(drop),
-            );
+            record_first(&mut failure, self.capture_cleanup_targets().map(drop));
 
             record_first(&mut failure, signal_group(self.root, Signal::STOP));
 
             let mut stable_passes = 0;
             for _ in 0..FREEZE_PASSES {
-                #[cfg(target_os = "linux")]
-                let captured = capture_descendants(self.root, &self.baseline_children, &self.state);
-                #[cfg(not(target_os = "linux"))]
-                let captured = capture_descendants(self.root, &self.state);
+                let captured = self.capture_cleanup_targets();
 
                 let added = match captured {
                     Ok(added) => added,
@@ -446,6 +500,30 @@ mod unix {
                 monitor.thread().unpark();
                 let _ = monitor.join();
             }
+        }
+
+        fn capture_cleanup_targets(&self) -> io::Result<usize> {
+            #[cfg(target_os = "linux")]
+            {
+                capture_descendants(self.root, &self.baseline_children, &self.state)
+            }
+            #[cfg(target_os = "macos")]
+            {
+                capture_macos_cleanup_targets(
+                    self.root,
+                    &self.baseline_processes,
+                    self.stdout_writer,
+                    &self.state,
+                )
+            }
+        }
+
+        #[cfg(all(test, target_os = "macos"))]
+        pub(super) fn forget_descendants_for_pipe_discovery_test(&mut self) {
+            self.stop_monitor();
+            lock_state(&self.state)
+                .tracked
+                .retain(|identity, _| *identity == self.root);
         }
     }
 
@@ -690,6 +768,26 @@ mod unix {
         Ok(state.tracked.len().saturating_sub(before))
     }
 
+    #[cfg(target_os = "macos")]
+    fn capture_macos_cleanup_targets(
+        root: ProcessIdentity,
+        baseline_processes: &HashSet<ProcessIdentity>,
+        stdout_writer: Option<PipeEndpoint>,
+        state: &Arc<Mutex<MonitorState>>,
+    ) -> io::Result<usize> {
+        let snapshot = process_snapshot()?;
+        let pipe_holders = match stdout_writer {
+            Some(endpoint) => pipe_holder_identities(endpoint, baseline_processes, &snapshot)?,
+            None => HashSet::new(),
+        };
+        let mut state = lock_state(state);
+        let before = state.tracked.len();
+        let mut identities = descendant_identities(root, &state.tracked, &snapshot);
+        identities.extend(pipe_holders);
+        add_targets(&mut state, identities)?;
+        Ok(state.tracked.len().saturating_sub(before))
+    }
+
     fn descendant_identities(
         root: ProcessIdentity,
         tracked: &HashMap<ProcessIdentity, TrackedProcess>,
@@ -910,6 +1008,187 @@ mod unix {
                 )),
             }
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[repr(C)]
+    struct ProcFileInfo {
+        open_flags: u32,
+        status: u32,
+        offset: libc::off_t,
+        file_type: i32,
+        guard_flags: u32,
+    }
+
+    #[cfg(target_os = "macos")]
+    #[repr(C)]
+    struct PipeInfo {
+        stat: libc::vinfo_stat,
+        handle: u64,
+        peer_handle: u64,
+        status: i32,
+        reserved: i32,
+    }
+
+    #[cfg(target_os = "macos")]
+    #[repr(C)]
+    struct PipeFdInfo {
+        file: ProcFileInfo,
+        pipe: PipeInfo,
+    }
+
+    #[cfg(target_os = "macos")]
+    fn pipe_holder_identities(
+        endpoint: PipeEndpoint,
+        baseline_processes: &HashSet<ProcessIdentity>,
+        snapshot: &[ProcessInfo],
+    ) -> io::Result<HashSet<ProcessIdentity>> {
+        let mut holders = HashSet::new();
+        for process in snapshot {
+            if baseline_processes.contains(&process.identity) {
+                continue;
+            }
+            for descriptor in process_file_descriptors(process.identity.pid)? {
+                if descriptor.proc_fdtype != u32::try_from(libc::PROX_FDTYPE_PIPE).unwrap_or(6) {
+                    continue;
+                }
+                if pipe_endpoint(process.identity.pid, descriptor.proc_fd)? == Some(endpoint) {
+                    holders.insert(process.identity);
+                    break;
+                }
+            }
+        }
+        Ok(holders)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn process_file_descriptors(pid: u32) -> io::Result<Vec<libc::proc_fdinfo>> {
+        let Ok(raw_pid) = i32::try_from(pid) else {
+            return Ok(Vec::new());
+        };
+        let required = unsafe {
+            // SAFETY: A null buffer with zero length is the documented size
+            // query for the `PROC_PIDLISTFDS` process-information flavor.
+            libc::proc_pidinfo(raw_pid, libc::PROC_PIDLISTFDS, 0, std::ptr::null_mut(), 0)
+        };
+        if required == 0 {
+            return Ok(Vec::new());
+        }
+        if required < 0 {
+            let source = io::Error::last_os_error();
+            return if skippable_macos_process_inspection_error(&source) {
+                Ok(Vec::new())
+            } else {
+                Err(source)
+            };
+        }
+
+        let entry_size = std::mem::size_of::<libc::proc_fdinfo>();
+        let required = usize::try_from(required).map_err(io::Error::other)?;
+        let capacity = required
+            .div_ceil(entry_size)
+            .checked_add(32)
+            .ok_or_else(|| io::Error::other("process descriptor count overflowed"))?;
+        let buffer_bytes = capacity
+            .checked_mul(entry_size)
+            .ok_or_else(|| io::Error::other("process descriptor buffer overflowed"))?;
+        let buffer_size = i32::try_from(buffer_bytes).map_err(io::Error::other)?;
+        let mut descriptors = Vec::<libc::proc_fdinfo>::with_capacity(capacity);
+        let written = unsafe {
+            // SAFETY: `descriptors` owns uninitialized capacity for exactly
+            // `buffer_size` bytes. libproc writes only within that allocation;
+            // the vector length is set below only for complete returned entries.
+            libc::proc_pidinfo(
+                raw_pid,
+                libc::PROC_PIDLISTFDS,
+                0,
+                descriptors.as_mut_ptr().cast(),
+                buffer_size,
+            )
+        };
+        if written == 0 {
+            return Ok(Vec::new());
+        }
+        if written < 0 {
+            let source = io::Error::last_os_error();
+            return if skippable_macos_process_inspection_error(&source) {
+                Ok(Vec::new())
+            } else {
+                Err(source)
+            };
+        }
+        let written = usize::try_from(written).map_err(io::Error::other)?;
+        if written > buffer_bytes {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "process descriptor inspection exceeded its buffer",
+            ));
+        }
+        unsafe {
+            // SAFETY: libproc initialized `written` bytes above. Truncating to
+            // complete entries means every value included in the vector is
+            // fully initialized and uses the C layout supplied by `libc`.
+            descriptors.set_len(written / entry_size);
+        }
+        Ok(descriptors)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn pipe_endpoint(pid: u32, descriptor: i32) -> io::Result<Option<PipeEndpoint>> {
+        const PROC_PIDFDPIPEINFO: i32 = 6;
+
+        let Ok(raw_pid) = i32::try_from(pid) else {
+            return Ok(None);
+        };
+        let expected = std::mem::size_of::<PipeFdInfo>();
+        let size = i32::try_from(expected).map_err(io::Error::other)?;
+        let mut info = std::mem::MaybeUninit::<PipeFdInfo>::zeroed();
+        let read = unsafe {
+            // SAFETY: `info` is exact C-layout storage for the public
+            // `PROC_PIDFDPIPEINFO` flavor and is assumed initialized only
+            // after libproc reports that every byte was written.
+            libc::proc_pidfdinfo(
+                raw_pid,
+                descriptor,
+                PROC_PIDFDPIPEINFO,
+                info.as_mut_ptr().cast(),
+                size,
+            )
+        };
+        if read <= 0 {
+            let source = io::Error::last_os_error();
+            return if skippable_macos_process_inspection_error(&source) {
+                Ok(None)
+            } else {
+                Err(source)
+            };
+        }
+        if usize::try_from(read).ok() != Some(expected) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "stdout pipe inspection returned an unexpected size",
+            ));
+        }
+        let info = unsafe {
+            // SAFETY: The exact-size check above proves libproc initialized
+            // the complete `PipeFdInfo` value.
+            info.assume_init()
+        };
+        Ok(Some(PipeEndpoint {
+            handle: info.pipe.handle,
+            peer_handle: info.pipe.peer_handle,
+        }))
+    }
+
+    #[cfg(target_os = "macos")]
+    fn skippable_macos_process_inspection_error(source: &io::Error) -> bool {
+        matches!(
+            source.kind(),
+            io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied
+        ) || matches!(
+            source.raw_os_error(),
+            Some(libc::ESRCH | libc::ENOENT | libc::EBADF | libc::EPERM | libc::EACCES)
+        )
     }
 
     #[cfg(target_os = "linux")]

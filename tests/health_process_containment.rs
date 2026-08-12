@@ -59,6 +59,9 @@ fn run_root_fixture(mode: &str) {
         .expect("the detached fixture descendant should start");
 
     wait_for_marker_lines(&marker, 3, FIXTURE_READY_TIMEOUT);
+    descendant
+        .wait()
+        .expect("the intermediary should exit after publishing leaf readiness");
     let mut marker_file = fs::OpenOptions::new()
         .append(true)
         .open(&marker)
@@ -105,8 +108,9 @@ fn run_root_fixture(mode: &str) {
 }
 
 fn resist_shutdown(descendant: &mut std::process::Child) -> ! {
-    // Both processes deliberately resist stdin closure. The product must
-    // terminate this root and the session-escaping stdout holder together.
+    // The root deliberately resists stdin closure after its already-reaped
+    // intermediary leaves a session-escaping stdout holder behind. The product
+    // must terminate the root and that reparented leaf together.
     loop {
         let _ = descendant.try_wait();
         thread::sleep(Duration::from_secs(60));
@@ -207,6 +211,8 @@ fn prove_built_binary_contains_detached_descendants_on_every_outcome() {
     prove_containment_setup_failure_cleanup();
     prove_containment_cleanup_failure_drop_retry();
     prove_containment_drop_backstop();
+    #[cfg(target_os = "macos")]
+    prove_macos_pipe_discovery_without_ancestry_history();
 }
 
 #[derive(Clone, Copy)]
@@ -369,6 +375,26 @@ fn prove_containment_cleanup_failure_drop_retry() {
 
     // `assert_cleaned` drops the still-owned containment value. Its independent
     // backstop must retry and remove the complete escaped fixture tree.
+    fixture.assert_cleaned();
+}
+
+#[cfg(target_os = "macos")]
+fn prove_macos_pipe_discovery_without_ancestry_history() {
+    let mut fixture = DirectContainmentFixture::new("pipe-discovery.marker");
+    let child = fixture
+        .child
+        .as_mut()
+        .expect("the pipe-discovery fixture should retain its child");
+
+    // Fixture readiness now includes the intermediary's observed exit, so the
+    // detached leaf is no longer discoverable from the root's ancestry. Erase
+    // monitor history as a forced interleaving: cleanup can succeed only by
+    // identifying the exact inherited stdout writer.
+    child.forget_descendants_for_pipe_discovery_test();
+    child
+        .terminate(Duration::from_millis(500))
+        .expect("pipe identity should recover a missed reparented stdout holder");
+
     fixture.assert_cleaned();
 }
 

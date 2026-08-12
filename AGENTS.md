@@ -126,10 +126,12 @@ JSON-RPC envelope and negotiated handshake version, sends
 `notifications/initialized`, then closes or force-terminates and reaps the
 platform-contained process tree through deadline-bounded cleanup. The active
 `MCP-042` correction uses a monitored process group on Unix, Linux subreaper
-and PID-descriptor hardening, exact macOS process identities, and a suspended
-non-breakaway Windows Job Object so a forked or session-escaping inherited
-stdio holder is included in cleanup. Its process environment contains only
-canonical entries plus an inherited `PATH` when canonical state omits one;
+and PID-descriptor hardening, exact macOS process identities plus a pre-spawn
+baseline and inherited-stdout pipe identity, and a suspended non-breakaway
+Windows Job Object so a forked or session-escaping inherited stdio holder is
+included in cleanup without relying on scheduler timing. Its process
+environment contains only canonical entries plus an inherited `PATH` when
+canonical state omits one;
 raw stdout, stderr, commands, arguments, environment values, and server error
 data never reach diagnostics. `init`, `sync`, and `restore` remain
 configuration-only. A
@@ -408,6 +410,35 @@ Use deterministic fixtures and injected clocks/process runners where needed.
 Do not call live MCP servers or depend on installed desktop clients in the
 default test suite. A bug involving data loss, redaction, conflict handling, or
 rollback requires a regression test.
+
+### Deterministic CI policy
+
+- Use timeouts only as product contracts or outer watchdogs that bound a
+  failed operation. Never use elapsed time, a fixed sleep, or a fast polling
+  interval as synchronization, readiness, or proof that an event occurred.
+- Synchronize asynchronous and process fixtures through observable state or an
+  explicit event/acknowledgement handshake. Polling may observe eventual
+  operating-system state only when the state itself is the success condition
+  and one outer deadline prevents an indefinite hang.
+- Treat pass/fail variance on identical source as an unresolved defect. A green
+  rerun is evidence of nondeterminism, not acceptance evidence; do not add
+  automatic retries or cite a retry as resolution.
+- Classify every unexplained race, timeout, or runner-only failure before merge
+  and record it in the owning ticket or risk. Preserve the failing attempt and
+  relevant diagnostics, then correct the lowest layer whose contract depended
+  on timing.
+- Do not make CI green by increasing a product timeout, weakening an assertion,
+  skipping or quarantining a safety regression, or broadly serializing tests.
+  Focused serialization is acceptable only for a demonstrated exclusive
+  resource and must be documented at the call site.
+- Use repeated or stress execution as supplemental evidence only. Every race
+  correction also needs one deterministic regression that forces the relevant
+  interleaving or state transition without depending on scheduler luck.
+- Keep built-binary and native-host tests for contracts that genuinely cross a
+  process, filesystem, packaging, or operating-system boundary. Prove all
+  separable behavior in narrower unit or integration tests first. CI job
+  `timeout-minutes` remains an outer infrastructure watchdog, not fixture
+  readiness or a product-behavior limit.
 
 The normal substantive-change handoff checks are:
 
