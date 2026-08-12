@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
-use support::SyntheticHome;
+use support::{SyntheticHome, process_exists};
 
 const ROOT_MODE: &str = "--mcp-sync-containment-root";
 const DESCENDANT_MODE: &str = "--mcp-sync-containment-descendant";
@@ -495,42 +495,6 @@ fn wait_for_process_exit(process_id: u32, timeout: Duration) {
         );
         thread::sleep(Duration::from_millis(10));
     }
-}
-
-#[cfg(unix)]
-fn process_exists(process_id: u32) -> bool {
-    Command::new("/bin/kill")
-        .args(["-0", &process_id.to_string()])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
-}
-
-#[cfg(windows)]
-fn process_exists(process_id: u32) -> bool {
-    let powershell =
-        PathBuf::from(std::env::var_os("SystemRoot").expect("Windows should define SystemRoot"))
-            .join("System32")
-            .join("WindowsPowerShell")
-            .join("v1.0")
-            .join("powershell.exe");
-    Command::new(powershell)
-        .args([
-            "-NoLogo",
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            &format!(
-                "if (Get-Process -Id {process_id} -ErrorAction SilentlyContinue) {{ exit 0 }} else {{ exit 1 }}"
-            ),
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
 }
 
 fn marker_path() -> PathBuf {

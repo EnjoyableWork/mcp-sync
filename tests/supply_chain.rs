@@ -266,6 +266,68 @@ fn ci_runs_once_per_pull_request_commit_and_again_after_main_merge() {
 }
 
 #[test]
+fn windows_arm64_health_readiness_is_native_sequential_and_fail_fast() {
+    let manifest = repository_file("Cargo.toml");
+    let health = repository_file("tests/health.rs");
+    let containment = repository_file("tests/health_process_containment.rs");
+    let integration_support = repository_file("tests/support/mod.rs");
+    let health_unit = repository_file("src/health.rs");
+    let ci = repository_file(".github/workflows/ci.yml");
+
+    assert!(
+        manifest
+            .contains("[[test]]\nname = \"health\"\npath = \"tests/health.rs\"\nharness = false")
+    );
+    for native_readiness_contract in [
+        "std::env::current_exe()",
+        "READY_PATH",
+        "RELEASE_PATH",
+        "let deadline = Instant::now() + COMMAND_TIMEOUT",
+        "prove_explicit_fixture_readiness_and_complete_handshake",
+    ] {
+        assert!(
+            health.contains(native_readiness_contract),
+            "the sequential health harness should retain {native_readiness_contract}"
+        );
+    }
+    assert!(!health.contains("FIXTURE_STATE_TIMEOUT"));
+    for forbidden_interpreter_fixture in ["powershell", "PowerShell", "shell_server"] {
+        assert!(!health.contains(forbidden_interpreter_fixture));
+        assert!(!containment.contains(forbidden_interpreter_fixture));
+        assert!(!integration_support.contains(forbidden_interpreter_fixture));
+    }
+    for removed_unit_timing_mechanism in [
+        "RESPONSIVE_PROCESS_FIXTURE_TIMEOUT",
+        "PROCESS_FIXTURE_LOCK",
+        "process_fixture_lock",
+    ] {
+        assert!(!health_unit.contains(removed_unit_timing_mechanism));
+    }
+    assert!(health_unit.contains("bounded_response_framing_is_proved_without_starting_a_process"));
+    assert!(health_unit.contains("assert_eq!(RESPONSE_TIMEOUT, Duration::from_secs(5))"));
+
+    let repeat_start = ci
+        .find("- name: Repeat deterministic native health readiness on Windows ARM64")
+        .expect("CI should retain the focused Windows ARM64 evidence step");
+    let repeat = &ci[repeat_start..];
+    for required in [
+        "if: matrix.architecture == 'ARM64'",
+        "$mcpSyncIteration -le 10",
+        "cargo test --test health --locked",
+        "if ($LASTEXITCODE -ne 0)",
+        "throw \"Focused native health run $mcpSyncIteration failed",
+    ] {
+        assert!(
+            repeat.contains(required),
+            "focused Windows ARM64 evidence should retain {required}"
+        );
+    }
+    for forbidden_mask in ["continue-on-error", "retry", "rerun"] {
+        assert!(!repeat.contains(forbidden_mask));
+    }
+}
+
+#[test]
 fn homebrew_input_is_validated_before_protected_access() {
     let workflow = repository_file(".github/workflows/source-linux-release-publish-homebrew.yml");
     let validate_start = workflow

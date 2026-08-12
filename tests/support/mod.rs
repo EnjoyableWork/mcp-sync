@@ -36,6 +36,63 @@ pub fn assert_file_matches(path: &Path, expected: &[u8], context: &str) {
     assert_bytes_match(&actual, expected, context);
 }
 
+#[cfg(unix)]
+pub fn process_exists(process_id: u32) -> bool {
+    use std::process::Stdio;
+
+    Command::new("/bin/kill")
+        .args(["-0", &process_id.to_string()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+#[cfg(windows)]
+pub fn process_exists(process_id: u32) -> bool {
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, ERROR_INVALID_PARAMETER, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    };
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject,
+    };
+
+    let handle = unsafe {
+        // SAFETY: The fixture supplies a numeric process identifier, requests
+        // only synchronization access, and never exposes the returned handle.
+        OpenProcess(PROCESS_SYNCHRONIZE, 0, process_id)
+    };
+    if handle.is_null() {
+        let error = std::io::Error::last_os_error();
+        assert_eq!(
+            error.raw_os_error(),
+            Some(ERROR_INVALID_PARAMETER as i32),
+            "the fixture process should be absent or inspectable: {error}"
+        );
+        return false;
+    }
+    let state = unsafe {
+        // SAFETY: `handle` is a live process handle owned by this function and
+        // a zero-duration wait only observes its signaled state.
+        WaitForSingleObject(handle, 0)
+    };
+    let wait_error = (state == WAIT_FAILED).then(std::io::Error::last_os_error);
+    let close_result = unsafe {
+        // SAFETY: `handle` is closed exactly once after the wait completes.
+        CloseHandle(handle)
+    };
+    assert_ne!(close_result, 0, "the fixture process handle should close");
+    if let Some(error) = wait_error {
+        panic!("the fixture process wait should succeed: {error}");
+    }
+    match state {
+        WAIT_OBJECT_0 => false,
+        WAIT_TIMEOUT => true,
+        unexpected => panic!("unexpected fixture process wait state: {unexpected}"),
+    }
+}
+
 pub struct SyntheticHome {
     root: TempDir,
     user_root: PathBuf,

@@ -119,3 +119,14 @@ jobs:
       - name: Run quality gates through a synthetic Windows home
         shell: pwsh
         run: ./scripts/check.ps1
+
+      - name: Repeat deterministic native health readiness on Windows ARM64
+        if: matrix.architecture == 'ARM64'
+        shell: pwsh
+        run: |
+          for ($mcpSyncIteration = 1; $mcpSyncIteration -le 10; $mcpSyncIteration++) {
+            & cargo test --test health --locked
+            if ($LASTEXITCODE -ne 0) {
+              throw "Focused native health run $mcpSyncIteration failed with exit code $LASTEXITCODE"
+            }
+          }
