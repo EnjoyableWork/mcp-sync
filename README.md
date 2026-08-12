@@ -181,6 +181,8 @@ literal executable, an ordered argument array, and literal environment strings:
 parsed as shell syntax or expanded as variables. Canonical output has
 deterministic key and field ordering, so unchanged configuration remains
 stable. See the complete [canonical v1 example](examples/config.v1.json).
+Environment names must be non-empty and contain neither NUL nor `=` so the
+same key identity survives every supported client and process boundary.
 
 The canonical file lives at
 `${XDG_CONFIG_HOME:-$HOME/.config}/mcp-sync/config.json` on macOS and Linux,
@@ -219,6 +221,11 @@ The Kiro adapter preserves comments, trailing commas, and every unowned field.
 Entries containing Kiro `${VARIABLE}` references, remote or mixed transports,
 non-string environment values, or another shape canonical v1 cannot reproduce
 remain unmanaged and are never expanded.
+
+An otherwise-local Cursor, Windsurf, VS Code, Codex, or Kiro entry with an
+environment name outside the canonical non-empty/no-NUL/no-`=` contract also
+remains unmanaged and collision-protected. Claude Desktop has no equivalent
+unmanaged-local shape, so the same invalid definition fails closed.
 
 The ChatGPT desktop app, Codex CLI, and Codex IDE extension share the same
 global host configuration, so one Codex target keeps their local STDIO

@@ -1,4 +1,7 @@
-use crate::config::{CanonicalConfig, CanonicalServer, ConfigError, parse_unique_json_value};
+use crate::config::{
+    CanonicalConfig, CanonicalServer, ConfigError, parse_unique_json_value,
+    validate_environment_name,
+};
 use crate::filesystem::{FileIoError, FileSystem};
 use crate::paths::ConfigurationPaths;
 use crate::reconciliation::{ReconciliationOutcomeKind, ReconciliationPlan};
@@ -364,7 +367,14 @@ fn decode_servers(value: Option<&Value>) -> Result<DecodedServers, CursorAdapter
         };
 
         if fields.contains_key(COMMAND_FIELD) {
-            local_servers.insert(name.clone(), decode_local_server(name, fields)?);
+            match decode_local_server(name, fields)? {
+                Some(server) => {
+                    local_servers.insert(name.clone(), server);
+                }
+                None => {
+                    unmanaged_server_names.insert(name.clone());
+                }
+            }
         } else {
             unmanaged_server_names.insert(name.clone());
         }
@@ -379,7 +389,7 @@ fn decode_servers(value: Option<&Value>) -> Result<DecodedServers, CursorAdapter
 fn decode_local_server(
     name: &str,
     fields: &Map<String, Value>,
-) -> Result<CanonicalServer, CursorAdapterError> {
+) -> Result<Option<CanonicalServer>, CursorAdapterError> {
     let command = fields
         .get(COMMAND_FIELD)
         .expect("the caller classifies local entries by command presence");
@@ -391,12 +401,14 @@ fn decode_local_server(
     };
 
     let arguments = decode_arguments(name, fields.get(ARGUMENTS_FIELD))?;
-    let environment = decode_environment(name, fields.get(ENVIRONMENT_FIELD))?;
-    Ok(CanonicalServer::new(
+    let Some(environment) = decode_environment(name, fields.get(ENVIRONMENT_FIELD))? else {
+        return Ok(None);
+    };
+    Ok(Some(CanonicalServer::new(
         command.clone(),
         arguments,
         environment,
-    ))
+    )))
 }
 
 fn decode_arguments(
@@ -430,9 +442,9 @@ fn decode_arguments(
 fn decode_environment(
     server: &str,
     value: Option<&Value>,
-) -> Result<BTreeMap<String, String>, CursorAdapterError> {
+) -> Result<Option<BTreeMap<String, String>>, CursorAdapterError> {
     let Some(value) = value else {
-        return Ok(BTreeMap::new());
+        return Ok(Some(BTreeMap::new()));
     };
     let Value::Object(environment) = value else {
         return Err(CursorDocumentError::EnvironmentMustBeObject {
@@ -440,8 +452,14 @@ fn decode_environment(
         }
         .into());
     };
+    if environment
+        .keys()
+        .any(|name| validate_environment_name(name).is_err())
+    {
+        return Ok(None);
+    }
 
-    environment
+    let environment = environment
         .iter()
         .enumerate()
         .map(|(position, (key, value))| match value {
@@ -452,7 +470,9 @@ fn decode_environment(
             }
             .into()),
         })
-        .collect()
+        .collect::<Result<BTreeMap<_, _>, CursorAdapterError>>()?;
+
+    Ok(Some(environment))
 }
 
 fn write_managed_fields(fields: &mut Map<String, Value>, server: &CanonicalServer) {
@@ -627,6 +647,8 @@ mod tests {
 
     const CURRENT_FIXTURE: &[u8] = include_bytes!("../tests/fixtures/cursor/current.json");
     const DESIRED_FIXTURE: &str = include_str!("../tests/fixtures/cursor/desired.json");
+    const INVALID_ENVIRONMENT_NAME_FIXTURE: &[u8] =
+        include_bytes!("../tests/fixtures/cursor/invalid-environment-name.json");
     const MERGED_FIXTURE: &[u8] = include_bytes!("../tests/fixtures/cursor/merged.json");
     const PROJECT_FIXTURE: &[u8] = include_bytes!("../tests/fixtures/cursor/project.json");
 
@@ -1036,6 +1058,44 @@ mod tests {
             rendered.bytes() == bytes,
             "unmanaged-only rendering should preserve exact native bytes"
         );
+    }
+
+    #[test]
+    fn invalid_environment_name_is_preserved_as_unmanaged_and_refuses_collision() {
+        let bytes = INVALID_ENVIRONMENT_NAME_FIXTURE;
+        let document = CursorDocument::parse(bytes)
+            .expect("an unrepresentable local entry should remain unmanaged");
+        let empty = CanonicalConfig::new(BTreeMap::new()).expect("empty canonical is valid");
+        let rendered = document
+            .render_plan(&reconcile(document.canonical_config(), &empty))
+            .expect("an unmanaged-only plan should preserve the document");
+
+        assert!(document.canonical_config().servers().is_empty());
+        assert_eq!(document.unmanaged_server_names(), ["collision"]);
+        assert!(!rendered.changed());
+        assert_eq!(rendered.bytes(), bytes);
+
+        let desired = CanonicalConfig::new(BTreeMap::from([(
+            "collision".to_owned(),
+            CanonicalServer::new("desired-command", Vec::new(), BTreeMap::new()),
+        )]))
+        .expect("the desired collision should be canonical");
+        let error = document
+            .render_plan(&reconcile(document.canonical_config(), &desired))
+            .expect_err("a desired local entry must not replace unmanaged data");
+        let diagnostic = error.to_string();
+        assert!(matches!(
+            error,
+            CursorAdapterError::UnmanagedServerCollision { ref server } if server == "collision"
+        ));
+        for private in [
+            "synthetic-command",
+            "SYNTHETIC=NAME",
+            "synthetic-value",
+            "desired-command",
+        ] {
+            assert!(!diagnostic.contains(private));
+        }
     }
 
     #[test]

@@ -1,4 +1,7 @@
-use crate::config::{CanonicalConfig, CanonicalServer, ConfigError, parse_unique_json_value};
+use crate::config::{
+    CanonicalConfig, CanonicalServer, ConfigError, ValidationError, parse_unique_json_value,
+    validate_environment_name,
+};
 use crate::filesystem::{FileIoError, FileSystem};
 use crate::paths::ConfigurationPaths;
 use crate::reconciliation::{ReconciliationOutcomeKind, ReconciliationPlan};
@@ -398,13 +401,25 @@ fn decode_environment(
     environment
         .iter()
         .enumerate()
-        .map(|(position, (key, value))| match value {
-            Value::String(value) => Ok((key.clone(), value.clone())),
-            _ => Err(ClaudeDesktopDocumentError::EnvironmentValueMustBeString {
-                server: server.to_owned(),
-                position,
+        .map(|(position, (key, value))| {
+            if let Err(violation) = validate_environment_name(key) {
+                return Err(ClaudeDesktopAdapterError::InvalidCanonical {
+                    source: ConfigError::InvalidModel(ValidationError::InvalidEnvironmentName {
+                        server: server.to_owned(),
+                        position,
+                        violation,
+                    }),
+                });
             }
-            .into()),
+
+            match value {
+                Value::String(value) => Ok((key.clone(), value.clone())),
+                _ => Err(ClaudeDesktopDocumentError::EnvironmentValueMustBeString {
+                    server: server.to_owned(),
+                    position,
+                }
+                .into()),
+            }
         })
         .collect()
 }
@@ -586,6 +601,8 @@ mod tests {
 
     const CURRENT_FIXTURE: &[u8] = include_bytes!("../tests/fixtures/claude-desktop/current.json");
     const DESIRED_FIXTURE: &str = include_str!("../tests/fixtures/claude-desktop/desired.json");
+    const INVALID_ENVIRONMENT_NAME_FIXTURE: &[u8] =
+        include_bytes!("../tests/fixtures/claude-desktop/invalid-environment-name.json");
     const MERGED_FIXTURE: &[u8] = include_bytes!("../tests/fixtures/claude-desktop/merged.json");
 
     struct FixtureEnvironment {
@@ -959,6 +976,38 @@ mod tests {
             error,
             ClaudeDesktopAdapterError::InvalidCanonical { .. }
         ));
+    }
+
+    #[test]
+    fn unrepresentable_native_environment_names_fail_as_invalid_canonical_without_disclosure() {
+        let cases = [
+            br#"{"mcpServers":{"fixture":{"command":"private-command","env":{"":"private-value"}}}}"#.as_slice(),
+            INVALID_ENVIRONMENT_NAME_FIXTURE,
+            br#"{"mcpServers":{"fixture":{"command":"private-command","env":{"private\u0000name":"private-value"}}}}"#.as_slice(),
+        ];
+
+        for bytes in cases {
+            let error = ClaudeDesktopDocument::parse(bytes)
+                .expect_err("an invalid native environment name should fail structurally");
+            let diagnostic = error.to_string();
+            let debug = format!("{error:?}");
+
+            assert!(matches!(
+                error,
+                ClaudeDesktopAdapterError::InvalidCanonical { .. }
+            ));
+            for private in [
+                "private-command",
+                "private=name",
+                "private-value",
+                "synthetic-command",
+                "SYNTHETIC=NAME",
+                "synthetic-value",
+            ] {
+                assert!(!diagnostic.contains(private));
+                assert!(!debug.contains(private));
+            }
+        }
     }
 
     #[test]

@@ -926,9 +926,10 @@ impl From<ResponseReadError> for InitializeError {
 #[cfg(test)]
 mod tests {
     use super::{
-        CURRENT_HANDSHAKE_PROTOCOL_VERSION, CleanupError, HealthLimits, InitializeError,
-        InitializeTester, NegotiatedProtocol, OsStdioSession, RESPONSE_TIMEOUT, ResponseViolation,
-        initialize_request, run_initialize, test_server, validate_initialize_response,
+        CURRENT_HANDSHAKE_PROTOCOL_VERSION, CleanupError, HealthError, HealthLimits,
+        InitializeError, InitializeTester, NegotiatedProtocol, OsStdioSession, RESPONSE_TIMEOUT,
+        ResponseViolation, initialize_request, run_initialize, test_server,
+        validate_initialize_response,
     };
     use crate::config::CanonicalServer;
     use crate::filesystem::OsFileSystem;
@@ -1140,6 +1141,54 @@ mod tests {
             error.to_string(),
             "server \"missing\" is not present in canonical configuration; run `mcp-sync list` to review configured names"
         );
+    }
+
+    #[test]
+    fn invalid_environment_name_never_reaches_the_process_boundary() {
+        let root = tempfile::tempdir().expect("temporary health root should be created");
+        let paths = fixture_paths(root.path());
+        let canonical = paths.canonical_configuration();
+        fs::create_dir_all(
+            canonical
+                .parent()
+                .expect("canonical path should have a parent"),
+        )
+        .expect("canonical parent should be created");
+        fs::write(
+            canonical,
+            r#"{
+  "schemaVersion": 1,
+  "servers": {
+    "alpha": {
+      "command": "synthetic-private-command",
+      "args": ["synthetic-private-argument"],
+      "env": {"synthetic=private-name": "synthetic-private-value"}
+    }
+  }
+}
+"#,
+        )
+        .expect("canonical fixture should be written");
+        let tester = RecordingTester {
+            called: Cell::new(false),
+        };
+
+        let error = test_server(&paths, &OsFileSystem, &tester, "alpha")
+            .expect_err("invalid canonical state should fail before execution");
+        let diagnostic = error.to_string();
+
+        assert!(!tester.called.get());
+        assert!(matches!(error, HealthError::InvalidCanonical { .. }));
+        assert!(diagnostic.contains("environment name 0"));
+        assert!(diagnostic.contains("must not contain `=`"));
+        for private in [
+            "synthetic-private-command",
+            "synthetic-private-argument",
+            "synthetic=private-name",
+            "synthetic-private-value",
+        ] {
+            assert!(!diagnostic.contains(private));
+        }
     }
 
     #[test]

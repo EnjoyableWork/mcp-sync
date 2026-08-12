@@ -102,7 +102,11 @@ a same-directory temporary file. `add` validates one complete definition before
 reading canonical state, performs a deterministic add/update, skips semantic
 no-ops, and backs up then atomically replaces only the canonical regular file;
 `list` exposes names, counts, and escaped environment key names but no process
-values. `sync --dry-run` validates and structurally reports one fully rendered
+values. Canonical environment names are non-empty and contain neither NUL nor
+`=`. The shared rule rejects invalid canonical input before mutation or process
+start; Claude Desktop fails structurally on the same native shape, while
+Cursor, Windsurf, VS Code, Codex, and Kiro preserve it as unmanaged and reject
+collisions. `sync --dry-run` validates and structurally reports one fully rendered
 six-target plan without mutation; `sync` applies those exact bytes with no-op
 detection, recoverable backups, atomic replacement, per-target outcomes, and
 reverse-order rollback after a later failure. It preserves target-only and
@@ -172,8 +176,9 @@ enforcement and no API-token fallback. Bounded M4 expansion `MCP-037` is also
 merged its six-target adapter and durable native and current-client evidence as
 exact-main commit `d63a7a97026f994e06d89c1f699938a26a313aa8`, whose CI, CodeQL,
 release preflight, and source/install/archive preflight all pass. Corrective
-main-story ticket `MCP-042` is `Done` with issue #44 ready for closure through
-draft PR #65; `MCP-043` is `Ready` but not active, and every later successor
+main-story ticket `MCP-042` is `Done`; merged PR #65 closed issue #44 as
+exact-main commit `991e6b2114267fb26c3beb3a319e96de0452c7e2`. `MCP-043` is
+owned and `In progress` under its exact catalog Goal, and every later successor
 and side quest remains inactive.
 Use the existing Clap command tree as CLI behavior grows; do not introduce a
 second parser.

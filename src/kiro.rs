@@ -1,4 +1,4 @@
-use crate::config::{CanonicalConfig, CanonicalServer, ConfigError};
+use crate::config::{CanonicalConfig, CanonicalServer, ConfigError, validate_environment_name};
 use crate::filesystem::{FileIoError, FileSystem};
 use crate::paths::ConfigurationPaths;
 use crate::reconciliation::{ReconciliationOutcomeKind, ReconciliationPlan};
@@ -469,6 +469,9 @@ fn decode_server(fields: &Map<String, Value>, cst: &jsonc_parser::cst::CstObject
             }
             let mut environment = BTreeMap::new();
             for (key, value) in values {
+                if validate_environment_name(key).is_err() {
+                    return DecodedServer::Unmanaged;
+                }
                 let Some(value) = value.as_str() else {
                     return DecodedServer::Unmanaged;
                 };
@@ -750,6 +753,8 @@ mod tests {
 
     const CURRENT_FIXTURE: &[u8] = include_bytes!("../tests/fixtures/kiro/current.json");
     const DESIRED_FIXTURE: &str = include_str!("../tests/fixtures/kiro/desired.json");
+    const INVALID_ENVIRONMENT_NAME_FIXTURE: &[u8] =
+        include_bytes!("../tests/fixtures/kiro/invalid-environment-name.json");
     const MERGED_FIXTURE: &[u8] = include_bytes!("../tests/fixtures/kiro/merged.json");
 
     struct FixtureEnvironment {
@@ -1116,6 +1121,36 @@ mod tests {
 
         assert!(!rendered.changed());
         assert_eq!(rendered.bytes(), original);
+    }
+
+    #[test]
+    fn invalid_environment_name_is_preserved_as_unmanaged_and_refuses_collision() {
+        let bytes = INVALID_ENVIRONMENT_NAME_FIXTURE;
+        let document = KiroDocument::parse(bytes)
+            .expect("an unrepresentable local entry should remain unmanaged");
+        let empty = CanonicalConfig::new(BTreeMap::new()).expect("empty canonical is valid");
+        let rendered = document
+            .render_plan(&reconcile(document.canonical_config(), &empty))
+            .expect("an unmanaged-only plan should preserve the document");
+
+        assert!(document.canonical_config().servers().is_empty());
+        assert_eq!(document.unmanaged_server_names(), ["collision"]);
+        assert!(!rendered.changed());
+        assert_eq!(rendered.bytes(), bytes);
+
+        let desired = config(vec![("collision", server("desired-command", &[], &[]))]);
+        let error = document
+            .render_plan(&reconcile(document.canonical_config(), &desired))
+            .expect_err("a desired local entry must not replace unmanaged data");
+        let diagnostic = error.to_string();
+        for private in [
+            "synthetic-command",
+            "SYNTHETIC=NAME",
+            "synthetic-value",
+            "desired-command",
+        ] {
+            assert!(!diagnostic.contains(private));
+        }
     }
 
     #[test]
