@@ -178,11 +178,17 @@ exact-main commit `d63a7a97026f994e06d89c1f699938a26a313aa8`, whose CI, CodeQL,
 release preflight, and source/install/archive preflight all pass. Corrective
 main-story ticket `MCP-042` is `Done`; merged PR #65 closed issue #44 as
 exact-main commit `991e6b2114267fb26c3beb3a319e96de0452c7e2`. `MCP-043` and
-D-22 are `Done` through draft PR #66 implementation head
-`9472a7ab946f424df8c157ab35fe5eab9f1a6bb5`, whose 24 hosted checks passed
-on attempt one; issue #46 is ready for closure on merge. Only `MCP-044` is
-`Ready` but not active, and every later successor and side quest remains
-inactive.
+D-22 are `Done`; merged PR #66 closed issue #46 as exact-main commit
+`e96c1c437b5ce9d9f5138b790dd23ad2926fa749`, whose 23 hosted checks passed
+on attempt one. `MCP-044` and D-23 are `Done` through draft PR #67 and exact
+implementation head `9127775b69f6a710bb8e12a1a10f27409088c68a`: the complete
+native CI matrix, including ten fail-fast Windows ARM64 health-harness runs,
+passed on attempt one, as did CodeQL and source/install/archive preflight.
+Release preflight is green after its sole failed GNU/Linux ARM64 job recovered
+from an explicit upstream GitHub `503` during pinned Syft acquisition; that
+external-service recovery is not health-fix acceptance evidence. Issue #60 is
+ready for closure on merge. Only `MCP-045` is `Ready`, and it and every side
+quest remain inactive.
 Use the existing Clap command tree as CLI behavior grows; do not introduce a
 second parser.
 
