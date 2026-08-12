@@ -124,7 +124,7 @@ and rollback; read-only and dry-run commands remain lock-free. Only
 1-MiB-bounded newline-delimited MCP `initialize` exchange, validates the
 JSON-RPC envelope and negotiated handshake version, sends
 `notifications/initialized`, then closes or force-terminates and reaps the
-platform-contained process tree through deadline-bounded cleanup. The active
+platform-contained process tree through deadline-bounded cleanup. The completed
 `MCP-042` correction uses a monitored process group on Unix, Linux subreaper
 and PID-descriptor hardening, exact macOS process identities plus a pre-spawn
 baseline and inherited-stdout pipe identity, and a suspended non-breakaway
@@ -172,8 +172,9 @@ enforcement and no API-token fallback. Bounded M4 expansion `MCP-037` is also
 merged its six-target adapter and durable native and current-client evidence as
 exact-main commit `d63a7a97026f994e06d89c1f699938a26a313aa8`, whose CI, CodeQL,
 release preflight, and source/install/archive preflight all pass. Corrective
-main-story ticket `MCP-042` is active for issue #44; its successors and every
-side quest remain inactive.
+main-story ticket `MCP-042` is `Done` with issue #44 ready for closure through
+draft PR #65; `MCP-043` is `Ready` but not active, and every later successor
+and side quest remains inactive.
 Use the existing Clap command tree as CLI behavior grows; do not introduce a
 second parser.
 
