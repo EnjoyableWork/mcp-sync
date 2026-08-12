@@ -94,6 +94,9 @@ jobs:
           actual_rust_host="$(rustc --version --verbose | sed -n 's/^host: //p')"
           test "$actual_rust_host" = "$EXPECTED_RUST_HOST"
 
+      - name: Prove native health-process containment
+        run: cargo test --test health_process_containment --locked
+
       - name: Read the stable package version
         id: version
         run: |
@@ -228,6 +231,10 @@ jobs:
           if ($actualRustHost -ne $env:EXPECTED_RUST_HOST) {
             throw "Unexpected native Rust host."
           }
+
+      - name: Prove native health-process containment
+        shell: pwsh
+        run: cargo test --test health_process_containment --locked
 
       - name: Read the stable package version
         id: version

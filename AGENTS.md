@@ -124,8 +124,14 @@ and rollback; read-only and dry-run commands remain lock-free. Only
 1-MiB-bounded newline-delimited MCP `initialize` exchange, validates the
 JSON-RPC envelope and negotiated handshake version, sends
 `notifications/initialized`, then closes or force-terminates and reaps the
-child within the shutdown bound. Its process environment contains only
-canonical entries plus an inherited `PATH` when canonical state omits one;
+platform-contained process tree through deadline-bounded cleanup. The completed
+`MCP-042` correction uses a monitored process group on Unix, Linux subreaper
+and PID-descriptor hardening, exact macOS process identities plus a pre-spawn
+baseline and inherited-stdout pipe identity, and a suspended non-breakaway
+Windows Job Object so a forked or session-escaping inherited stdio holder is
+included in cleanup without relying on scheduler timing. Its process
+environment contains only canonical entries plus an inherited `PATH` when
+canonical state omits one;
 raw stdout, stderr, commands, arguments, environment values, and server error
 data never reach diagnostics. `init`, `sync`, and `restore` remain
 configuration-only. A
@@ -158,15 +164,17 @@ native PowerShell health fixtures, and complete native MSVC x64/ARM64
 whole-suite CI pass through the retained `MCP-019` matrix expanded by
 `MCP-037`. There is no Windows current-client smoke claim. Windsurf, VS Code,
 and Codex have no current-client smoke claim on any implemented platform.
-Distribution remains later-ticket scope.
+The first repeat distribution remains later-ticket `MCP-045` scope.
 `MCP-039` is `Done`: every Cargo version after `0.1.0` must use its exact
 protected crates.io Trusted Publishing path with trusted-publishing-only
 enforcement and no API-token fallback. Bounded M4 expansion `MCP-037` is also
 `Done` without a `v0.1.0` adoption-evidence prerequisite: protected PR #58
 merged its six-target adapter and durable native and current-client evidence as
 exact-main commit `d63a7a97026f994e06d89c1f699938a26a313aa8`, whose CI, CodeQL,
-release preflight, and source/install/archive preflight all pass. No main-story
-ticket, side quest, or successor is active.
+release preflight, and source/install/archive preflight all pass. Corrective
+main-story ticket `MCP-042` is `Done` with issue #44 ready for closure through
+draft PR #65; `MCP-043` is `Ready` but not active, and every later successor
+and side quest remains inactive.
 Use the existing Clap command tree as CLI behavior grows; do not introduce a
 second parser.
 
@@ -403,6 +411,35 @@ Use deterministic fixtures and injected clocks/process runners where needed.
 Do not call live MCP servers or depend on installed desktop clients in the
 default test suite. A bug involving data loss, redaction, conflict handling, or
 rollback requires a regression test.
+
+### Deterministic CI policy
+
+- Use timeouts only as product contracts or outer watchdogs that bound a
+  failed operation. Never use elapsed time, a fixed sleep, or a fast polling
+  interval as synchronization, readiness, or proof that an event occurred.
+- Synchronize asynchronous and process fixtures through observable state or an
+  explicit event/acknowledgement handshake. Polling may observe eventual
+  operating-system state only when the state itself is the success condition
+  and one outer deadline prevents an indefinite hang.
+- Treat pass/fail variance on identical source as an unresolved defect. A green
+  rerun is evidence of nondeterminism, not acceptance evidence; do not add
+  automatic retries or cite a retry as resolution.
+- Classify every unexplained race, timeout, or runner-only failure before merge
+  and record it in the owning ticket or risk. Preserve the failing attempt and
+  relevant diagnostics, then correct the lowest layer whose contract depended
+  on timing.
+- Do not make CI green by increasing a product timeout, weakening an assertion,
+  skipping or quarantining a safety regression, or broadly serializing tests.
+  Focused serialization is acceptable only for a demonstrated exclusive
+  resource and must be documented at the call site.
+- Use repeated or stress execution as supplemental evidence only. Every race
+  correction also needs one deterministic regression that forces the relevant
+  interleaving or state transition without depending on scheduler luck.
+- Keep built-binary and native-host tests for contracts that genuinely cross a
+  process, filesystem, packaging, or operating-system boundary. Prove all
+  separable behavior in narrower unit or integration tests first. CI job
+  `timeout-minutes` remains an outer infrastructure watchdog, not fixture
+  readiness or a product-behavior limit.
 
 The normal substantive-change handoff checks are:
 

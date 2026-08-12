@@ -113,7 +113,7 @@ mcp-sync test project-files
 `list` shows names, counts, and environment key names without printing
 commands, arguments, or environment values. `test` performs a bounded MCP
 STDIO `initialize` exchange, validates the response, and closes or terminates
-the child before returning.
+the contained process tree before returning.
 
 > [!IMPORTANT]
 > Only `test` starts the selected configured process. `init`, `list`,

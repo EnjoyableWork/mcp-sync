@@ -249,8 +249,8 @@ and [newline-delimited STDIO transport](https://modelcontextprotocol.io/specific
 - negotiated `2025-11-25`, `2025-06-18`, `2025-03-26`, and `2024-11-05`
   handshake versions are accepted; and
 - after a valid result, `mcp-sync` sends `notifications/initialized`, closes
-  stdin, allows 500 milliseconds for clean exit, then force-terminates and
-  reaps a child that does not stop.
+  stdin, allows 500 milliseconds for clean exit, then force-terminates the
+  contained process tree and reaps every process available to the host process.
 
 A timeout, malformed or oversized message, mismatched response, server error,
 failed notification, or unclean shutdown returns non-zero. Diagnostics report
@@ -259,6 +259,14 @@ error categories. They never echo commands, arguments, environment values,
 raw stdout, raw stderr, JSON-RPC error messages, error data, or unchecked
 protocol-version text. Cleanup runs on every success and failure path; a
 cleanup failure is combined with the original failure instead of being hidden.
+On Windows, the configured process starts suspended inside a non-breakaway Job
+Object. On macOS and GNU/Linux it starts in a dedicated process group while a
+bounded monitor tracks forked descendants even when one creates another session
+or process group. Linux additionally adopts orphaned descendants as a child
+subreaper. Cleanup freezes discovered Unix descendants before exact-identity
+termination, terminates the Windows Job Object as one unit, releases inherited
+stdio holders, and does not extend the 500-millisecond graceful-shutdown
+allowance.
 
 This command deliberately implements the initialize-based compatibility
 boundary required by `MCP-017`. It does not claim validation of the stateless

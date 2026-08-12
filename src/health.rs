@@ -1,6 +1,7 @@
 use crate::config::{CanonicalConfig, CanonicalServer, ConfigError, parse_unique_json_value};
 use crate::filesystem::{FileIoError, FileSystem};
 use crate::paths::ConfigurationPaths;
+use crate::process_containment::ContainedChild;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use std::env;
@@ -8,7 +9,7 @@ use std::error::Error;
 use std::fmt;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
-use std::process::{Child, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
+use std::process::{ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -112,7 +113,11 @@ fn run_initialize(
     limits: HealthLimits,
 ) -> Result<NegotiatedProtocol, InitializeError> {
     let request = initialize_request()?;
-    let mut session = OsStdioSession::spawn(server, limits.maximum_response_bytes)?;
+    let mut session = OsStdioSession::spawn(
+        server,
+        limits.maximum_response_bytes,
+        limits.shutdown_timeout,
+    )?;
 
     let interaction = (|| {
         session.send(&request, MessagePhase::InitializeRequest)?;
@@ -183,7 +188,7 @@ fn initialize_request() -> Result<Vec<u8>, InitializeError> {
 }
 
 struct OsStdioSession {
-    child: Option<Child>,
+    child: Option<ContainedChild>,
     stdin: Option<ChildStdin>,
     response: Receiver<Result<Vec<u8>, ResponseReadError>>,
     reader: Option<JoinHandle<()>>,
@@ -193,6 +198,7 @@ impl OsStdioSession {
     fn spawn(
         server: &CanonicalServer,
         maximum_response_bytes: usize,
+        cleanup_timeout: Duration,
     ) -> Result<Self, InitializeError> {
         let mut command = Command::new(server.command());
         command
@@ -212,30 +218,47 @@ impl OsStdioSession {
             command.env("PATH", path);
         }
 
-        let mut child = command
-            .spawn()
+        let mut child = ContainedChild::spawn(&mut command, cleanup_timeout)
             .map_err(|source| InitializeError::CannotStart { source })?;
-        let Some(stdin) = child.stdin.take() else {
-            terminate_unmanaged_child(&mut child);
-            return Err(InitializeError::CannotOpenStdin);
+        let Some(stdin) = child.stdin().take() else {
+            return Err(cleanup_after_setup_failure(
+                &mut child,
+                InitializeError::CannotOpenStdin,
+                cleanup_timeout,
+            ));
         };
-        let Some(stdout) = child.stdout.take() else {
+        let Some(stdout) = child.stdout().take() else {
             drop(stdin);
-            terminate_unmanaged_child(&mut child);
-            return Err(InitializeError::CannotOpenStdout);
+            return Err(cleanup_after_setup_failure(
+                &mut child,
+                InitializeError::CannotOpenStdout,
+                cleanup_timeout,
+            ));
         };
 
         let (sender, response) = mpsc::channel();
-        let reader = thread::spawn(move || {
-            let mut stdout = BufReader::new(stdout);
-            let result = read_bounded_response(&mut stdout, maximum_response_bytes);
-            let should_drain = result.is_ok();
-            if sender.send(result).is_ok() && should_drain {
-                // Keep the protocol pipe open and drained until shutdown so a
-                // compliant server cannot block while emitting notifications.
-                let _ = io::copy(&mut stdout, &mut io::sink());
+        let reader = match thread::Builder::new()
+            .name("mcp-sync-health-reader".to_owned())
+            .spawn(move || {
+                let mut stdout = BufReader::new(stdout);
+                let result = read_bounded_response(&mut stdout, maximum_response_bytes);
+                let should_drain = result.is_ok();
+                if sender.send(result).is_ok() && should_drain {
+                    // Keep the protocol pipe open and drained until shutdown so a
+                    // compliant server cannot block while emitting notifications.
+                    let _ = io::copy(&mut stdout, &mut io::sink());
+                }
+            }) {
+            Ok(reader) => reader,
+            Err(source) => {
+                drop(stdin);
+                return Err(cleanup_after_setup_failure(
+                    &mut child,
+                    InitializeError::CannotStartReader { source },
+                    cleanup_timeout,
+                ));
             }
-        });
+        };
 
         Ok(Self {
             child: Some(child),
@@ -290,6 +313,14 @@ impl OsStdioSession {
 
         match status {
             Some(status) => {
+                self.child
+                    .as_mut()
+                    .ok_or(InitializeError::ProcessLost)?
+                    .finish_after_exit(timeout)
+                    .map_err(|source| InitializeError::CleanupFailed {
+                        failure: Box::new(InitializeError::ProcessLost),
+                        cleanup: CleanupError::Containment(source),
+                    })?;
                 self.child.take();
                 self.finish_reader(timeout)
                     .map_err(|cleanup| InitializeError::CleanupFailed {
@@ -303,11 +334,12 @@ impl OsStdioSession {
                 }
             }
             None => {
-                self.force_terminate()
-                    .map_err(|cleanup| InitializeError::CleanupFailed {
+                self.force_terminate(timeout).map_err(|cleanup| {
+                    InitializeError::CleanupFailed {
                         failure: Box::new(InitializeError::ShutdownTimedOut { timeout }),
                         cleanup,
-                    })?;
+                    }
+                })?;
                 self.finish_reader(timeout)
                     .map_err(|cleanup| InitializeError::CleanupFailed {
                         failure: Box::new(InitializeError::ShutdownTimedOut { timeout }),
@@ -320,27 +352,16 @@ impl OsStdioSession {
 
     fn terminate(&mut self, reader_timeout: Duration) -> Result<(), CleanupError> {
         drop(self.stdin.take());
-        self.force_terminate()?;
+        self.force_terminate(reader_timeout)?;
         self.finish_reader(reader_timeout)
     }
 
-    fn force_terminate(&mut self) -> Result<(), CleanupError> {
+    fn force_terminate(&mut self, timeout: Duration) -> Result<(), CleanupError> {
         let Some(mut child) = self.child.take() else {
             return Ok(());
         };
 
-        let result = match child.try_wait().map_err(CleanupError::Inspect) {
-            Err(error) => Err(error),
-            Ok(Some(_)) => Ok(()),
-            Ok(None) => match child.kill() {
-                Ok(()) => child.wait().map(drop).map_err(CleanupError::Wait),
-                Err(kill_error) => match child.try_wait().map_err(CleanupError::Inspect) {
-                    Ok(Some(_)) => Ok(()),
-                    Ok(None) => Err(CleanupError::Kill(kill_error)),
-                    Err(error) => Err(error),
-                },
-            },
-        };
+        let result = child.terminate(timeout).map_err(CleanupError::Containment);
         if result.is_err() {
             self.child = Some(child);
         }
@@ -366,6 +387,7 @@ impl OsStdioSession {
         while !reader.is_finished() {
             let now = Instant::now();
             if now >= deadline {
+                self.reader = Some(reader);
                 return Err(CleanupError::ReaderTimedOut);
             }
             thread::sleep(PROCESS_POLL_INTERVAL.min(deadline.duration_since(now)));
@@ -374,24 +396,32 @@ impl OsStdioSession {
     }
 }
 
+fn cleanup_after_setup_failure(
+    child: &mut ContainedChild,
+    failure: InitializeError,
+    timeout: Duration,
+) -> InitializeError {
+    match child.terminate(timeout) {
+        Ok(()) => failure,
+        Err(source) => InitializeError::CleanupFailed {
+            failure: Box::new(failure),
+            cleanup: CleanupError::Containment(source),
+        },
+    }
+}
+
 impl Drop for OsStdioSession {
     fn drop(&mut self) {
         drop(self.stdin.take());
-        let terminated = self.force_terminate().is_ok();
-        if terminated && self.reader.as_ref().is_some_and(JoinHandle::is_finished) {
-            let _ = self.join_finished_reader();
-        }
+        let _ = self.force_terminate(SHUTDOWN_TIMEOUT);
+        // If explicit cleanup returned an error, dropping the retained child
+        // invokes its independent containment backstop before the reader join.
+        drop(self.child.take());
+        let _ = self.finish_reader(SHUTDOWN_TIMEOUT);
     }
 }
 
-fn terminate_unmanaged_child(child: &mut Child) {
-    if child.try_wait().ok().flatten().is_none() {
-        let _ = child.kill();
-        let _ = child.wait();
-    }
-}
-
-fn wait_for_exit(child: &mut Child, timeout: Duration) -> io::Result<Option<ExitStatus>> {
+fn wait_for_exit(child: &mut ContainedChild, timeout: Duration) -> io::Result<Option<ExitStatus>> {
     let deadline = Instant::now()
         .checked_add(timeout)
         .unwrap_or_else(Instant::now);
@@ -653,6 +683,9 @@ pub enum InitializeError {
     },
     CannotOpenStdin,
     CannotOpenStdout,
+    CannotStartReader {
+        source: io::Error,
+    },
     ProcessInputClosed {
         phase: MessagePhase,
     },
@@ -706,6 +739,12 @@ impl fmt::Display for InitializeError {
             }
             Self::CannotOpenStdout => {
                 formatter.write_str("could not open the configured process output")
+            }
+            Self::CannotStartReader { source } => {
+                write!(
+                    formatter,
+                    "could not start the bounded output reader: {source}"
+                )
             }
             Self::ProcessInputClosed { phase } => write!(
                 formatter,
@@ -773,6 +812,7 @@ impl Error for InitializeError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::CannotStart { source }
+            | Self::CannotStartReader { source }
             | Self::CannotWrite { source, .. }
             | Self::ResponseRead { source }
             | Self::CannotWaitForShutdown { source } => Some(source),
@@ -834,9 +874,7 @@ impl Error for ResponseViolation {}
 
 #[derive(Debug)]
 pub enum CleanupError {
-    Inspect(io::Error),
-    Kill(io::Error),
-    Wait(io::Error),
+    Containment(io::Error),
     ReaderPanicked,
     ReaderTimedOut,
 }
@@ -844,9 +882,12 @@ pub enum CleanupError {
 impl fmt::Display for CleanupError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Inspect(source) => write!(formatter, "could not inspect the child: {source}"),
-            Self::Kill(source) => write!(formatter, "could not terminate the child: {source}"),
-            Self::Wait(source) => write!(formatter, "could not reap the child: {source}"),
+            Self::Containment(source) => {
+                write!(
+                    formatter,
+                    "could not contain and reap the process tree: {source}"
+                )
+            }
             Self::ReaderPanicked => formatter.write_str("the stdout reader failed during cleanup"),
             Self::ReaderTimedOut => {
                 formatter.write_str("the stdout reader did not stop within the cleanup bound")
@@ -858,7 +899,7 @@ impl fmt::Display for CleanupError {
 impl Error for CleanupError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::Inspect(source) | Self::Kill(source) | Self::Wait(source) => Some(source),
+            Self::Containment(source) => Some(source),
             Self::ReaderPanicked | Self::ReaderTimedOut => None,
         }
     }
@@ -885,9 +926,9 @@ impl From<ResponseReadError> for InitializeError {
 #[cfg(test)]
 mod tests {
     use super::{
-        CURRENT_HANDSHAKE_PROTOCOL_VERSION, HealthLimits, InitializeError, InitializeTester,
-        NegotiatedProtocol, RESPONSE_TIMEOUT, ResponseViolation, initialize_request,
-        run_initialize, test_server, validate_initialize_response,
+        CURRENT_HANDSHAKE_PROTOCOL_VERSION, CleanupError, HealthLimits, InitializeError,
+        InitializeTester, NegotiatedProtocol, OsStdioSession, RESPONSE_TIMEOUT, ResponseViolation,
+        initialize_request, run_initialize, test_server, validate_initialize_response,
     };
     use crate::config::CanonicalServer;
     use crate::filesystem::OsFileSystem;
@@ -899,7 +940,9 @@ mod tests {
     use std::fs;
     use std::path::Path;
     use std::process::{Command, Stdio};
-    use std::sync::{Mutex, MutexGuard};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex, MutexGuard, mpsc};
+    use std::thread;
     use std::time::{Duration, Instant};
 
     #[cfg(unix)]
@@ -949,6 +992,39 @@ mod tests {
             assert_eq!(SHORT_LIMITS.response_timeout, RESPONSE_TIMEOUT);
             assert!(RESPONSIVE_PROCESS_FIXTURE_TIMEOUT > RESPONSE_TIMEOUT);
         }
+    }
+
+    #[test]
+    fn reader_timeout_preserves_the_join_handle_for_the_drop_backstop() {
+        let completed = Arc::new(AtomicBool::new(false));
+        let reader_completed = Arc::clone(&completed);
+        let reader = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(25));
+            reader_completed.store(true, Ordering::Release);
+        });
+        let (_sender, response) = mpsc::channel();
+        let mut session = OsStdioSession {
+            child: None,
+            stdin: None,
+            response,
+            reader: Some(reader),
+        };
+
+        assert!(matches!(
+            session.finish_reader(Duration::ZERO),
+            Err(CleanupError::ReaderTimedOut)
+        ));
+        assert!(
+            session.reader.is_some(),
+            "the timed-out reader must remain owned"
+        );
+
+        drop(session);
+
+        assert!(
+            completed.load(Ordering::Acquire),
+            "the drop backstop must wait for the retained reader"
+        );
     }
 
     struct FixtureEnvironment {

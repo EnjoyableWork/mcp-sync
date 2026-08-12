@@ -92,6 +92,20 @@ fn release_preflight_covers_every_native_artifact_without_credentials() {
 
     assert!(workflow.contains("scripts/smoke-archive.sh"));
     assert!(workflow.contains("scripts/smoke-archive.ps1"));
+    assert_eq!(
+        workflow
+            .matches("Prove native health-process containment")
+            .count(),
+        2,
+        "both Unix and Windows preflight matrices should run the focused containment proof"
+    );
+    assert_eq!(
+        workflow
+            .matches("cargo test --test health_process_containment --locked")
+            .count(),
+        2,
+        "all six native preflight hosts should execute the harness-free containment regression"
+    );
     assert!(workflow.contains("Deterministic Cargo source package"));
     assert!(workflow.contains("cargo package --locked"));
     assert!(workflow.contains("scripts/verify-release-assets.sh"));

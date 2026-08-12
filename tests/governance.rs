@@ -16,6 +16,37 @@ fn assert_official_channels_exclude_insecure_transports(name: &str, document: &s
 }
 
 #[test]
+fn deterministic_ci_policy_rejects_timing_and_retry_as_acceptance_evidence() {
+    let agent_guidance = repository_file("AGENTS.md");
+    for required_contract in [
+        "Use timeouts only as product contracts or outer watchdogs",
+        "Never use elapsed time, a fixed sleep, or a fast polling",
+        "rerun is evidence of nondeterminism, not acceptance evidence",
+        "one deterministic regression that forces the relevant",
+        "CI job\n  `timeout-minutes` remains an outer infrastructure watchdog",
+    ] {
+        assert!(
+            agent_guidance.contains(required_contract),
+            "repository guidance should preserve deterministic CI contract {required_contract}"
+        );
+    }
+
+    let project = repository_file("PROJECT.md");
+    for required_contract in [
+        "DEC-052",
+        "Treat timing-dependent CI variance as a defect",
+        "RISK-24",
+        "A failure followed by an identical-source pass remains an unresolved",
+        "repetition and stress are supplemental only",
+    ] {
+        assert!(
+            project.contains(required_contract),
+            "project tracking should preserve deterministic CI contract {required_contract}"
+        );
+    }
+}
+
+#[test]
 fn public_main_ruleset_verifier_encodes_the_accepted_contract() {
     let verifier = repository_file("scripts/verify-public-main-ruleset.sh");
 

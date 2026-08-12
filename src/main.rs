@@ -15,6 +15,7 @@ mod init;
 mod kiro;
 mod operation_lock;
 mod paths;
+mod process_containment;
 mod reconciliation;
 mod restore;
 mod sync;
