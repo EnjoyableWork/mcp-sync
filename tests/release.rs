@@ -764,14 +764,15 @@ fn package_and_public_docs_keep_the_accepted_release_identities() {
     let readme = repository_file("README.md");
     let runbook = repository_file("docs/source-linux-release.md");
     let signed_runbook = repository_file("docs/release.md");
-    let release_notes = repository_file("docs/releases/v0.1.0.md");
+    let historical_release_notes = repository_file("docs/releases/v0.1.0.md");
+    let repeat_release_notes = repository_file("docs/releases/v0.1.1.md");
     let release_asset_verifier = repository_file("scripts/verify-published-release.sh");
     let source_linux_asset_verifier =
         repository_file("scripts/verify-published-source-linux-release.sh");
 
     for required_manifest_value in [
         "name = \"enjoyable-mcp-sync\"",
-        "version = \"0.1.0\"",
+        "version = \"0.1.1\"",
         "name = \"mcp-sync\"",
         "publish = [\"crates-io\"]",
         "\"/.github/workflows/cargo-publish.yml\"",
@@ -848,9 +849,25 @@ fn package_and_public_docs_keep_the_accepted_release_identities() {
     assert!(signed_runbook.contains("confirm_funded_signing"));
     assert!(signed_runbook.contains("all 14 downloaded assets"));
     assert!(signed_runbook.contains("release_kind=funded"));
-    assert!(release_notes.contains("# mcp-sync v0.1.0"));
-    assert!(release_notes.contains("immutable GitHub Release"));
-    assert!(release_notes.contains("No project-issued macOS or Windows binary"));
+    assert!(historical_release_notes.contains("# mcp-sync v0.1.0"));
+    assert!(historical_release_notes.contains("immutable GitHub Release"));
+    assert!(historical_release_notes.contains("No project-issued macOS or Windows binary"));
+    for repeat_release_contract in [
+        "# mcp-sync v0.1.1",
+        "`mcp-sync` does not update itself",
+        "brew upgrade --build-from-source EnjoyableWork/tap/mcp-sync",
+        "cargo install enjoyable-mcp-sync --version '=0.1.1' --locked",
+        "gh release download v0.1.1",
+        "gh attestation verify",
+        "Installing or replacing the executable does not read or modify",
+        "No project-issued macOS or Windows binary",
+        "not published to WinGet",
+    ] {
+        assert!(
+            repeat_release_notes.contains(repeat_release_contract),
+            "repeat release notes should document {repeat_release_contract}"
+        );
+    }
 }
 
 #[test]
