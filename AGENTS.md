@@ -177,9 +177,12 @@ merged its six-target adapter and durable native and current-client evidence as
 exact-main commit `d63a7a97026f994e06d89c1f699938a26a313aa8`, whose CI, CodeQL,
 release preflight, and source/install/archive preflight all pass. Corrective
 main-story ticket `MCP-042` is `Done`; merged PR #65 closed issue #44 as
-exact-main commit `991e6b2114267fb26c3beb3a319e96de0452c7e2`. `MCP-043` is
-owned and `In progress` under its exact catalog Goal, and every later successor
-and side quest remains inactive.
+exact-main commit `991e6b2114267fb26c3beb3a319e96de0452c7e2`. `MCP-043` and
+D-22 are `Done` through draft PR #66 implementation head
+`9472a7ab946f424df8c157ab35fe5eab9f1a6bb5`, whose 24 hosted checks passed
+on attempt one; issue #46 is ready for closure on merge. Only `MCP-044` is
+`Ready` but not active, and every later successor and side quest remains
+inactive.
 Use the existing Clap command tree as CLI behavior grows; do not introduce a
 second parser.
 
