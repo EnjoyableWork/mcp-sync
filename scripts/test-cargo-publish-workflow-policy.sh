@@ -31,6 +31,7 @@ cargo_workflow_prepare_case() {
   cp -R "$cargo_workflow_test_root/.github" "$cargo_workflow_case_root/"
   cp \
     "$cargo_workflow_test_root/scripts/verify-workflow-supply-chain.sh" \
+    "$cargo_workflow_test_root/scripts/syft-assets.txt" \
     "$cargo_workflow_case_root/scripts/"
   chmod +x "$cargo_workflow_case_root/scripts/verify-workflow-supply-chain.sh"
   git -C "$cargo_workflow_case_root" init --quiet
