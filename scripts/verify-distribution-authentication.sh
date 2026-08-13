@@ -6,8 +6,8 @@ distribution_authentication_repository=${1:-}
 distribution_authentication_version=${2:-}
 
 if [[ "$distribution_authentication_repository" != EnjoyableWork/mcp-sync ||
-  "$distribution_authentication_version" != 0.1.0 ]]; then
-  echo "usage: $0 EnjoyableWork/mcp-sync 0.1.0" >&2
+  "$distribution_authentication_version" != 0.1.1 ]]; then
+  echo "usage: $0 EnjoyableWork/mcp-sync 0.1.1" >&2
   exit 2
 fi
 if ! gh auth status --hostname github.com >/dev/null 2>&1; then

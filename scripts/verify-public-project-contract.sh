@@ -7,8 +7,8 @@ public_contract_version=${2:-}
 public_contract_tap_repository=EnjoyableWork/homebrew-tap
 
 if [[ "$public_contract_repository" != EnjoyableWork/mcp-sync ]] ||
-  [[ "$public_contract_version" != 0.1.0 ]] || [[ $# -ne 2 ]]; then
-  echo "usage: $0 EnjoyableWork/mcp-sync 0.1.0" >&2
+  [[ "$public_contract_version" != 0.1.1 ]] || [[ $# -ne 2 ]]; then
+  echo "usage: $0 EnjoyableWork/mcp-sync 0.1.1" >&2
   exit 2
 fi
 

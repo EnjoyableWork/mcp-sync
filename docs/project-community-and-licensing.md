@@ -20,7 +20,7 @@ HTTPS.
 | Defects, proposed changes, and usage obstacles | [GitHub Issues](https://github.com/EnjoyableWork/mcp-sync/issues) | Public, best-effort discussion through the structured issue forms |
 | Proposed implementation changes | [GitHub pull requests](https://github.com/EnjoyableWork/mcp-sync/pulls) | Public review and protected merge path |
 | Vulnerability reports | [GitHub private vulnerability reporting](https://github.com/EnjoyableWork/mcp-sync/security/advisories/new) | Private route defined by `SECURITY.md`; no vulnerability details belong in public channels |
-| Canonical immutable release | [GitHub Releases](https://github.com/EnjoyableWork/mcp-sync/releases) | `v0.1.0` currently supplies source and GNU/Linux x64/ARM64 artifacts only |
+| Canonical immutable release | [GitHub Releases](https://github.com/EnjoyableWork/mcp-sync/releases) | `v0.1.1` currently supplies source and GNU/Linux x64/ARM64 artifacts only |
 | Rust source package | [crates.io `enjoyable-mcp-sync`](https://crates.io/crates/enjoyable-mcp-sync) | Installs the `mcp-sync` executable from source on supported build hosts |
 | Homebrew formula | [EnjoyableWork/homebrew-tap](https://github.com/EnjoyableWork/homebrew-tap) | Source-building `Formula/mcp-sync.rb` for macOS and GNU/Linux |
 
@@ -84,8 +84,8 @@ and the package manifest declares `license = "MIT"`.
 Current release licensing is carried with the software rather than inferred
 from a badge or SBOM field:
 
-- the immutable `v0.1.0` tagged source contains the root `LICENSE`;
-- the published `enjoyable-mcp-sync-0.1.0.crate` contains that `LICENSE`;
+- the immutable `v0.1.1` tagged source contains the root `LICENSE`;
+- the published `enjoyable-mcp-sync-0.1.1.crate` contains that `LICENSE`;
 - both published GNU/Linux binary archives contain that `LICENSE` beside the
   executable and release documents;
 - the published Homebrew formula declares `license "MIT"`, and its source is
@@ -98,7 +98,7 @@ shipped with each software archive. The current SBOM generator reports
 `NOASSERTION` for package license fields, so those fields are deliberately not
 used as licensing evidence. Future funded macOS and Windows archives already
 use the same required `LICENSE` packaging boundary, but they are not published
-`v0.1.0` assets.
+`v0.1.1` assets.
 
 ## Inbound contribution terms
 
@@ -137,7 +137,7 @@ requirements named below.
 Run the credential-free public verifier after a default-branch change:
 
 ```bash
-./scripts/verify-public-project-contract.sh EnjoyableWork/mcp-sync 0.1.0
+./scripts/verify-public-project-contract.sh EnjoyableWork/mcp-sync 0.1.1
 ```
 
 On 2026-08-09, a signed-in maintainer inspection of exact `main` commit

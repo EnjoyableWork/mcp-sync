@@ -296,6 +296,7 @@ fn operator_verifier_reads_back_exact_publisher_and_trusted_only_state() {
         "repos/rust-lang/crates-io-auth-action/commits/c6f97d42243bad5fab37ca0427f495c86d5b1a18",
         ".commit.verification.verified == true",
         ".crate.trustpub_only == true",
+        ".num == \"0.1.1\" and .yanked == false",
         ".github_configs | length",
         ".meta.total == 1",
         ".github_configs[0].crate == \"enjoyable-mcp-sync\"",
@@ -314,4 +315,5 @@ fn operator_verifier_reads_back_exact_publisher_and_trusted_only_state() {
         assert!(!verifier.contains(forbidden));
     }
     assert!(!verifier.contains(".github_configs[0].krate"));
+    assert!(verifier.contains("current v0.1.1 identity"));
 }

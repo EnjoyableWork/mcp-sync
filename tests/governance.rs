@@ -517,6 +517,9 @@ fn public_project_contract_verifier_is_credential_free_and_exact() {
         );
     }
 
+    assert!(verifier.contains("EnjoyableWork/mcp-sync 0.1.1"));
+    assert!(!verifier.contains("EnjoyableWork/mcp-sync 0.1.0"));
+
     assert!(
         !verifier.contains(".files.issue_template != null"),
         "GitHub does not expose YAML issue forms through that community-profile field"

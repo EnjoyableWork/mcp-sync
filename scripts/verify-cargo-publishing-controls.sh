@@ -134,7 +134,7 @@ verify_no_cargo_credential_names \
   "$cargo_controls_commit"
 "$cargo_controls_root/scripts/verify-repository-supply-chain-controls.sh" \
   EnjoyableWork/mcp-sync \
-  0.1.0
+  0.1.1
 
 cargo_controls_remote_workflow="$cargo_controls_temp/cargo-publish.yml"
 gh api \
@@ -167,7 +167,8 @@ jq -e '
   .crate.id == "enjoyable-mcp-sync" and
   .crate.repository == "https://github.com/EnjoyableWork/mcp-sync" and
   .crate.trustpub_only == true and
-  any(.versions[]; .num == "0.1.0" and .yanked == false)
+  any(.versions[]; .num == "0.1.0" and .yanked == false) and
+  any(.versions[]; .num == "0.1.1" and .yanked == false)
 ' "$cargo_controls_crate_state" >/dev/null
 
 cargo_controls_publisher_state="$cargo_controls_temp/trusted-publisher.json"
@@ -192,4 +193,4 @@ jq -e \
   .github_configs[0].environment == "release"
 ' "$cargo_controls_publisher_state" >/dev/null
 
-printf 'Verified exact-main Cargo workflow, release protections, absent registry-token fallback, signed selected action, trusted publisher, trusted-only setting, and immutable v0.1.0 identity.\n'
+printf 'Verified exact-main Cargo workflow, release protections, absent registry-token fallback, signed selected action, trusted publisher, trusted-only setting, immutable v0.1.0 baseline, and current v0.1.1 identity.\n'
