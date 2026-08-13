@@ -73,7 +73,7 @@ record.
 | `OSPS-BR-01.01` | Pass | The [untrusted metadata boundary](repository-supply-chain.md#untrusted-code-and-metadata-boundary) uses typed environment boundaries and exact input validation. [`verify-workflow-supply-chain.sh`](../scripts/verify-workflow-supply-chain.sh) rejects direct GitHub-expression interpolation into shell commands. |
 | `OSPS-BR-01.03` | Pass | Pull-request workflows are read-only and secretless, use no protected environment, OIDC, privileged trigger, or cross-run credentialed artifact, and cannot feed a publisher. The [supply-chain contract](repository-supply-chain.md#untrusted-code-and-metadata-boundary) and static verifier cover every workflow. |
 | `OSPS-BR-03.01` | Pass | The [official-channel inventory](project-community-and-licensing.md#official-project-channels) contains only HTTPS public URIs. The public project-contract verifier rejects an unencrypted channel in every maintained channel document. |
-| `OSPS-BR-03.02` | Pass | The [authenticated distribution chain](repository-supply-chain.md#authenticated-distribution-chain) combines HTTPS channels, immutable release state, signed GitHub provenance, exact hashes, byte-identical Cargo and Homebrew payloads, and a pinned-host tap publisher. The live distribution verifier passed for `v0.1.0`. |
+| `OSPS-BR-03.02` | Pass | The [authenticated distribution chain](repository-supply-chain.md#authenticated-distribution-chain) combines HTTPS channels, immutable release state, signed GitHub provenance, exact hashes, byte-identical Cargo and Homebrew payloads, and a pinned-host tap publisher. The live distribution verifier passed for current release `v0.1.1`. |
 | `OSPS-BR-07.01` | Pass | The [repository security boundary](repository-security.md#openssf-osps-mapping) combines local secret-file exclusions, provider-pattern secret scanning, push protection, and a non-disclosing zero-open-finding gate. The live repository-security verifier passed. |
 | `OSPS-DO-01.01` | Pass | The [README](../README.md) documents installation, configuration, and every basic CLI journey: `init`, `add`, `list`, `test`, `sync --dry-run`, `sync`, and `restore`. The [usage and recovery guide](m1-usage-and-recovery.md) documents safe operation, limits, recovery, and failure behavior in detail. |
 | `OSPS-DO-02.01` | Pass | [`CONTRIBUTING.md`](../CONTRIBUTING.md#report-a-defect), [`SUPPORT.md`](../SUPPORT.md), and the public structured bug form explain how to report defects while routing vulnerabilities privately. |
@@ -93,18 +93,20 @@ record.
 
 ## Revalidation record
 
-The following checks passed on 2026-08-09. Their success output is generic;
-private payloads were discarded or kept outside the repository:
+The baseline checks first passed on 2026-08-09. Release-triggered public,
+repository, and distribution revalidation passed again on 2026-08-12 against
+current release `v0.1.1`. Success output is generic; private payloads were
+discarded or kept outside the repository:
 
 ```sh
 ./scripts/verify-public-main-ruleset.sh EnjoyableWork/mcp-sync
 ./scripts/verify-main-repository-controls.sh EnjoyableWork/mcp-sync
 ./scripts/verify-repository-security-controls.sh EnjoyableWork/mcp-sync
-./scripts/verify-public-project-contract.sh EnjoyableWork/mcp-sync 0.1.0
+./scripts/verify-public-project-contract.sh EnjoyableWork/mcp-sync 0.1.1
 ./scripts/verify-workflow-supply-chain.sh --verify-upstreams
 ./scripts/verify-repository-artifacts.sh
 ./scripts/test-repository-artifact-policy.sh
-./scripts/verify-distribution-authentication.sh EnjoyableWork/mcp-sync 0.1.0
+./scripts/verify-distribution-authentication.sh EnjoyableWork/mcp-sync 0.1.1
 ```
 
 The owner-only organization-access verifier also passed against freshly read

@@ -450,6 +450,8 @@ fn operator_verifiers_encode_live_policy_and_authenticated_distribution() {
         );
     }
     assert!(!operator.contains("secrets."));
+    assert!(operator.contains("EnjoyableWork/mcp-sync 0.1.1"));
+    assert!(!operator.contains("EnjoyableWork/mcp-sync 0.1.0"));
 
     for required in [
         "permissions:.*write",
@@ -463,6 +465,8 @@ fn operator_verifiers_encode_live_policy_and_authenticated_distribution() {
             "workflow verifier should reject {required} in pull-request workflows"
         );
     }
+    assert!(distribution.contains("EnjoyableWork/mcp-sync 0.1.1"));
+    assert!(!distribution.contains("EnjoyableWork/mcp-sync 0.1.0"));
 
     for required in [
         "scripts/syft-assets.txt",
@@ -508,7 +512,7 @@ fn operator_verifiers_encode_live_policy_and_authenticated_distribution() {
         assert!(evidence.contains(control), "evidence should map {control}");
     }
     for limitation in [
-        "does not modify that immutable",
+        "does not modify either immutable release",
         "not a project-wide conformance or certification claim",
         "There is no current WinGet distribution",
         "Cargo publication after `0.1.0` uses one protected",

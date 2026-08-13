@@ -6,8 +6,8 @@ repository_supply_chain_repository=${1:-}
 repository_supply_chain_version=${2:-}
 
 if [[ "$repository_supply_chain_repository" != EnjoyableWork/mcp-sync ||
-  "$repository_supply_chain_version" != 0.1.0 ]]; then
-  echo "usage: $0 EnjoyableWork/mcp-sync 0.1.0" >&2
+  "$repository_supply_chain_version" != 0.1.1 ]]; then
+  echo "usage: $0 EnjoyableWork/mcp-sync 0.1.1" >&2
   exit 2
 fi
 if ! gh auth status --hostname github.com >/dev/null 2>&1; then

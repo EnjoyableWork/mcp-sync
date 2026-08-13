@@ -32,7 +32,7 @@ Kiro Crew.
 Only `test` starts the one named canonical server. `init`, `sync`, and
 `restore`, including their dry-run forms, remain configuration operations and
 never start a configured MCP server. This guide deliberately uses a source
-checkout; the verified zero-cost `v0.1.0` Cargo, source-building Homebrew, and
+checkout; the verified zero-cost `v0.1.1` Cargo, source-building Homebrew, and
 GNU/Linux archive boundaries are documented by the
 [README](../README.md) and [PROJECT.md](../PROJECT.md). Project-issued macOS
 and Windows binaries, WinGet, and explicit prune behavior remain later work.
@@ -827,7 +827,7 @@ promise:
 - Abrupt-process recovery is target-first and per existing file. It does not
   make the six target commits atomic across termination and does not claim
   whole-machine or power-loss durability.
-- The immutable `v0.1.0` release verifies GNU/Linux archives, Cargo across the
+- The immutable `v0.1.1` release verifies GNU/Linux archives, Cargo across the
   six supported native hosts, and source-building Homebrew on supported macOS
   and GNU/Linux hosts. It intentionally has no project-issued macOS or Windows
   binary and no WinGet package; those remain funding-dependent later work.

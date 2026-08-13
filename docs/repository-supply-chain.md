@@ -2,9 +2,10 @@
 
 This document is the `MCP-033` contract for dependency maintenance, GitHub
 Actions trust boundaries, authenticated distribution, and source-repository
-artifact policy. It covers `EnjoyableWork/mcp-sync` and the existing `v0.1.0`
-Cargo and Homebrew distribution paths. It does not modify that immutable
-release, activate the funded signed-native pipeline, or claim a complete
+artifact policy. It covers `EnjoyableWork/mcp-sync` and the current `v0.1.1`
+Cargo and Homebrew distribution paths while retaining immutable `v0.1.0` as
+the first-publication baseline. It does not modify either immutable release,
+activate the funded signed-native pipeline, or claim a complete
 assurance baseline or certification.
 
 ## Dependency maintenance
@@ -136,7 +137,8 @@ artifact crosses into those jobs.
 
 ## Authenticated distribution chain
 
-GitHub Releases remains the canonical immutable channel. For `v0.1.0`:
+GitHub Releases remains the canonical immutable channel. For the current
+`v0.1.1` release:
 
 1. the annotated protected tag identifies one release commit;
 2. GitHub's release attestation verifies the immutable release record;
@@ -174,9 +176,25 @@ proves exact-version installation plus recovery output on all six retained
 native targets. The authorization-only mode exercises the protected OIDC and
 publisher identity without consuming the returned registry credential or
 creating a crate version; the fixed MCP-039 rehearsal also re-reads crates.io
-and succeeds only while unyanked `0.1.0` remains the sole version.
+and succeeds only while `0.1.0` remains unyanked and the complete published
+version inventory remains unchanged across the authorization exercise.
 
-`scripts/verify-distribution-authentication.sh EnjoyableWork/mcp-sync 0.1.0`
+`v0.1.1` is the first production proof of the later-version path. Its
+[protected Cargo run](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31655833306)
+published the attested `.crate` through the exact Trusted Publisher and proved
+the six native Cargo install and recovery journeys without a reusable token.
+The first Homebrew handoff failed before clone or tap mutation because the
+protected private key no longer had a corresponding deploy key on the tap.
+After explicit owner approval, one fresh tap-scoped verified write deploy key
+was paired with the protected environment secret, all temporary local key
+material was removed, and the
+[recovery run](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31657298846)
+created only the monotonic byte-identical formula update. The final
+[13-job read-only matrix](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31657404968)
+then verified GitHub, Cargo, and Homebrew metadata plus every represented native
+installation and recovery journey.
+
+`scripts/verify-distribution-authentication.sh EnjoyableWork/mcp-sync 0.1.1`
 rechecks this chain without publishing or replacing anything. Cargo and
 Homebrew consumers still depend on their local TLS and package-manager trust
 stores; this evidence establishes the authenticated official path and exact
@@ -223,7 +241,7 @@ distribution chain without reading secret values:
 
 ```sh
 ./scripts/verify-repository-supply-chain-controls.sh \
-  EnjoyableWork/mcp-sync 0.1.0
+  EnjoyableWork/mcp-sync 0.1.1
 ```
 
 Re-run the operator verifier after an action, workflow, dependency-update
@@ -256,6 +274,13 @@ and only the ten reviewed patterns are present. Default workflow permission is
 `read`, workflows cannot approve pull requests, public-fork execution requires
 approval for first-time contributors, and CodeQL default setup remains enabled
 for Rust and Actions.
+
+The release-triggered 2026-08-12 audit found one obsolete selected-action
+allowance for the removed external Syft action. It was not referenced by any
+workflow and was removed before release authorization; the final live list
+again matches `.github/actions-policy.json` exactly. No action, workflow,
+credential value, release asset, or public channel was changed by that
+least-privilege correction.
 
 GitHub's repository API rejects preloading selected patterns while
 `allowed_actions` is `all`. Activation therefore set selected/full-SHA mode and
