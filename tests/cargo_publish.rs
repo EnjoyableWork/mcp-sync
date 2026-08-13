@@ -298,6 +298,7 @@ fn operator_verifier_reads_back_exact_publisher_and_trusted_only_state() {
         ".crate.trustpub_only == true",
         ".github_configs | length",
         ".meta.total == 1",
+        ".github_configs[0].crate == \"enjoyable-mcp-sync\"",
         ".github_configs[0].repository_owner == \"EnjoyableWork\"",
         ".github_configs[0].repository_owner_id == $expected_owner_id",
         ".github_configs[0].repository_name == \"mcp-sync\"",
@@ -312,4 +313,5 @@ fn operator_verifier_reads_back_exact_publisher_and_trusted_only_state() {
     for forbidden in ["CRATES_IO_TOKEN", "CARGO_REGISTRY_TOKEN", "secrets."] {
         assert!(!verifier.contains(forbidden));
     }
+    assert!(!verifier.contains(".github_configs[0].krate"));
 }
