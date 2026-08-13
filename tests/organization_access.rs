@@ -175,7 +175,7 @@ fn private_evidence_preparation_outputs_only_aggregate_false_by_default_fields()
 }
 
 #[test]
-fn completed_release_state_and_mcp_045_closure_are_preserved() {
+fn completed_release_state_and_mcp_046_closure_are_preserved() {
     let project = repository_file("PROJECT.md");
     let readme = repository_file("README.md");
 
@@ -183,12 +183,12 @@ fn completed_release_state_and_mcp_045_closure_are_preserved() {
     assert!(project.contains("| MCP-034 | Establish organization access, credential, and ownership recovery policy | M3 | P1 | Codex | Done |"));
     assert!(project.contains("| MCP-035 | Self-assess, publish, and showcase the zero-cost enterprise assurance baseline | M3 | P1 | Codex | Done |"));
     assert!(project.contains("| Done — `MCP-030` through `MCP-035` Done |"));
-    assert!(project.contains("M0 through M3, `MCP-001` through `MCP-020`, `MCP-028` through `MCP-037`, and `MCP-039` through `MCP-045` are `Done`"));
+    assert!(project.contains("M0 through M3, `MCP-001` through `MCP-020`, `MCP-028` through `MCP-037`, and `MCP-039` through `MCP-046` are `Done`"));
     assert!(project.contains("`MCP-037` and D-18 are `Done`"));
     assert!(project.contains("`MCP-037`, `MCP-040`, and `MCP-041` are\ncompleted"));
-    assert!(project.contains("`MCP-042` through `MCP-045` are complete"));
-    assert!(project.contains("completing `MCP-046` as the sole active task"));
-    assert!(project.contains("| MCP-046 | Replace the shared-tap deploy key with tap-owned short-lived publication | Post-M4 corrective release maintenance | P0 | Codex | In progress | `MCP-045` |"));
+    assert!(project.contains("`MCP-042` through `MCP-046` are complete"));
+    assert!(project.contains("no main-story ticket or side quest is active"));
+    assert!(project.contains("| MCP-046 | Replace the shared-tap deploy key with tap-owned short-lived publication | Post-M4 corrective release maintenance | P0 | Codex | Done | `MCP-045` |"));
     assert!(project.contains("| MCP-036 | Serialize every mutating operation per canonical configuration root | Post-M3 corrective maintenance | P0 | Codex | Done |"));
     assert!(project.contains("| MCP-039 | Replace Cargo publication tokens with crates.io Trusted Publishing | Post-M3 release maintenance | P1 | Codex | Done | `MCP-036` |"));
     assert!(project.contains("| MCP-039 | Complete MCP-039: replace reusable crates.io credentials for every Cargo version after 0.1.0"));
