@@ -516,68 +516,49 @@ fn source_linux_channel_verifier_is_read_only_and_covers_every_represented_insta
 }
 
 #[test]
-fn source_linux_homebrew_publisher_uses_only_the_tap_scoped_release_secret() {
-    let workflow = repository_file(".github/workflows/source-linux-release-publish-homebrew.yml");
+fn homebrew_publication_is_tap_owned_and_source_retains_no_cross_repository_authority() {
+    let obsolete_workflow = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".github/workflows/source-linux-release-publish-homebrew.yml");
     let formula_policy = repository_file("scripts/validate-homebrew-formula-update.sh");
     let formula_policy_test = repository_file("scripts/test-homebrew-formula-update-policy.sh");
+    let authority_policy_test = repository_file("scripts/test-homebrew-authority-policy.sh");
+    let workflow_policy = repository_file("scripts/verify-workflow-supply-chain.sh");
+    let runbook = repository_file("docs/source-linux-release.md");
+    let project = repository_file("PROJECT.md");
     let ci = repository_file(".github/workflows/ci.yml");
 
-    for required_contract in [
-        "workflow_dispatch:",
-        "refs/tags/v$RELEASE_VERSION",
-        "v-mcp-029-homebrew-recovery-1",
-        "refs/tags/$HOMEBREW_RECOVERY_TAG",
-        "environment:\n      name: release",
-        "actions: read",
-        ".immutable == true",
-        "scripts/verify-published-source-linux-release.sh",
-        "gh release verify",
-        "gh attestation verify",
-        ".github/workflows/source-linux-release.yml",
-        "enjoyable-mcp-sync/$RELEASE_VERSION/download",
-        "secrets.HOMEBREW_TAP_DEPLOY_KEY",
-        "git@github.com:EnjoyableWork/homebrew-tap.git",
-        "Formula/mcp-sync.rb",
-        "StrictHostKeyChecking=yes",
-        "SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU",
-        "git -C \"$tap_checkout\" push origin HEAD:refs/heads/main",
-        "group: mcp-sync-release",
-        "later Homebrew publication requires the exact canonical release tag",
-        "scripts/validate-release-version.sh",
-        "scripts/validate-homebrew-formula-update.sh",
-        "prior-homebrew-release.json",
-        "ls-remote origin refs/heads/main",
-        "require_successful_run ci.yml CI",
-        "source-linux-release-preflight.yml",
-        "release-preflight.yml",
-        "scripts/verify-public-stable-tag-ruleset.sh",
-    ] {
-        assert!(
-            workflow.contains(required_contract),
-            "Homebrew publisher should enforce {required_contract}"
-        );
-    }
-    assert_eq!(workflow.matches("secrets.").count(), 1);
-    for forbidden_contract in [
-        "contents: write",
-        "cargo publish",
-        "winget",
-        "Developer ID Application",
-        "notarytool",
-        "Azure/",
-        "--force",
-        "--clobber",
-        "rm -rf",
-    ] {
-        assert!(
-            !workflow.contains(forbidden_contract),
-            "Homebrew publisher must not contain {forbidden_contract}"
-        );
-    }
-    assert_crates_io_requests_identify_the_client(
-        &workflow,
-        "User-Agent: mcp-sync-homebrew-publisher/0.1",
+    assert!(
+        !obsolete_workflow.exists(),
+        "source repository must not retain its former Homebrew writer"
     );
+    for required_contract in [
+        "publish-mcp-sync.yml",
+        "--repo EnjoyableWork/homebrew-tap",
+        "--ref main",
+        "-f mode=publish",
+        "job-scoped `GITHUB_TOKEN`",
+    ] {
+        assert!(
+            runbook.contains(required_contract),
+            "source runbook should delegate {required_contract} to the tap"
+        );
+    }
+    for forbidden_contract in [
+        "HOMEBREW_TAP_DEPLOY_KEY",
+        "git@github.com:EnjoyableWork/homebrew-tap.git",
+        "GIT_SSH_COMMAND=",
+        "repository_dispatch:",
+    ] {
+        assert!(workflow_policy.contains(forbidden_contract));
+        assert!(
+            workflow_policy.contains("source workflows retain forbidden Homebrew write authority")
+        );
+        assert!(authority_policy_test.contains(forbidden_contract));
+    }
+    assert!(workflow_policy.contains("must not retain a cross-repository Homebrew publisher"));
+    assert!(authority_policy_test.contains("publish-mcp-sync.yml"));
+    assert!(authority_policy_test.contains("zero source secrets and zero tap deploy keys"));
+    assert!(project.contains("| DEC-054 | Move source-built Homebrew publication into the tap with job-scoped authority | Accepted |"));
     for required_contract in [
         "canonical immutable release URL",
         "published formula must be a regular, non-symbolic-link file",
@@ -600,7 +581,7 @@ fn source_linux_homebrew_publisher_uses_only_the_tap_scoped_release_secret() {
         assert!(formula_policy_test.contains(policy_case));
     }
     assert!(ci.contains("./scripts/test-homebrew-formula-update-policy.sh"));
-    assert_actions_are_commit_pinned(&workflow);
+    assert!(ci.contains("./scripts/test-homebrew-authority-policy.sh"));
 }
 
 #[test]

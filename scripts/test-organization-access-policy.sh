@@ -53,28 +53,18 @@ organization_access_test_expect_failure \
   <<<"$(jq '.default_workflow_permissions = "write"' <<<"$organization_access_test_workflow_policy")"
 
 organization_access_test_mcp_keys='[]'
-organization_access_test_tap_keys='[
-  {
-    "read_only": false,
-    "verified": true,
-    "enabled": true,
-    "last_used": "2026-08-08T00:00:00Z"
-  }
-]'
+organization_access_test_tap_keys='[]'
 organization_access_assert_deploy_key_boundary \
   "$organization_access_test_mcp_keys" \
   "$organization_access_test_tap_keys"
 organization_access_test_expect_failure \
-  'broad second deploy key' \
+  'obsolete tap deploy key' \
   organization_access_assert_deploy_key_boundary \
   "$organization_access_test_mcp_keys" \
-  "$(jq '. += [.[0]]' <<<"$organization_access_test_tap_keys")"
+  '[{"read_only": false, "verified": true, "enabled": true}]'
 
 organization_access_test_empty_secrets='{"total_count": 0, "secrets": []}'
-organization_access_test_release_secrets='{
-  "total_count": 1,
-  "secrets": [{"name": "HOMEBREW_TAP_DEPLOY_KEY"}]
-}'
+organization_access_test_release_secrets="$organization_access_test_empty_secrets"
 organization_access_assert_secret_boundary \
   "$organization_access_test_empty_secrets" \
   "$organization_access_test_empty_secrets" \
@@ -87,7 +77,7 @@ organization_access_test_expect_failure \
   "$organization_access_test_empty_secrets" \
   "$organization_access_test_empty_secrets" \
   "$organization_access_test_empty_secrets" \
-  "$(jq '.total_count = 2 | .secrets += [{"name": "UNEXPECTED"}]' <<<"$organization_access_test_release_secrets")" \
+  '{"total_count": 1, "secrets": [{"name": "UNEXPECTED"}]}' \
   "$organization_access_test_empty_secrets"
 
 organization_access_test_evidence='{

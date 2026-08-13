@@ -21,7 +21,8 @@ fn organization_access_contract_is_current_non_disclosing_and_not_an_assurance_c
         "successful recovery exercise",
         "nominal empty team",
         "repository-scoped `GITHUB_TOKEN`",
-        "one write deploy key",
+        "zero source and tap deploy keys",
+        "tap-owned publication workflow",
         "GitHub App installations",
         "OSPS-AC-01.01",
         "OSPS-AC-02.01",
@@ -66,13 +67,10 @@ fn operator_verifier_enforces_live_least_privilege_without_printing_private_data
         "orgs/$organization_access_organization/installations?per_page=100",
         "repository_selection == \"all\"",
         "repos/$organization_access_tap_repository/keys?per_page=100",
-        ".read_only == false",
-        ".verified == true",
-        ".enabled == true",
+        "type == \"array\" and length == 0",
         "orgs/$organization_access_organization/actions/secrets",
         "environments/release/secrets",
         "environments/release-control/secrets",
-        "HOMEBREW_TAP_DEPLOY_KEY",
         "MCP_SYNC_PRIVATE_ORGANIZATION_EVIDENCE",
         "private organization evidence must remain outside the repository",
         "private organization evidence must be owned by the current operator",
@@ -96,6 +94,7 @@ fn operator_verifier_enforces_live_least_privilege_without_printing_private_data
         ".key)",
         ".title",
         ".fingerprint",
+        "HOMEBREW_TAP_DEPLOY_KEY",
         "recovery_codes",
         "cat \"$organization_access_evidence",
     ] {
@@ -116,7 +115,7 @@ fn synthetic_policy_exercise_covers_acceptance_and_important_rejections() {
         "implicit repository read access",
         "member repository creation",
         "write-default workflow token",
-        "broad second deploy key",
+        "obsolete tap deploy key",
         "extra environment secret",
         "unaccepted owner choice",
         "untested recovery",
@@ -188,7 +187,8 @@ fn completed_release_state_and_mcp_045_closure_are_preserved() {
     assert!(project.contains("`MCP-037` and D-18 are `Done`"));
     assert!(project.contains("`MCP-037`, `MCP-040`, and `MCP-041` are\ncompleted"));
     assert!(project.contains("`MCP-042` through `MCP-045` are complete"));
-    assert!(project.contains("no main-story\nticket or side quest is active"));
+    assert!(project.contains("completing `MCP-046` as the sole active task"));
+    assert!(project.contains("| MCP-046 | Replace the shared-tap deploy key with tap-owned short-lived publication | Post-M4 corrective release maintenance | P0 | Codex | In progress | `MCP-045` |"));
     assert!(project.contains("| MCP-036 | Serialize every mutating operation per canonical configuration root | Post-M3 corrective maintenance | P0 | Codex | Done |"));
     assert!(project.contains("| MCP-039 | Replace Cargo publication tokens with crates.io Trusted Publishing | Post-M3 release maintenance | P1 | Codex | Done | `MCP-036` |"));
     assert!(project.contains("| MCP-039 | Complete MCP-039: replace reusable crates.io credentials for every Cargo version after 0.1.0"));

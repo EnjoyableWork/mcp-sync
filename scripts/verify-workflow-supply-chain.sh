@@ -184,37 +184,29 @@ while IFS= read -r workflow_supply_chain_pattern; do
   fi
 done < <(jq -r '.patterns_allowed[]' "$workflow_supply_chain_policy")
 
-workflow_supply_chain_homebrew="$workflow_supply_chain_files/source-linux-release-publish-homebrew.yml"
-workflow_supply_chain_validate_block="$(
-  sed -n '/^  validate:/,/^  publish:/p' "$workflow_supply_chain_homebrew"
-)"
-workflow_supply_chain_homebrew_publish="$(
-  sed -n '/^  publish:/,$p' "$workflow_supply_chain_homebrew"
-)"
-for workflow_supply_chain_required in \
-  'permissions: {}' \
-  "REQUESTED_VERSION: \${{ inputs.version }}" \
-  "DISPATCH_REF: \${{ github.ref }}" \
-  "DISPATCH_REF_PROTECTED: \${{ github.ref_protected }}" \
-  "DISPATCH_REF_TYPE: \${{ github.ref_type }}" \
-  'stable_version_pattern=' \
-  'later Homebrew publication requires the exact canonical release tag' \
-  'release_version=%s'; do
-  if ! grep -F "$workflow_supply_chain_required" \
-    <<<"$workflow_supply_chain_validate_block" >/dev/null; then
-    echo "Homebrew publisher lacks pre-environment input validation: $workflow_supply_chain_required" >&2
+for workflow_supply_chain_release_writer in \
+  source-linux-release.yml \
+  release.yml \
+  cargo-publish.yml; do
+  if ! grep -F 'group: mcp-sync-release' \
+    "$workflow_supply_chain_files/$workflow_supply_chain_release_writer" >/dev/null; then
+    echo "release writer is outside the global serialization boundary: $workflow_supply_chain_release_writer" >&2
     exit 1
   fi
 done
 
-for workflow_supply_chain_release_writer in \
-  source-linux-release.yml \
-  release.yml \
-  cargo-publish.yml \
-  source-linux-release-publish-homebrew.yml; do
-  if ! grep -F 'group: mcp-sync-release' \
-    "$workflow_supply_chain_files/$workflow_supply_chain_release_writer" >/dev/null; then
-    echo "release writer is outside the global serialization boundary: $workflow_supply_chain_release_writer" >&2
+if [[ -e "$workflow_supply_chain_files/source-linux-release-publish-homebrew.yml" ]]; then
+  echo "the source repository must not retain a cross-repository Homebrew publisher" >&2
+  exit 1
+fi
+for workflow_supply_chain_forbidden in \
+  'HOMEBREW_TAP_DEPLOY_KEY' \
+  'git@github.com:EnjoyableWork/homebrew-tap.git' \
+  'GIT_SSH_COMMAND=' \
+  'repository_dispatch:'; do
+  if grep -R -F -- "$workflow_supply_chain_forbidden" \
+    "$workflow_supply_chain_files" >/dev/null; then
+    echo "source workflows retain forbidden Homebrew write authority: $workflow_supply_chain_forbidden" >&2
     exit 1
   fi
 done
@@ -244,26 +236,6 @@ for workflow_supply_chain_forbidden in 'environment:' 'secrets.' 'uses: actions/
     exit 1
   fi
 done
-for workflow_supply_chain_forbidden in 'environment:' 'secrets.' 'uses: actions/checkout'; do
-  if grep -F "$workflow_supply_chain_forbidden" \
-    <<<"$workflow_supply_chain_validate_block" >/dev/null; then
-    echo "Homebrew validation job must remain unprivileged: $workflow_supply_chain_forbidden" >&2
-    exit 1
-  fi
-done
-for workflow_supply_chain_required in \
-  'scripts/validate-homebrew-formula-update.sh' \
-  'prior-homebrew-release.json' \
-  "cmp --silent \"\$tap_formula\" \"\$prior_formula_directory/mcp-sync.rb\"" \
-  'ls-remote origin refs/heads/main' \
-  'secrets.HOMEBREW_TAP_DEPLOY_KEY'; do
-  if ! grep -F "$workflow_supply_chain_required" \
-    <<<"$workflow_supply_chain_homebrew_publish" >/dev/null; then
-    echo "Homebrew publisher lacks monotonic exact-byte handoff behavior: $workflow_supply_chain_required" >&2
-    exit 1
-  fi
-done
-
 workflow_supply_chain_cargo="$workflow_supply_chain_files/cargo-publish.yml"
 workflow_supply_chain_cargo_validate="$({
   sed -n '/^  validate:/,/^  publish:/p' "$workflow_supply_chain_cargo"

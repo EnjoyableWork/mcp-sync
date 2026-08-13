@@ -192,9 +192,17 @@ installation and recovery on all six supported OS/CPU hosts. Authentication,
 identity, release, attestation, byte, registry, ordering, or native-smoke
 failure stops the publication path.
 
-The source/GNU/Linux release, funded release, Cargo publisher, and source-built
-Homebrew publisher share the non-cancelling `mcp-sync-release` concurrency
-group. Do not bypass that serialization with a manual registry or tap change.
+The source/GNU/Linux release, funded release, and Cargo publisher share the
+non-cancelling source-repository `mcp-sync-release` concurrency group. The
+separate tap-owned source-built Homebrew publisher begins only after immutable
+GitHub and Cargo bytes converge and shares `homebrew-tap`'s non-cancelling
+`homebrew-tap-release` queue with every tap formula writer. It rechecks the tap
+base immediately before its single-file push, so the two repository-local
+queues and immutable-first ordering preserve the serialized handoff without a
+cross-repository credential. Do not bypass either queue with a manual registry
+or tap change. Funded `SIDE-006` remains dormant; before activation, its
+archive-based formula handoff must receive the same tap-owned verification
+boundary rather than restoring source-repository tap authority.
 
 ## Homebrew and WinGet
 

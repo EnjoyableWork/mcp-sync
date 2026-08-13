@@ -27,15 +27,8 @@ organization_access_assert_deploy_key_boundary() {
 
   jq -e 'type == "array" and length == 0' \
     <<<"$mcp_sync_keys" >/dev/null &&
-    jq -e '
-        type == "array" and
-        length == 1 and
-        all(.[];
-          .read_only == false and
-          .verified == true and
-          .enabled == true and
-          .last_used != null)
-      ' <<<"$tap_keys" >/dev/null
+    jq -e 'type == "array" and length == 0' \
+      <<<"$tap_keys" >/dev/null
 }
 
 organization_access_assert_secret_boundary() {
@@ -51,10 +44,8 @@ organization_access_assert_secret_boundary() {
       <<<"$repository_secrets" >/dev/null &&
     jq -e '.total_count == 0 and (.secrets | length) == 0' \
       <<<"$tap_secrets" >/dev/null &&
-    jq -e '
-        .total_count == 1 and
-        [.secrets[].name] == ["HOMEBREW_TAP_DEPLOY_KEY"]
-      ' <<<"$release_secrets" >/dev/null &&
+    jq -e '.total_count == 0 and (.secrets | length) == 0' \
+      <<<"$release_secrets" >/dev/null &&
     jq -e '.total_count == 0 and (.secrets | length) == 0' \
       <<<"$release_control_secrets" >/dev/null
 }

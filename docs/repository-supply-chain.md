@@ -115,10 +115,10 @@ Untrusted pull-request titles, branch names, commit messages, and author data
 are not interpolated into shell commands. Workflow expressions enter shell
 steps only through environment variables. Static matrix values are bounded by
 the committed workflow. Manual release inputs are checked for exact accepted
-values before use. In particular, the Homebrew recovery workflow now validates
-the exact `0.1.0` request and protected tag or recovery ref in an unprivileged
-job before entering the `release` environment, checking out release code, or
-making its tap-scoped deploy key available.
+values before use. Homebrew mutation is absent from the source repository: a
+human separately dispatches the tap-owned workflow from exact tap `main` only
+after GitHub and Cargo bytes converge. No source credential or automatic
+cross-repository event can authorize that step.
 
 The Cargo request validator similarly accepts only an explicit, fully matched
 version, annotated tag, release kind, and mode before the protected job can
@@ -148,9 +148,9 @@ GitHub Releases remains the canonical immutable channel. For the current
 5. crates.io is reached over HTTPS and serves a package byte-identical to the
    attested `.crate` release asset; and
 6. the organization Homebrew tap is read over HTTPS and exposes a formula
-   byte-identical to the attested release formula. Its protected publisher uses
-   a tap-only SSH deploy key, a pinned GitHub Ed25519 host key, and strict host
-   checking.
+   byte-identical to the attested release formula. Its manually dispatched,
+   protected tap-owned publisher uses only that repository's job-scoped
+   `GITHUB_TOKEN` and can change only `Formula/mcp-sync.rb`.
 
 The `0.1.0` crate is the only token-published exception: its one-use,
 scope-minimized first-publication token was revoked and removed.
@@ -184,15 +184,21 @@ version inventory remains unchanged across the authorization exercise.
 published the attested `.crate` through the exact Trusted Publisher and proved
 the six native Cargo install and recovery journeys without a reusable token.
 The first Homebrew handoff failed before clone or tap mutation because the
-protected private key no longer had a corresponding deploy key on the tap.
+then-protected private key no longer had a corresponding deploy key on the tap.
 After explicit owner approval, one fresh tap-scoped verified write deploy key
-was paired with the protected environment secret, all temporary local key
-material was removed, and the
+was paired temporarily with the protected environment secret, all temporary
+local key material was removed, and the
 [recovery run](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31657298846)
 created only the monotonic byte-identical formula update. The final
 [13-job read-only matrix](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31657404968)
 then verified GitHub, Cargo, and Homebrew metadata plus every represented native
-installation and recovery journey.
+installation and recovery journey. Active `MCP-046` is replacing that
+long-lived pairing with the tap-owned job-token design without changing any
+`v0.1.1` byte. Completion remains withheld until both coordinated changes
+merge, the protected exact no-op rehearsal passes, the owner gives fresh
+action-time deletion confirmation, live readback reports zero source Homebrew
+secrets and zero tap deploy keys, and both affected project verifiers pass;
+durable evidence belongs in `PROJECT.md`.
 
 `scripts/verify-distribution-authentication.sh EnjoyableWork/mcp-sync 0.1.1`
 rechecks this chain without publishing or replacing anything. Cargo and
