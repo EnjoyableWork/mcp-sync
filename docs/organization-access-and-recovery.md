@@ -10,8 +10,8 @@ the private instructions used during an exercise.
 
 `MCP-034` is complete. The initial authenticated read-only audit on
 2026-08-09 verified required organization-wide 2FA, read-only Actions token
-defaults, no organization- or repository-level Actions secrets, and one
-protected-environment credential backed by one tap-only write deploy key. It
+defaults, no organization- or repository-level Actions secrets, and the then
+active protected-environment credential backed by one tap-only write deploy key. It
 also found one organization owner, no teams, default repository permission of
 `read`, and member repository creation enabled. After explicit owner approval,
 the same-day operator change set default permission to `none` and disabled all
@@ -144,17 +144,16 @@ at issuance, but that short lifetime does not excuse an unnecessarily broad
 persistent installation grant. See GitHub's
 [installation-token guidance](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app).
 
-The current cross-repository Homebrew publisher is the bounded exception to
-short-lived automation. GitHub's workflow token cannot write another
-repository, so one write deploy key is attached only to
-`EnjoyableWork/homebrew-tap`, stored as the sole secret in the protected
-`release` environment, and read only after exact release and input validation
-plus required human approval. There is no organization secret, repository
-secret, Cargo publication token, general-purpose personal access token, or
-`mcp-sync` deploy key in that path. The deploy key is reviewed after every use
-and rotated after suspected exposure, operator departure, scope change, or a
-future decision to replace it. Its value, fingerprint, title, and private
-material never enter verification output.
+Homebrew uses a tap-owned publication workflow, manually dispatched in
+`EnjoyableWork/homebrew-tap`. Its validation job independently checks
+the immutable upstream release and exact downstream transition without write
+permission. Only its protected publish job receives the tap repository's
+short-lived, job-scoped `GITHUB_TOKEN`, and that job may stage only
+`Formula/mcp-sync.rb`. Its completed credential boundary requires zero source and tap deploy keys
+plus no source Homebrew secret or cross-repository write authority. There is no
+organization secret, repository secret, Cargo
+publication token, general-purpose personal access token, GitHub App
+credential, or automatic cross-repository dispatch credential in that path.
 
 Interactive administrative credentials are not automation credentials and
 must never be stored in Actions. Prefer a short expiration and the smallest

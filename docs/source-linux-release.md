@@ -121,15 +121,21 @@ and rejection of extra macOS, Windows, or unrelated assets.
      -f mode=publish
    ```
 
-7. After Cargo and registry bytes converge, dispatch the Homebrew publisher on
-   the same tag:
+7. After Cargo and registry bytes converge, manually dispatch the tap-owned
+   Homebrew publisher from exact `homebrew-tap` `main`:
 
    ```bash
-   gh workflow run source-linux-release-publish-homebrew.yml \
-     --repo EnjoyableWork/mcp-sync \
-     --ref "v{version}" \
-     -f version="{version}"
+   gh workflow run publish-mcp-sync.yml \
+     --repo EnjoyableWork/homebrew-tap \
+     --ref main \
+     -f version="{version}" \
+     -f mode=publish
    ```
+
+   Approve the tap's protected `release` deployment only after its read-only
+   job has independently revalidated the exact source release, Cargo bytes,
+   prior formula, and monotonic transition. No source workflow automatically
+   dispatches or authenticates this cross-repository step.
 
 8. Run the credential-free public-channel verifier from current protected
    `main`:
@@ -144,10 +150,13 @@ and rejection of extra macOS, Windows, or unrelated assets.
 9. Record the immutable release, registry, tap commit, and complete native
    smoke evidence in `PROJECT.md`.
 
-The four mutating workflows—source/GNU/Linux release, funded signed release,
-Cargo publication, and Homebrew publication—share one non-cancelling
-`mcp-sync-release` concurrency group. Do not bypass that serialization with a
-manual channel mutation.
+The three source-repository mutating workflows—source/GNU/Linux release,
+funded signed release, and Cargo publication—share the non-cancelling
+`mcp-sync-release` concurrency group. The tap-owned Homebrew publisher begins
+only after GitHub and Cargo converge and shares the tap's separate
+non-cancelling `homebrew-tap-release` queue with every formula writer. Do not
+bypass either repository-local serialization boundary with a manual channel
+mutation.
 
 ## GitHub Release construction and recovery
 
@@ -205,17 +214,25 @@ immutable release, or disabled trusted-only setting stops the run.
 ## Homebrew handoff and public verification
 
 The release's attested `mcp-sync.rb` points to its immutable `.crate` and pins
-the exact SHA-256. The Homebrew workflow validates its canonical protected tag
-before entering the `release` environment, rechecks the immutable release,
-every attestation, the registry identity, and exact Cargo bytes, then uses only
-the existing tap-scoped `HOMEBREW_TAP_DEPLOY_KEY`.
+the exact SHA-256. The manually dispatched `homebrew-tap`
+`publish-mcp-sync.yml` workflow runs from exact tap `main`. Before any job has
+write permission, it independently rechecks the annotated immutable upstream
+release, its exact seven assets, complete checksums, both SPDX SBOMs, every
+exact-tag attestation, trusted-only crates.io metadata, registry/release crate
+byte identity, and the current formula's own immutable release.
 
 An identical public formula is a no-op. A later formula may replace an older
 one only when the existing tap file has a canonical release URL, is
 byte-identical to the formula in its own prior immutable GitHub Release, and
 the candidate version is strictly newer. The workflow refuses a downgrade,
-same-version byte change, malformed formula, non-fast-forward tap race, or any
-other file change. It then verifies the exact public formula bytes.
+same-version byte change, malformed formula, stale registry version,
+non-fast-forward tap race, unexpected handoff path, or any sibling tap change.
+`rehearse` mode for exact `v0.1.1` enters the protected tap `release`
+environment, repeats the offline verification, and proves a clean no-write
+no-op. Only `publish` receives the tap repository's job-scoped `GITHUB_TOKEN`
+with `contents: write`; it stages exactly `Formula/mcp-sync.rb`, shares the
+tap-wide non-cancelling release queue, and retains no PAT, GitHub App
+credential, deploy key, or source-repository write authority.
 
 The final source/GNU/Linux channel workflow is read-only and credential-free.
 It runs from exact protected `main`, checks out the requested immutable tag,

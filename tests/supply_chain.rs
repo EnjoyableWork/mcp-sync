@@ -326,44 +326,24 @@ fn windows_arm64_health_readiness_is_native_sequential_and_fail_fast() {
 }
 
 #[test]
-fn homebrew_input_is_validated_before_protected_access() {
-    let workflow = repository_file(".github/workflows/source-linux-release-publish-homebrew.yml");
-    let validate_start = workflow
-        .find("  validate:\n")
-        .expect("Homebrew workflow should have a validation job");
-    let publish_start = workflow
-        .find("  publish:\n")
-        .expect("Homebrew workflow should have a publish job");
-    assert!(validate_start < publish_start);
+fn source_workflow_policy_rejects_cross_repository_homebrew_authority() {
+    let obsolete =
+        repository_root().join(".github/workflows/source-linux-release-publish-homebrew.yml");
+    let verifier = repository_file("scripts/verify-workflow-supply-chain.sh");
+    let focused = repository_file("scripts/test-homebrew-authority-policy.sh");
 
-    let validate = &workflow[validate_start..publish_start];
-    for required in [
-        "permissions: {}",
-        "REQUESTED_VERSION: ${{ inputs.version }}",
-        "DISPATCH_REF: ${{ github.ref }}",
-        "DISPATCH_REF_PROTECTED: ${{ github.ref_protected }}",
-        "DISPATCH_REF_TYPE: ${{ github.ref_type }}",
-        "stable_version_pattern=",
-        "later Homebrew publication requires the exact canonical release tag",
-        "release_version=%s",
+    assert!(!obsolete.exists());
+    for forbidden in [
+        "HOMEBREW_TAP_DEPLOY_KEY",
+        "git@github.com:EnjoyableWork/homebrew-tap.git",
+        "GIT_SSH_COMMAND=",
+        "repository_dispatch:",
     ] {
-        assert!(
-            validate.contains(required),
-            "validation should require {required}"
-        );
+        assert!(verifier.contains(forbidden));
+        assert!(focused.contains(forbidden));
     }
-    for forbidden in ["environment:", "secrets.", "uses: actions/checkout"] {
-        assert!(
-            !validate.contains(forbidden),
-            "unprivileged validation must not contain {forbidden}"
-        );
-    }
-
-    let publish = &workflow[publish_start..];
-    assert!(publish.contains("needs: validate"));
-    assert!(publish.contains("environment:\n      name: release"));
-    assert!(publish.contains("${{ needs.validate.outputs.release_version }}"));
-    assert_eq!(publish.matches("secrets.").count(), 1);
+    assert!(verifier.contains("source workflows retain forbidden Homebrew write authority"));
+    assert!(focused.contains("publish-mcp-sync.yml"));
 }
 
 #[test]

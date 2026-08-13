@@ -34,6 +34,7 @@ jobs:
           ./scripts/test-cargo-publish-workflow-policy.sh
           ./scripts/test-release-version-policy.sh
           ./scripts/test-homebrew-formula-update-policy.sh
+          ./scripts/test-homebrew-authority-policy.sh
           ./scripts/test-organization-access-policy.sh
           ./scripts/test-generate-sbom.sh
 
