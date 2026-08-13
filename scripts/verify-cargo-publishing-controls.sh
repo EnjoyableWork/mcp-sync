@@ -184,7 +184,7 @@ jq -e \
   --argjson expected_owner_id "$cargo_controls_owner_id" '
   (.github_configs | length) == 1 and
   .meta.total == 1 and
-  .github_configs[0].krate == "enjoyable-mcp-sync" and
+  .github_configs[0].crate == "enjoyable-mcp-sync" and
   .github_configs[0].repository_owner == "EnjoyableWork" and
   .github_configs[0].repository_owner_id == $expected_owner_id and
   .github_configs[0].repository_name == "mcp-sync" and
