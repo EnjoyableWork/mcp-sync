@@ -172,9 +172,11 @@ Completed `MCP-045` published immutable `v0.1.1` through the zero-cost
 GitHub-first source/GNU/Linux path: its exact seven assets, checksums, two SPDX
 SBOMs, attestations, byte-identical Trusted Publishing Cargo package,
 monotonic source-building Homebrew formula, and complete read-only native
-channel matrix pass. `MCP-046` is the sole active corrective ticket; it moves
-that Homebrew handoff into a manually dispatched tap-owned workflow and does
-not change any release byte or activate funded `SIDE-006`.
+channel matrix pass. Completed `MCP-046` and D-25 move that Homebrew handoff
+into a manually dispatched tap-owned workflow whose only write job uses the
+tap repository's job-scoped `GITHUB_TOKEN`; the source Homebrew-secret and tap
+deploy-key inventories are both zero, with no changed release byte or activated
+funded `SIDE-006`.
 `MCP-039` is `Done`: every Cargo version after `0.1.0` must use its exact
 protected crates.io Trusted Publishing path with trusted-publishing-only
 enforcement and no API-token fallback. Bounded M4 expansion `MCP-037` is also
@@ -195,8 +197,11 @@ from an explicit upstream GitHub `503` during pinned Syft acquisition; that
 external-service recovery is not health-fix acceptance evidence. Merged PR
 #67 closed issue #60, and merged PR #68 replaced the separately exposed
 action-owned Syft acquisition boundary. `MCP-045` and D-24 are `Done` with
-immutable `v0.1.1`; only `MCP-046` is `In progress`, and every side quest
-remains inactive.
+immutable `v0.1.1`. `MCP-046` and D-25 are also `Done` through merged source
+PR #72, tap PR #4, the protected exact-`v0.1.1` no-write rehearsal, fresh
+owner-confirmed credential deletion, zero live inventories, and passing source
+release plus sibling organization-control verifiers. No main-story successor
+or side quest is active.
 Use the existing Clap command tree as CLI behavior grows; do not introduce a
 second parser.
 

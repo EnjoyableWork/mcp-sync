@@ -192,13 +192,17 @@ local key material was removed, and the
 created only the monotonic byte-identical formula update. The final
 [13-job read-only matrix](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31657404968)
 then verified GitHub, Cargo, and Homebrew metadata plus every represented native
-installation and recovery journey. Active `MCP-046` is replacing that
-long-lived pairing with the tap-owned job-token design without changing any
-`v0.1.1` byte. Completion remains withheld until both coordinated changes
-merge, the protected exact no-op rehearsal passes, the owner gives fresh
-action-time deletion confirmation, live readback reports zero source Homebrew
-secrets and zero tap deploy keys, and both affected project verifiers pass;
-durable evidence belongs in `PROJECT.md`.
+installation and recovery journey. Completed `MCP-046` replaces that
+long-lived pairing through source [PR #72](https://github.com/EnjoyableWork/mcp-sync/pull/72)
+and tap [PR #4](https://github.com/EnjoyableWork/homebrew-tap/pull/4). The
+protected [exact no-op rehearsal](https://github.com/EnjoyableWork/homebrew-tap/actions/runs/31727044858)
+passed before the owner gave fresh action-time deletion confirmation. The
+source Homebrew secret and tap deploy key were then permanently deleted; live
+readback reports both inventories empty, the affected release and sibling
+organization-control verifiers pass, and the fresh
+[13-job channel matrix](https://github.com/EnjoyableWork/mcp-sync/actions/runs/31729266734)
+reverifies every represented native path without changing a `v0.1.1` byte.
+Durable completion evidence is recorded in `PROJECT.md`.
 
 `scripts/verify-distribution-authentication.sh EnjoyableWork/mcp-sync 0.1.1`
 rechecks this chain without publishing or replacing anything. Cargo and
